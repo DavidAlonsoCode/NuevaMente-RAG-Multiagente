@@ -335,7 +335,7 @@ class ServicioConsultaDocumental:
             fuente=DocumentoFuente(
                 document_id=document_id,
                 titulo=doc["titulo"],
-                hash="sha256:" + mf.hash_sha256,
+                hash=mf.hash_sha256,
                 version=f"v{mf.version}",
             ),
             estado=DocumentStatus.READY,

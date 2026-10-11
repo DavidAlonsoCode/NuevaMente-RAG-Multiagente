@@ -177,6 +177,11 @@ def crear_app(
             gestor = GestorTrabajos(app.state.db, controles=controles, cuotas=cuotas_proveedor)
             app.state.jobs_manager = gestor
             if (
+                proveedor_embeddings is not None
+                and cuotas_proveedor.disponibles_hoy(ajustes.gemini_embedding_model) is None
+            ):
+                raise ValueError("La integración documental requiere cuotas explícitas para el modelo de embeddings")
+            if (
                 cuotas_proveedor is not None
                 and cuotas_proveedor.disponibles_hoy(ajustes.gemini_embedding_model) is not None
             ):
