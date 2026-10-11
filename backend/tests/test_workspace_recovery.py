@@ -180,6 +180,24 @@ def test_perdida_volumen_recupera_recursos_y_codigo_sin_sesiones(pila, tmp_path)
         nuevo.cerrar()
 
 
+def test_relacion_de_purga_exige_lapida_y_aislamiento(pila):
+    db, _, manager = pila
+    creado = manager.crear_espacio()
+    otro = manager.crear_espacio()
+    db.registrar_documento("doc_retirado", creado.workspace_id, "Redes", DocumentStatus.READY)
+    with pytest.raises(ValueError):
+        db.registrar_generacion_retirada("gen_activa", creado.workspace_id, "doc_retirado")
+    db.agendar_borrado("document", "doc_retirado", creado.workspace_id)
+    with pytest.raises(ValueError):
+        db.registrar_generacion_retirada("gen_ajena", otro.workspace_id, "doc_retirado")
+    with pytest.raises(ValueError):
+        db.registrar_generacion("gen_publica", creado.workspace_id, "doc_retirado")
+    db.registrar_generacion_retirada("gen_purga", creado.workspace_id, "doc_retirado")
+    assert db.recursos_documentales(creado.workspace_id, "doc_retirado")[0] == ["gen_purga"]
+    assert db.obtener_generacion("gen_purga") is None
+    assert db.listar_generaciones(creado.workspace_id) == []
+
+
 def test_lapidas_de_documento_generacion_y_progreso_no_reaparecen(pila, tmp_path):
     db, storage, manager = pila
     creado = manager.crear_espacio()

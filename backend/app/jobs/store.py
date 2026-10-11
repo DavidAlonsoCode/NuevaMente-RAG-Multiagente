@@ -1329,6 +1329,25 @@ class RegistroOperativo:
                 (generation_id, workspace_id, document_id, status.value, ahora, ahora),
             )
 
+    @_sincronizado
+    def registrar_generacion_retirada(self, generation_id: str, workspace_id: str, document_id: str) -> None:
+        """Relación interna de purga; exige la lápida y nunca autoriza el resultado."""
+        documento = self._conn.execute(
+            "SELECT workspace_id FROM documents WHERE document_id=?", (document_id,)
+        ).fetchone()
+        if (
+            documento is None
+            or documento["workspace_id"] != workspace_id
+            or not self.esta_borrado("document", document_id)
+        ):
+            raise ValueError("La relación de purga requiere un documento retirado del mismo espacio")
+        ahora = _iso(_ahora())
+        self._conn.execute(
+            """INSERT INTO generations (generation_id, workspace_id, document_id, status, creado_en, actualizado_en)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (generation_id, workspace_id, document_id, JobStatus.COMPLETED.value, ahora, ahora),
+        )
+
     def actualizar_generacion(
         self, generation_id: str, status: JobStatus, error_code: str | None = None, error_message: str | None = None
     ) -> None:

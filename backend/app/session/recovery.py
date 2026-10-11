@@ -235,8 +235,8 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                     paquete.generation_id, workspace_id, paquete.documento_fuente.document_id, JobStatus.COMPLETED
                 )
             for paquete in generaciones_retiradas:
-                db.registrar_generacion(
-                    paquete.generation_id, workspace_id, paquete.documento_fuente.document_id, JobStatus.COMPLETED
+                db.registrar_generacion_retirada(
+                    paquete.generation_id, workspace_id, paquete.documento_fuente.document_id
                 )
             if progreso is not None:
                 # Preservar el agregado; #42 implementará su consumo por la UI.
