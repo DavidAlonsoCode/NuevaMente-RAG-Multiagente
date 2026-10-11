@@ -331,6 +331,15 @@ class _SesionRevision:
             ) != (self.estado.workspace_id, self.estado.document_id, self.estado.source_hash, chunk.chunk_id):
                 raise EstadoCriticError("NOT_FOUND", "Imagen no disponible para el documento y espacio autorizados.")
             imagen = ImagenOriginal.model_validate(imagen.model_dump(), strict=True)
+            if imagen.interpretacion_ambigua:
+                revisiones.append(
+                    VerificacionVisual(
+                        chunk_id=chunk.chunk_id,
+                        estado="insuficiente",
+                        descripcion="La interpretación original es ambigua y no acredita relaciones inciertas.",
+                    )
+                )
+                continue
             respuesta = self.llamar("visual", RevisionVisual, {"chunk_visual": chunk.chunk_id}, imagen)
             if respuesta.chunk_id != chunk.chunk_id:
                 raise EvaluadorInvalidoError("El juez visual respondió sobre otra imagen")

@@ -12,6 +12,7 @@ from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
 from app.api.deps import get_sesion_actual
+from app.core.rag.raster import RasterError
 from app.core.rag.vectorstore import IndiceInconsistenteError
 from app.documents.admission import AdmisionNoConfirmadaError
 from app.documents.query import ServicioConsultaDocumental
@@ -267,6 +268,35 @@ def fuente(
         pagina=chunk.pagina,
         seccion=chunk.seccion,
         seccion_id=chunk.seccion_id,
+        source_type=chunk.source_type,
+        interpretacion_modelo=chunk.source_type == "image_description",
+        imagen_url=f"/api/documents/{document_id}/sources/{chunk.chunk_id}/image"
+        if chunk.source_type == "image_description"
+        else None,
+    )
+
+
+@router.get("/{document_id}/sources/{chunk_id}/image", responses=ERRORES, summary="Ver la página original autorizada")
+def imagen_original(
+    document_id: str,
+    chunk_id: str,
+    consulta: ServicioConsultaDocumental = Depends(get_consulta),
+    sesion: dict = Depends(get_sesion_actual),
+) -> Response:
+    try:
+        imagen = consulta.imagen(sesion["token"], document_id, chunk_id)
+    except (RasterError, DeadlineExcedidoError):
+        raise ErrorAplicacion(
+            ErrorCode.STORAGE_UNAVAILABLE, "La página original no pudo rasterizarse dentro de los límites."
+        ) from None
+    except IndiceInconsistenteError:
+        raise ErrorAplicacion(
+            ErrorCode.INVALID_STATE, "El índice documental no es consistente con la fuente."
+        ) from None
+    return Response(
+        imagen.contenido,
+        media_type=imagen.mime_type,
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
 
 

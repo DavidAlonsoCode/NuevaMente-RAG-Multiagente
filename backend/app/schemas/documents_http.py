@@ -58,6 +58,9 @@ class FuenteDocumentoResponse(BaseModel):
     pagina: int | None
     seccion: str | None
     seccion_id: str | None
+    source_type: str | None = None
+    interpretacion_modelo: bool = False
+    imagen_url: str | None = None
 
 
 class UploadDocumentoResponse(BaseModel):
