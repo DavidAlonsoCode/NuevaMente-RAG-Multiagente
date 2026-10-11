@@ -88,7 +88,7 @@ class _AdaptadorPreguntaRespuesta:
         self.abstencion = False
         texto = self.proveedor.generar_sync(prompt, **kwargs)
         try:
-            chat = BorradorChat.model_validate(parsear_json_estricto(texto))
+            chat = BorradorChat.model_validate_json(json.dumps(parsear_json_estricto(texto)), strict=True)
         except (ValueError, TypeError):
             return "{}"  # Writer consume una redacción y solicita corregir la estructura.
         if chat.fuera_de_alcance:
@@ -135,12 +135,14 @@ class ServicioChat:
         self.generador, self.verificador = generador, verificador
         self.retriever = RetrieverMMR(consulta.indice, configuracion=cfg)
 
-    def autorizar_resultado(self, workspace_id, resultado):
+    def autorizar_resultado(self, workspace_id, resultado, token=None):
         respuesta = ChatAnswer.model_validate(resultado)
         ctx = ContextoEjecucion("consulta_chat", workspace_id, "consulta", time.monotonic() + 30)
         doc = self.consulta.documento_grafo(ctx, respuesta.document_id)
         if doc is None or doc.fuente.hash != respuesta.document_hash:
             raise ErrorAplicacion(ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible.")
+        if token is not None:
+            self.consulta._listo(token, respuesta.document_id)
         return respuesta
 
     def encolar(self, token, solicitud):

@@ -66,7 +66,7 @@ def _respuesta(trabajo: dict) -> TrabajoComunResponse:
     )
 
 
-def _autorizar_chat(request, trabajo):
+def _autorizar_chat(request, trabajo, token=None):
     if (
         trabajo["tipo"] == "chat"
         and trabajo.get("document_id")
@@ -77,7 +77,7 @@ def _autorizar_chat(request, trabajo):
         if servicio is None:
             raise ErrorAplicacion(ErrorCode.PROVIDER_UNAVAILABLE, "El tutor no está disponible.")
         try:
-            servicio.autorizar_resultado(trabajo["workspace_id"], json.loads(trabajo["resultado"]))
+            servicio.autorizar_resultado(trabajo["workspace_id"], json.loads(trabajo["resultado"]), token)
         except (TrabajoCanceladoError, DeadlineExcedidoError):
             raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.") from None
     return trabajo
@@ -90,7 +90,9 @@ def consultar(
     sesion: dict = Depends(get_sesion_actual),
     gestor: GestorTrabajos = Depends(get_gestor),
 ) -> TrabajoComunResponse:
-    return _respuesta(_autorizar_chat(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"])))
+    return _respuesta(
+        _autorizar_chat(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]), sesion["token"])
+    )
 
 
 @router.post("/{job_id}/cancel", response_model=TrabajoComunResponse, summary="Cancelar trabajo")
@@ -169,12 +171,12 @@ def eventos(
     gestor: GestorTrabajos = Depends(get_gestor),
     manager: SessionManager = Depends(get_session_manager),
 ) -> StreamingResponse:
-    _autorizar_chat(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]))
+    _autorizar_chat(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]), sesion["token"])
 
     def leer(gestor, manager, sesion, job_id, ultimo_id):
         trabajo, eventos = _leer_stream(gestor, manager, sesion, job_id, ultimo_id)
         if eventos or trabajo["status"] not in ACTIVOS:
-            _autorizar_chat(request, trabajo)
+            _autorizar_chat(request, trabajo, sesion["token"])
         return trabajo, eventos
 
     return StreamingResponse(

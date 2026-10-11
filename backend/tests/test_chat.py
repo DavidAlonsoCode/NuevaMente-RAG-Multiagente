@@ -3,10 +3,12 @@
 import json
 import threading
 import time
+from dataclasses import replace
 
 import pytest
 import test_api_generate as generation_cases
 from app.chat.service import acotar_historial
+from app.jobs.manager import CuotasModelo, CuotasProveedor
 from app.schemas.chat import BorradorChat, ChatRequest
 from doubles.gemini import DobleGemini
 from pydantic import ValidationError
@@ -213,3 +215,27 @@ def test_borrado_invalida_respuesta_e_historial(entorno):
     assert res.status_code in {202, 204}
     assert e.cliente.get(recibo["status_url"], headers=e.headers).status_code == 404
     assert chat(e).status_code == 404
+
+
+def test_cuota_compartida_generacion_y_juez_no_abre_otro_presupuesto(entorno):
+    e = entorno
+    cfg = e.app.state.config
+    e.gestor.cuotas = CuotasProveedor(
+        {
+            cfg.gemini_embedding_model: CuotasModelo(1000, 10_000_000, 1000),
+            cfg.gemini_generation_model: CuotasModelo(1000, 10_000_000, 1),
+        }
+    )
+    assert cfg.gemini_generation_model == cfg.gemini_verification_model
+    recibo = chat(e).json()
+    fallo = esperar(e, recibo, "failed")
+    assert fallo["result"] is None and fallo["error"]["code"] == "RATE_LIMITED"
+    assert e.doble.llamadas_generacion + e.doble.llamadas_verificacion == 1
+
+
+def test_deadline_del_worker_y_fuente_conservada(entorno):
+    e = entorno
+    e.gestor.controles = replace(e.gestor.controles, deadline_ejecucion_segundos=0.001)
+    fallo = esperar(e, chat(e).json(), "failed")
+    assert fallo["error"]["code"] == "DEADLINE" and fallo["result"] is None
+    assert e.db.obtener_documento(e.doc)["estado"] == "ready"

@@ -499,6 +499,19 @@ Upload conserva document_id y agrega las URLs del trabajo de ingestión.
 | Método y ruta | Descripción |
 |---|---|
 | `POST /api/chat` | `{document_id, pregunta, perfil_destinatario, idioma_salida}` → 202 y URLs del trabajo; su result contiene respuesta revisada con citas o abstención explícita. |
+
+Precisión #37 (`contract-change`): el recibo es `TrabajoComunResponse`; consulta,
+SSE/reconexión y cancelación se realizan en `/api/jobs/{job_id}`. `result` es
+`ChatAnswer`: `document_id`, `document_hash`, `pregunta`, `perfil_destinatario`,
+`idioma_salida`, `estado`, `respuesta`, `referencias` y `evaluacion_calidad`.
+`estado=respondida` requiere revisión completa aprobada; `fuera_de_alcance` sólo
+entrega una abstención fija que pide precisar, con referencias vacías y evaluación
+nula. `rejected_quality` no entrega result. El historial usa únicamente turnos
+completed del mismo workspace/documento/hash, acotados por
+`CHAT_HISTORY_TURNS`/`CHAT_HISTORY_MAX_TOKENS`; no es evidencia ni se envía al Critic.
+El resultado usa SQLite común, sin crear artefactos/exportaciones en `outputs/`.
+Su fuente se revalida al entregar el resultado y su retirada purga el historial.
+Detalles de revisión y adaptador interno: [issue-37-document-chat.md](issue-37-document-chat.md).
 | `POST /api/glossaries` | `{document_id, perfil_destinatario, idioma_salida}` → 202 con glossary_id y URLs del trabajo, o 200 con resultado de caché verificado. |
 | `GET /api/glossaries/{id}` | Glosario generado con definiciones citadas. |
 

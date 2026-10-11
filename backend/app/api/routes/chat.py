@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.api.deps import get_sesion_actual
 from app.api.routes.generations import _operar
-from app.api.routes.jobs import _respuesta
+from app.api.routes.jobs import _autorizar_chat, _respuesta
 from app.schemas.chat import ChatRequest
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.internal import TrabajoComunResponse
@@ -18,4 +18,6 @@ def conversar(solicitud: ChatRequest, request: Request, sesion=Depends(get_sesio
     if servicio is None:
         raise ErrorAplicacion(ErrorCode.PROVIDER_UNAVAILABLE, "El tutor requiere proveedores y cuotas explícitos.")
     job = _operar(servicio.encolar, sesion["token"], solicitud)
-    return _respuesta(servicio.gestor.estado(job))
+    trabajo = _autorizar_chat(request, servicio.gestor.estado(job), sesion["token"])
+    servicio.consulta._sesion(sesion["token"])
+    return _respuesta(trabajo)
