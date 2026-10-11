@@ -6,6 +6,8 @@ import json
 
 from app.core.agents.critic_contracts import VerificadorSync
 from app.core.agents.draft_validation import parsear_json_estricto
+from app.core.rag.chunker import trocear
+from app.core.rag.parser import PaginaTexto, ResultadoParseo
 from app.core.rag.raster import VERSION_RASTER, rasterizar_pagina
 from app.core.rag.tokenizer import TokenizadorBPE
 from app.jobs.manager import ContextoEjecucion
@@ -107,26 +109,33 @@ def chunks_visuales(manifest, *, indice_inicial: int) -> list[Chunk]:
             texto = "Interpretación ambigua; no acredita relaciones inciertas.\n" + texto
         if interpretacion.limitaciones:
             texto += "\nLimitaciones: " + "; ".join(interpretacion.limitaciones)
-        identidad = hashlib.sha256(
-            f"visual:{manifest.hash_sha256}:{interpretacion.pagina}:{interpretacion.version_prompt}".encode()
-        ).hexdigest()
-        resultado.append(
-            Chunk(
-                chunk_id=f"ch_visual_{identidad[:32]}",
-                document_id=manifest.document_id,
-                workspace_id=manifest.workspace_id,
-                document_hash=manifest.hash_sha256,
-                source_name=manifest.source_name,
-                source_type="image_description",
-                es_diagrama=True,
-                pagina=interpretacion.pagina,
-                seccion=f"Interpretación visual: página {interpretacion.pagina}",
-                seccion_id=f"pagina:{interpretacion.pagina}",
-                indice=indice_inicial + len(resultado),
-                texto=texto,
-                cantidad_tokens=tokenizador.contar(texto),
-                language=manifest.language,
-                tokenizer=tokenizador.identidad,
-            )
+        derivado = ResultadoParseo(
+            extension="pdf",
+            titulo_etiqueta=manifest.source_name,
+            hash_sha256=manifest.hash_sha256,
+            paginas=[PaginaTexto(interpretacion.pagina, texto)],
         )
+        for pieza in trocear(
+            derivado,
+            workspace_id=manifest.workspace_id,
+            document_id=manifest.document_id,
+            source_name=manifest.source_name,
+            language=manifest.language,
+            config=manifest.chunker,
+            tokenizador=tokenizador,
+            huella_config_parser=f"visual:{interpretacion.version_prompt}:{interpretacion.version_raster}",
+        ):
+            resultado.append(
+                pieza.como_chunk_interno().model_copy(
+                    update={
+                        "chunk_id": "ch_visual_" + pieza.chunk_id.removeprefix("chk_"),
+                        "source_type": "image_description",
+                        "es_diagrama": True,
+                        "seccion": f"Interpretación visual: página {interpretacion.pagina}",
+                        "indice": indice_inicial + len(resultado),
+                        # Los offsets de la interpretación no son offsets del PDF.
+                        "start_index": None,
+                    }
+                )
+            )
     return resultado
