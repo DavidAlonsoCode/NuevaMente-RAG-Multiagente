@@ -63,9 +63,9 @@ graph TD
 - Propagar el contexto a cada consulta de Issue 18. Si se usa Gemini para formular consultas, sus solicitudes también pasan por `ctx.llamar` y cuentan en el presupuesto de generación; la formulación determinista no consume llamadas.
 
 **Criterios de aceptación**:
-- [ ] Para el doc VCN con alcance completo, el estado lista evidencia de todas las secciones principales (cobertura reportada).
-- [ ] Alcance de una sección específica recupera solo evidencia de esa sección.
-- [ ] Presupuesto excedido → diagnóstico claro en el estado (secciones sin caber), no recorte invisible.
+- [x] Para el doc VCN con alcance completo, el estado lista evidencia de todas las secciones principales (cobertura reportada).
+- [x] Alcance de una sección específica recupera solo evidencia de esa sección.
+- [x] Presupuesto excedido → diagnóstico claro en el estado (secciones sin caber), no recorte invisible.
 
 **Verificación**: `pytest backend/tests/test_researcher.py` con doble de retrieval.
 
@@ -93,7 +93,7 @@ graph TD
 - [ ] Doble que falla como juez → trabajo `failed` con causa técnica, sin score.
 - [ ] Quiz: distractores comprobados por separado (una sola respuesta defendible; explicación refuta errores).
 
-**Verificación**: `pytest backend/tests/test_critic.py` con dobles que cubren las tres bandas de score + fallo de juez.
+**Verificación**: `pytest backend/tests/test_critic.py` con dobles: tres bandas, falsedad con score alto, evaluación incompleta, rúbrica, quiz, imagen original, cancelación/deadline y cuota/presupuesto por retry. Contrato interno y límites de integración: `docs/contratos-api.md`, sección «Critic (Issue 28)». No acredita Gemini/OCI reales; las aristas y el loader documental se conectan en issues 29/30.
 
 ---
 

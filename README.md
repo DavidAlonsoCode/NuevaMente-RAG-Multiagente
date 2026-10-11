@@ -139,7 +139,7 @@ Las reglas detalladas están en [decisiones §19](decisiones_proyecto.md#19-meca
 ## ☁️ Integración OCI Object Storage Always Free
 
 - **Bucket**: `nuevamente-contenidos-educativos`.
-- **Proveedor Real Previsto**: SDK `oci` para Python con `oci.object_storage.ObjectStorageClient` (issue #14). La fábrica actual rechaza el modo real hasta implementar ese proveedor; no simula una conexión exitosa.
+- **Proveedor Real Implementado**: `OCIObjectStorageProvider` con `oci==2.187.2`, condiciones ETag, paginación y hasta tres intentos por operación, sin retries adicionales del SDK. Valida home region y bucket privado preexistente; verifica bytes guardados y contabiliza solicitudes/capacidad en un ledger persistente. Configuración y prueba manual: [guía OCI](docs/oci-storage.md). Las pruebas automatizadas simulan HTTP/SDK; la evidencia de una cuenta real requiere ejecutar esa prueba manual.
 - **Control de Costos**: Utilizar exclusivamente recursos Always Free y verificar la asignación efectiva de la cuenta, región y consumo compartido antes de desplegar. No se garantiza costo cero automáticamente por elegir OCI; se aplican los presupuestos y controles definidos en [decisiones §8.4](decisiones_proyecto.md#84-gobernanza-de-costo-cero).
 - **Mock Explícito**: `MOCK_OCI=1`, únicamente en desarrollo, pruebas o CI, selecciona `LocalMockStorageProvider` en `.data/oci_mock_storage/` (bajo `DATA_DIR` si se configura). No se activa por falta de credenciales ni ante fallos del servicio real.
 - **Producción Estricta**: `APP_ENV=production` exige mocks desactivados y configuración real completa. La falta de configuración o proveedor produce un error de arranque accionable. Los errores de OCI se informan y nunca se convierten en éxitos locales.
@@ -179,7 +179,7 @@ Inspirado en la interfaz de Linear (`awesome-design-md`):
 
 ## ⚙️ Estructura del Repositorio y Ejecución
 
-Monorepo con dos servicios esqueleto (sección 15 de `decisiones_proyecto.md`): `backend/` (FastAPI, paquete `app`) y `frontend/` (Streamlit). Flujo Git: `main` protegida (solo PRs) ← `develop` (integración) ← `feature/<nombre>`.
+Monorepo con dos servicios (sección 15 de `decisiones_proyecto.md`): `backend/` (FastAPI, paquete `app`) y `frontend/` (Streamlit). Flujo Git: `main` protegida (solo PRs) ← `develop` (integración) ← `feature/<nombre>`.
 
 ```bash
 # 1. Clonar y crear entorno virtual (Python 3.11)
@@ -205,11 +205,14 @@ ruff check .
 ruff format --check .
 pytest
 
-# 6. Compose preliminar (esqueleto; endurecimiento con el issue #26)
-docker compose build
+# 6. Compose: arrancar API/UI con el .env configurado
+docker compose up --build --detach --wait --wait-timeout 120
 ```
 
 ---
+
+Para el arranque Docker sin credenciales, usá `.env.docker.example`; pasos,
+persistencia y verificación ARM64 en [docs/docker.md](docs/docker.md).
 
 ## Segmentación de documentos (issue #12)
 

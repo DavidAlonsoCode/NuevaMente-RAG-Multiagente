@@ -1,4 +1,8 @@
 import streamlit as st
+from api_client import APIError
+from components.errors import mostrar_error_ui
+from components.session import limpiar_sesion_local
+from components.sidebar import render_sidebar
 from components.upload import (
     inicializar_estado_documentos,
     render_documentos_demo,
@@ -6,56 +10,92 @@ from components.upload import (
     render_pegar_texto,
     render_subida_archivo,
 )
-from i18n import CATALOGOS, IDIOMA_POR_DEFECTO, t
+from i18n import t
 
 
-def render():
-    # Inicializar el idioma y estado de documentos
-    if "idioma_ui" not in st.session_state:
-        st.session_state.idioma_ui = IDIOMA_POR_DEFECTO
-
+def render(api_client, idioma_actual: str):
     inicializar_estado_documentos()
-    idioma_actual = st.session_state.idioma_ui
 
-    # --- SIDEBAR (Barra lateral) ---
-    with st.sidebar:
-        st.title(t("comun.app_nombre", idioma_actual))
+    # Renderizar panel lateral con controles
+    render_sidebar(api_client, idioma_actual)
+    if aviso := st.session_state.pop("aviso_sesion", None):
+        st.success(t(aviso, idioma_actual))
 
-        # Selector de idioma de UI
-        nuevo_idioma = st.selectbox(
-            t("sidebar.idioma_ui", idioma_actual),
-            options=CATALOGOS.keys(),
-            index=list(CATALOGOS.keys()).index(idioma_actual),
-            format_func=lambda x: t(f"idioma.{x}", idioma_actual),
+    # --- Banner del código de recuperación
+    _render_banner_recuperacion(idioma_actual)
+    if st.session_state.get("mostrando_recuperacion"):
+        _render_pantalla_recuperacion(api_client, idioma_actual)
+    else:
+        _render_pantalla_onboarding(idioma_actual)
+
+
+def _render_banner_recuperacion(idioma_actual: str):
+    """Muestra el aviso amarillo del código de recuperación (solo emisión única)."""
+    if not st.session_state.recovery_code or st.session_state.mostrando_recuperacion:
+        return
+
+    st.warning(
+        f"⚠️ **{t('onboarding.codigo_titulo', idioma_actual)}**: {t('onboarding.codigo_advertencia', idioma_actual)}"
+    )
+    st.caption(t("onboarding.codigo_descripcion", idioma_actual))
+
+    col_code, col_btn = st.columns([3, 1])
+    with col_code:
+        st.code(st.session_state.recovery_code)
+    with col_btn:
+        st.download_button(
+            label=t("onboarding.descargar_nota", idioma_actual),
+            data=(
+                f"{t('onboarding.codigo_titulo', idioma_actual)}:\n"
+                f"{st.session_state.recovery_code}\n"
+                f"Workspace ID: {st.session_state.workspace_id}"
+            ),
+            file_name="nuevamente_codigo_recuperacion.txt",
+            mime="text/plain",
         )
-
-        if nuevo_idioma != idioma_actual:
-            st.session_state.idioma_ui = nuevo_idioma
+        if st.button(t("onboarding.codigo_guardado", idioma_actual)):
+            st.session_state.recovery_code = None
             st.rerun()
 
-        st.divider()
 
-        # Resumen del documento activo en sidebar
-        st.markdown(f"### {t('sidebar.documento', idioma_actual)}")
-        doc_activo_id = st.session_state.get("documento_activo_id")
-        docs = st.session_state.get("documentos", [])
-        doc_activo = next((d for d in docs if d["id"] == doc_activo_id), None)
+def _render_pantalla_recuperacion(api_client, idioma_actual: str):
+    """Renderiza el formulario para ingresar el código de recuperación."""
+    if st.session_state.error_sesion_invalida:
+        st.warning(f"⚠️ {t('errors.SESSION_INVALID', idioma_actual)}")
 
-        if doc_activo:
-            st.success(f"📄 **{doc_activo['titulo']}**")
-            st.caption(
-                f"Formato: `{doc_activo['tipo']}` · Cobertura: {doc_activo.get('cobertura_porcentaje', 100)}% ({doc_activo.get('paginas_procesadas', 1)} pág.) · {t(doc_activo.get('origen_almacenamiento', 'almacenamiento.local_dev'), idioma_actual)}"
-            )
-        else:
-            st.info("Sin documento seleccionado.")
+    st.subheader(t("onboarding.recuperar_titulo", idioma_actual))
+    st.caption(t("onboarding.recuperar_ayuda", idioma_actual))
 
-        st.divider()
+    with st.form("form_recuperacion", clear_on_submit=True):
+        codigo_input = st.text_input(
+            label=t("onboarding.recuperar_titulo", idioma_actual),
+            placeholder="xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx",
+            type="password",
+        )
+        btn_submit = st.form_submit_button(t("onboarding.recuperar_boton", idioma_actual))
 
-        # Historial en expander
-        with st.expander(t("nav.historial", idioma_actual)):
-            st.write(t("historial.vacio", idioma_actual))
+        if btn_submit:
+            try:
+                res = api_client.recover_session(codigo_input.strip())
+                limpiar_sesion_local()
+                st.session_state.session_token = res["token"]
+                st.session_state.workspace_id = res["workspace_id"]
+                st.session_state.recovery_code = None
+                st.session_state.mostrando_recuperacion = False
+                st.session_state.error_sesion_invalida = False
+                st.session_state.aviso_sesion = "onboarding.recuperado"
+                st.rerun()
+            except APIError as e:
+                mostrar_error_ui(e, idioma_actual)
 
-    # --- ÁREA PRINCIPAL ---
+    if st.button(t("comun.atras", idioma_actual)):
+        st.session_state.mostrando_recuperacion = False
+        st.session_state.error_sesion_invalida = False
+        st.rerun()
+
+
+def _render_pantalla_onboarding(idioma_actual: str):
+    """Renderiza las 4 acciones principales de la pantalla de bienvenida y el flujo de documentos."""
     st.header(t("onboarding.bienvenida_titulo", idioma_actual))
     st.markdown(
         f"<p style='color: #9aa0a6; font-size: 16px; margin-top: -10px;'>"
@@ -63,42 +103,38 @@ def render():
         unsafe_allow_html=True,
     )
 
-    # Tabs accesibles para las 4 vías de entrada (§6.3, §6.4)
-    tab_subir, tab_pegar, tab_demo, tab_recuperar = st.tabs(
-        [
-            f"📄 {t('upload.titulo', idioma_actual)}",
-            f"✍️ {t('upload.enviar_texto', idioma_actual)}",
-            f"🚀 {t('onboarding.demo', idioma_actual)}",
-            f"🔑 {t('onboarding.recuperar_titulo', idioma_actual)}",
-        ]
-    )
+    if "vista_onboarding" not in st.session_state:
+        st.session_state.vista_onboarding = "upload"
 
-    with tab_subir:
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        if st.button(t("upload.titulo", idioma_actual), use_container_width=True):
+            st.session_state.vista_onboarding = "upload"
+            st.rerun()
+    with col2:
+        if st.button(t("upload.enviar_texto", idioma_actual), use_container_width=True):
+            st.session_state.vista_onboarding = "texto"
+            st.rerun()
+    with col3:
+        if st.button(t("onboarding.demo", idioma_actual), use_container_width=True):
+            st.session_state.vista_onboarding = "demo"
+            st.rerun()
+    with col4:
+        if st.button(t("onboarding.recuperar_titulo", idioma_actual), use_container_width=True):
+            st.session_state.mostrando_recuperacion = True
+            st.rerun()
+
+    st.divider()
+
+    # Renderizar el panel según la opción seleccionada
+    vista = st.session_state.get("vista_onboarding", "upload")
+    if vista == "upload":
         render_subida_archivo(idioma_actual)
-
-    with tab_pegar:
+    elif vista == "texto":
         render_pegar_texto(idioma_actual)
-
-    with tab_demo:
+    elif vista == "demo":
         render_documentos_demo(idioma_actual)
-
-    with tab_recuperar:
-        st.markdown(f"#### {t('onboarding.recuperar_titulo', idioma_actual)}")
-        st.caption(t("onboarding.recuperar_ayuda", idioma_actual))
-        codigo_input = st.text_input(
-            "Código de recuperación",
-            placeholder="Ej: a1b2-c3d4-e5f6-7890",
-            key="input_codigo_recuperar",
-        )
-        if st.button(
-            t("onboarding.recuperar_boton", idioma_actual),
-            key="btn_recuperar_codigo",
-            type="primary",
-        ):
-            if codigo_input and len(codigo_input.strip()) >= 8:
-                st.success("✅ Espacio sincronizado exitosamente con tu código.")
-            else:
-                st.warning("Ingresa un código válido de al menos 8 caracteres.")
 
     st.divider()
 

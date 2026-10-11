@@ -71,6 +71,7 @@ from typing import Any, Callable
 from app.jobs.store import RegistroOperativo
 from app.schemas.enums import JobStatus
 from app.schemas.internal import PresupuestoLlamadas
+from app.storage.provider import StorageUnavailable
 
 _GESTORES_ACTIVOS: dict[str, object] = {}
 _GUARDIA_GESTORES = threading.Lock()
@@ -261,7 +262,7 @@ class ContextoEjecucion:
         """Helper para usar entre pasos: levanta la excepción que corresponde."""
         if self.cancelado() or not self.espacio_vigente():
             raise TrabajoCanceladoError()
-        if time.monotonic() > self.deadline:
+        if time.monotonic() >= self.deadline:
             raise DeadlineExcedidoError()
 
     def llamar(
@@ -307,8 +308,15 @@ class ContextoEjecucion:
                 pausa = max(
                     self.base_backoff_segundos * 2**intento * random.uniform(0.75, 1.25), error.retry_after or 0
                 )
-                self._evento_cancelacion.wait(min(pausa, max(0, self.deadline - time.monotonic())))
+                fin_espera = min(self.deadline, time.monotonic() + pausa)
+                while (restante := fin_espera - time.monotonic()) > 0:
+                    self._evento_cancelacion.wait(restante)
+                    self.chequear()
                 self.chequear()
+                # Una espera puede despertar antes (reloj/resolución del SO).
+                # Nunca reenviar antes de Retry-After ni al alcanzar el deadline.
+                if fin_espera >= self.deadline:
+                    raise DeadlineExcedidoError()
                 self.registrar_reintento()
 
 
@@ -585,6 +593,14 @@ class GestorTrabajos:
                 JobStatus.FAILED,
                 "Falló una operación transitoria; no se repite el trabajo completo.",
                 error_code="REINTENTOS_AGOTADOS",
+            )
+            return
+        except StorageUnavailable:
+            self._finalizar(
+                job_id,
+                JobStatus.FAILED,
+                "No se pudo confirmar la persistencia del trabajo; revisar OCI y su presupuesto.",
+                error_code="STORAGE_UNAVAILABLE",
             )
             return
         except Exception:  # noqa: BLE001 - el worker nunca debe morir

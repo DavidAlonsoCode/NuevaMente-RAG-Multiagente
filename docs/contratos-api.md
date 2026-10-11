@@ -70,6 +70,26 @@ Los `code` son estables y no se traducen; los `message` se localizan según idio
 | `POST /api/workspaces/current/recovery-code` | Rota el código (revoca sesiones previas) y devuelve el código nuevo una sola vez, junto con un token nuevo. |
 | `DELETE /api/workspaces/current` | Bloquea el acceso y agenda el borrado físico de recursos. |
 
+#### Precisiones de acceso, actividad y reconstrucción
+
+- La recuperación reserva como máximo cinco plazas por origen, contando fallos del último minuto e intentos en vuelo. Un código válido no borra los fallos previos del minuto. Los fallos técnicos liberan su plaza; un conflicto de versión devuelve `409 INVALID_STATE`. Un bloqueo devuelve `429 RECOVERY_LOCKED` con `Retry-After`.
+- La actividad autenticada renueva la retención del espacio con escrituras agrupadas cada cinco minutos. No prolonga el token. Los manifiestos pendientes se sincronizan al arrancar y cada minuto; la confirmación de una versión vieja no borra una actividad posterior.
+- El manifiesto privado conserva hash, versión, expiración, última actividad y lápidas. Las escrituras usan creación exclusiva o `if_match`; un manifiesto retirado no se reactiva. Si OCI falla al borrar, el acceso local queda bloqueado y la confirmación durable permanece pendiente, con diagnóstico y reintento. Se debe preservar SQLite hasta confirmar esa lápida: un borrado que nunca llegó a storage no puede reconstruirse después de perder también el volumen local.
+- `session/recovery.py` reconstruye el índice hash→espacio al arrancar un registro nuevo y retoma reconstrucciones interrumpidas. Pagina manifiestos, verifica identidad/ETag/hash y restaura documentos, registros de paquetes canónicos aprobados y el agregado privado de progreso; omite recursos retirados. No restaura tokens, colas, borradores ni invoca Gemini. Los documentos quedan `processing` hasta reconstruir índices (#17) y, cuando corresponda, visión (#30). Los endpoints y presentación de progreso siguen a cargo de #41/#42.
+- `Accept-Language` selecciona mensajes ES/EN/PT; los códigos, detalles e idioma del contenido conservan su contrato. El cliente Streamlit envía el idioma de interfaz vigente.
+
+**Origen detrás de Streamlit/Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. Streamlit transmite ambas cabeceras al backend desde su contexto del servidor. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
+
+En cada `reverse_proxy` de UI y API del despliegue #49, incorporar:
+
+```caddyfile
+header_up X-NuevaMente-Client-IP {remote_host}
+header_up X-NuevaMente-Origin-Key {env.TRUSTED_ORIGIN_SECRET}
+header_down -X-NuevaMente-Origin-Key
+```
+
+Esto supone Caddy como entrada pública directa, según la arquitectura vigente. Si se incorpora otro proxy anterior, su cadena de confianza debe definirse explícitamente. La clave nunca se envía al navegador ni se registra. Referencias: [cabeceras de Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers) y [placeholders](https://caddyserver.com/docs/caddyfile/concepts#placeholders). La configuración documentada debe verificarse en el despliegue real; las pruebas locales no acreditan OCI/Caddy públicos.
+
 ### Documentos (issues `Issue 19`, `Issue 11`)
 
 | Método y ruta | Descripción |
@@ -156,6 +176,80 @@ Listado paginado con filtros: `documento`, `perfil`, `formato`, `idioma`, `desde
 - `DobleGemini` conserva `embed`, `generar` y `verificar_afirmacion` asíncronos. Agregar `embed_sync` en Issue 13 y las entradas síncronas de generación/verificación al implementar sus consumidores; reutilizar la misma lógica, respuestas y contadores. Los dobles se habilitan explícitamente solo en desarrollo/CI.
 - OCI mantiene la política propia de Issue 14: escrituras idempotentes, hasta tres intentos totales y contabilización de solicitudes de storage. No usa cuotas Gemini ni añade otro bucle a `ctx.llamar`.
 - Los endpoints comunes `GET /api/jobs/{id}`, `GET /api/jobs/{id}/events` y `POST /api/jobs/{id}/cancel` pertenecen a **Issue 20**. Issue 19 los consume, sin volver a implementarlos. El gestor se inicia y detiene en el lifespan de la API; al detenerse se espera su worker antes de cerrar SQLite.
+
+### Almacenamiento real (Issue 14)
+
+- `OCIObjectStorageProvider` implementa el mismo `StorageProvider` que el mock:
+  upload/get/get_as_text/list/delete, condiciones ETag y cursor exclusivo del último
+  objeto. Los constructores de claves canónicas viven en `storage/object_keys.py`;
+  el nombre original se conserva en el manifiesto, no en la clave de almacenamiento.
+- La fábrica usa OCI solo con `MOCK_OCI=0`, sin fallback. Credenciales por archivo
+  (`OCI_CONFIG_PROFILE`) o identidad de instancia (`OCI_AUTH_TYPE`); consulta la home
+  region y namespace y verifica compartimento, bucket privado Standard, cifrado Oracle,
+  sin versionado, replicación ni auto-tiering. La API no crea buckets.
+- El SDK lleva `NoneRetryStrategy`. Hasta tres intentos por operación; PUT conserva
+  objeto/bytes/nonce/condiciones y reconcilia respuestas perdidas contra sus bytes y nonce.
+  Verificaciones GET son solicitudes independientes, contabilizadas, sin repetir PUT
+  por un fallo posterior de confirmación. OCI no utiliza cuotas Gemini ni `ctx.llamar`.
+- `OCI_ALWAYS_FREE_CONFIRMED=1` declara que el operador verificó asignación/consumo
+  agregado de la tenancy. No verifica facturación automáticamente. Un ledger SQLite
+  en DATA_DIR reserva antes de cada intento, incluidos fallidos, con máximos iniciales
+  de 5.000 solicitudes/mes y 1 GB; conserva reservas de escrituras inciertas. Issue 50
+  completa auditoría agregada/conciliación/retención. `StorageBudgetExceeded` es un
+  `StorageUnavailable`: no admite enviar otra solicitud por encima del presupuesto.
+  En HTTP responde `503 / STORAGE_UNAVAILABLE`; en el worker termina `failed` con
+  ese código y sin resultado, sin repetir el pipeline ni exponer mensajes del SDK.
+- Guía, IAM mínimo, configuración Windows/Docker y smoke manual:
+  `docs/oci-storage.md`. `app.tools.verify_oci` prueba originales/JSON técnicos y los
+  limpia; `--create-bucket` permite provisionamiento manual explícito, con permisos
+  separados. Tests SDK/HTTP simulados no acreditan una tenancy real ni Gemini.
+
+### Índice vectorial local (Issue 17)
+
+- `core/rag/vectorstore.py`: `VectorStoreChroma(Path(config.data_dir) / "chroma", embeddings)`
+  usa Chroma embebido persistente, sin servidor externo ni modelo descargado. `embeddings`
+  es el `GeminiEmbeddings` de Issue 13. El backend monta `DATA_DIR=/app/.data` en
+  `backend_data`; el índice y su catálogo SQLite WAL son datos derivados.
+- `indexar`, `buscar`, `contar` y `borrar` reciben `workspace_id`, `document_id` y
+  `contexto=ctx`. El espacio sale de la sesión y debe coincidir con el contexto;
+  el consumidor valida ownership/estado del documento en el registro operativo.
+  Todas las lecturas, búsquedas y eliminaciones de chunks filtran **ambos IDs**;
+  no existe una consulta global ni filtros libres. `buscar` devuelve chunk completo,
+  distancia coseno y vector para el MMR de Issue 18. Su similitud no es un score de fidelidad.
+- Colecciones `embeddings-{modelo}-{dimensiones}` y
+  `demo-embeddings-{modelo}-{dimensiones}` con preparación y schema verificados.
+  `buscar_demo` resuelve el espacio lógico público `biblioteca-demo` y filtra además
+  el documento; el contexto del usuario sigue vigente y consume sus cuotas compartidas.
+  Solo `reconstruir_demo`, con contexto de mantenimiento de ese espacio reservado,
+  escribe la demo. No se expone una ruta pública de escritura.
+- Se generan embeddings síncronos por chunk a través de `ctx.llamar`. Chroma recibe
+  lotes de hasta 64 registros, acotados además por su límite nativo. Un intento tiene
+  un UUID; SQLite publica su versión solo después de confirmar todos sus chunks.
+  Fallos/cancelación no hacen visible un índice parcial. Reindexar el mismo contenido
+  reutiliza vectores únicamente dentro del mismo espacio/modelo/preparación; los nuevos
+  IDs y citas se conservan. Borrar confirma primero una lápida local y elimina chunks
+  de todas las colecciones privadas de modelos/dimensiones de ese espacio/documento.
+- `core/rag/rebuild.py` reconstruye desde `StorageProvider`, sin crear SDKs ni añadir
+  retries: `reconstruir_workspace` pagina los documentos; `reconstruir_indice` recorre
+  contextos autorizados en serie y opcionalmente la demo. Los contextos comparten cuotas
+  y deadline del worker. Se verifica vigencia del workspace, SHA-256 del original y ETag
+  del manifiesto antes de publicar. Las fallas OCI/Gemini se propagan como fallas técnicas.
+- **Contrato interno para la ingesta Issue 19:** guardar primero el original en
+  `source_documents/{workspace_id}/{document_id}/original` y su `ManifiestoDocumento`
+  v1 en `.../manifest.json`: `workspace_id`, `document_id`, `source_name`, `hash_sha256`,
+  `language`, `estado`, `borrado`, `parser` y `chunker`. Los valores por defecto de
+  idioma/configuración están en el modelo y deben serializarse mediante `model_dump_json()`.
+  Demo usa `demo/{document_id}/original` y `demo/{document_id}/manifest.json` con espacio
+  lógico `biblioteca-demo`. El nombre es una etiqueta, nunca una ruta local.
+- Antes de limpiar físicamente una fuente, Issue 19 debe confirmar `borrado=true` en
+  su manifiesto OCI y la lápida operativa. Un original remanente no autoriza recuperarlo.
+  La reconstrucción omite lápidas locales/manifiestos borrados y retira índices de
+  documentos sin manifiesto. No restaura sesiones ni garantiza continuidad del SQLite
+  operativo tras perder la VM. PDFs con visión necesaria permanecen `processing`, incluso
+  si el manifiesto anterior decía `ready`; Issue 30 reconstruye sus interpretaciones.
+- Verificación local: `pytest backend/tests/test_vectorstore.py` usa Chroma nativo
+  persistente y dobles explícitos de OCI/Gemini. No acredita servicios reales ni una
+  ingesta HTTP completa, que corresponde a Issue 19.
 
 ### Trabajos comunes (Issue 20)
 
@@ -405,7 +499,7 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
 - `core/agents/prompts.py` compone Writer/Critic para los cuatro perfiles, cinco
   formatos, cuatro nichos y tres idiomas desde matrices comunes; el detalle es
   independiente del perfil. `cargar_plantilla(GenerateRequest)` entrega los dos
-  roles y `prompt_version=nm-prompts-1.0.0`, sin usar proveedores.
+  roles y `prompt_version=nm-prompts-1.1.0`, sin usar proveedores.
 - `preparar_prompts(..., workspace_id, source_hash, idioma_origen, evidencia)`
   separa `system_instruction` de `datos_json`. Documento, consultas, feedback y
   borrador nunca se interpolan en el sistema. Rechaza evidencia vacía, ajena,
@@ -422,9 +516,10 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
 - `PromptsGeneracion.registrar_trazabilidad(Trazabilidad)` devuelve una copia
   con la versión utilizada, que los consumidores conservan en el paquete
   canónico. No almacena prompts completos ni cambia el contrato HTTP v1.
-- Issues 23/28/29 conectarán estas plantillas con Writer/Critic y `ctx.llamar`;
-  el juez visual recibirá la imagen original. Las instrucciones reducen riesgo
-  de injection, pero no sustituyen autorización, validación ni evaluación.
+- Writer y Critic (issues 23/28) usan estas plantillas con `ctx.llamar`. Issue 29
+  conectará las aristas; Issue 30 suministrará imágenes originales al juez visual.
+  Las instrucciones reducen riesgo de injection, pero no sustituyen autorización,
+  validación ni evaluación.
   Evidencia automatizada: `backend/tests/test_prompts.py`; los ejemplos requieren
   revisión de pares al revisar el PR.
 
@@ -438,7 +533,7 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
   evidencia ajena/antigua, cambios de fuente, citas inventadas y ubicaciones falsas.
   Completa ubicaciones omitidas desde el chunk autorizado, sin agregar hechos nuevos.
   Metadatos deben coincidir con perfil, formato, nicho, detalle, idiomas y alcance;
-  no se puede inventar cobertura. Critic revisará su respaldo factual y pedagógico.
+  no se puede inventar cobertura. Critic revisa su respaldo factual y pedagógico.
 - Parseo JSON estricto, sin cercas Markdown, claves duplicadas ni valores no finitos.
   Una corrección de estructura/citas consume otra redacción del contador global, hasta
   tres contando las revisiones previas de Critic. Al agotarlas sin borrador válido:
@@ -460,6 +555,41 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
   del update. La integración de estados terminales con el registro, las aristas y los
   consumidores finales pertenece a Issue 29. Pruebas: `backend/tests/test_writer.py`,
   con doble y transporte HTTP simulado del SDK; no acreditan Gemini/OCI reales.
+
+### Critic (Issue 28)
+
+- `critic(EstadoGrafo, DependenciasCritic)` revisa el borrador tipado y sus metadatos;
+  reutiliza la validación de Writer para alcance y citas canónicas. Revalida ownership,
+  hash y disponibilidad documental antes/después de cada llamada y entre reintentos.
+  No modifica el contenido ni persiste ni marca `completed`.
+- Separa extracción de afirmaciones, juicios factuales y rúbrica pedagógica. La extracción
+  no recibe evidencia que pueda sesgarla a omitir errores. El backend asigna IDs y exige
+  ubicaciones reales, un juicio por afirmación y referencias autorizadas para cada juicio.
+  Calcula score/conteos con Faithfulness; el modelo no puede emitir score ni aprobación.
+- Aplica las tres bandas de §19.3 y todos los bloqueos de §16.4: una afirmación sin respaldo,
+  una contradicción, evaluación incompleta, cobertura parcial o visión insuficiente impiden
+  aprobar aunque el promedio sea alto. Una dimensión `baja` bloquea; `media` conserva la
+  semántica del contrato existente. Una extracción vacía es `no_evaluable`, con score nulo.
+- Entrega afirmaciones fallidas con texto, ubicación, motivo y referencias a Writer. Si falta
+  contexto, emite `solicitudes_evidencia` para Researcher. Los campos internos añadidos
+  `destino_revision` y `solicitudes_evidencia` tienen defaults y no cambian HTTP v1.
+  Una aprobación indica `finalizer`; Issue 29 conectará estos destinos con las aristas.
+  Tras la tercera redacción no aprobada: `rejected_quality`, sin borrador ni evaluaciones.
+- Quiz: excluye distractores del promedio factual y revisa todas las opciones en una solicitud
+  separada. Exige una única respuesta defendible en el contexto del enunciado y explicación
+  que refute las incorrectas; IDs ausentes/duplicados o citas inválidas son fallo técnico.
+- El loader visual recibe workspace/documento/hash/chunk y devuelve `ImagenOriginal` con
+  esos identificadores, bytes, MIME y reserva de tokens. Critic comprueba esa procedencia
+  y adjunta la imagen original al SDK. Sin original/loader o con revisión insuficiente no
+  aprueba; no reutiliza una aprobación visual anterior. La obtención/rasterización real
+  corresponde a Issue 30: aquí se implementan contrato, transporte y pruebas con doble.
+- Jueces textuales/visuales usan el modelo de verificación configurado y transporte síncrono
+  de `ClienteGeminiGeneracion`, siempre mediante `ctx.llamar`. Cada intento reserva TPM,
+  cuota y presupuesto; el SDK mantiene un intento, sin otros bucles. Cancelación, deadline,
+  cuota, respuesta inválida o indisponibilidad eliminan borrador y score del update terminal.
+  El doble conserva entradas async y comparte lógica/contadores con las nuevas sync.
+- Evidencia: `backend/tests/test_critic.py`, junto con Writer, Supervisor, prompts y Faithfulness.
+  Son pruebas con dobles/SDK simulado; no acreditan ejecuciones Gemini/OCI reales.
 
 ### Integración interna del registro y el ejecutor
 
@@ -517,3 +647,66 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
   únicamente contenido aprobado. El contador serializado no aplica cuotas.
   `deadline` es monotónico del proceso; tras reinicio el trabajo se interrumpe.
 - Evidencia: `backend/tests/test_supervisor.py` y snapshot JSON versionado.
+
+
+### Recuperación MMR (Issue 18, contrato interno)
+
+- `RetrieverMMR.recuperar(workspace_id, document_id, consulta, contexto=...)`
+  delega en Chroma y en los embeddings síncronos de Issue 13. La consulta conserva
+  su idioma y usa la preparación asimétrica compatible con el índice; no traduce
+  mediante otra llamada generativa. `recuperar_demo` usa la colección de lectura aparte.
+- `RETRIEVAL_K=5`, `RETRIEVAL_FETCH_K=15`, `RETRIEVAL_LAMBDA_MULT=0.7` y
+  `RETRIEVAL_MAX_TOKENS=12000` son configurables. Se exige fetch_k >= k y un
+  presupuesto positivo que no supere el límite de 12.000 tokens por borrador.
+- MMR diversifica con los vectores de Chroma y devuelve `EvidenciaRecuperada`;
+  score representa relevancia coseno, nunca fidelidad. Se deduplican IDs y textos
+  equivalentes por espacios. Procedencia, hash y vectores inválidos son fallo técnico.
+- `ResultadoRecuperacion` informa evidencia, tokens reales de su JSON con metadatos,
+  chunks_omitidos y avisos. Un fragmento que no cabe se omite completo; no se recorta
+  texto conservando una cita que aparentaría corresponder a otro contenido.
+- El filtro opcional `seccion` se aplica antes de buscar candidatos, dentro del
+  workspace/documento/versión autorizados, también sobre índices existentes de #17.
+  `Chunk.seccion_id` distingue el ID del título visible. El chunker conserva
+  `seccion:N` (línea del encabezado original) en MD/TXT y `pagina:N` en PDF.
+  Una página es una ubicación, no un tema. Los encabezados repetidos tienen IDs
+  distintos. Un índice heredado de MD ambiguo exige reconstrucción para acotar
+  por sección; no se mezclan títulos iguales ni se adivinan sus límites.
+  La referencia conserva sus valores originales (página y sección), sin inventar títulos.
+- El llamador puede reducir presupuesto_tokens y exigir source_hash. El contexto
+  se revalida tras la consulta y durante selección; fallos/cuotas/cancelación se propagan.
+  Estas pruebas con Chroma nativo y embeddings simulados no acreditan Gemini real.
+
+
+### Researcher y cobertura (Issue 27, contrato interno)
+
+- `VectorStoreChroma.listar_chunks(..., contexto, source_hash)` devuelve el
+  inventario privado de la versión autorizada, sin consumir Gemini. Comprueba
+  hash, procedencia, lápidas, cancelación y cambios del índice durante la lectura.
+- `DependenciasResearcher` inyecta DependenciasGrafo, RetrieverMMR y la versión
+  del parser registrada por la ingestión. No se infiere esa versión desde el
+  código instalado ni se serializan clientes en EstadoGrafo.
+- `researcher` deriva el índice de secciones desde Chunk.seccion_id; exige que
+  el registro preparado por Supervisor enumere los mismos IDs. Encabezados
+  repetidos son secciones diferentes. `pagina:N` solo delimita ubicación de PDF,
+  sin afirmar que una página sea un tema. El lector documental de Issue 19 debe
+  usar estos mismos IDs al enumerar alcances.
+- Planifica búsquedas deterministas con el título como datos y el foco de
+  perfil/formato en el idioma de origen. La consulta registrada en cada evidencia
+  indica ese foco de uso. No interpreta instrucciones del documento ni llama
+  al LLM para redactar consultas. Las búsquedas conservan ContextoEjecucion.
+- Prioriza un fragmento por sección solicitada; luego completa con diversidad.
+  **Una sola unión deduplicada** comparte el máximo de 12.000 tokens por borrador,
+  contado sobre JSON real. Cada consulta recibe el presupuesto restante. No se
+  otorgan 12.000 tokens independientes a cada sección ni se confía en contadores
+  de tokens aportados por un proveedor de retrieval.
+- Una consulta sin cobertura puede ampliarse una vez. Las solicitudes de Critic
+  se atienden antes de extras opcionales, reutilizando evidencia vigente y los
+  contadores de redacciones/LLM; embeddings mantienen sus propias cuotas por modelo.
+- Cobertura insuficiente o presupuesto incompatible producen rejected_quality
+  con las secciones faltantes y la opción de acotar. Fallos de proveedor/cuota,
+  índice inconsistente, fuente modificada, deadline o cancelación son técnicos.
+  El update terminal elimina evidencia y borradores; nunca implica aprobación.
+- Publica secciones_cubiertas y trazabilidad para Writer sin completar el grafo
+  ni persistir. Issue 29 integrará el nodo y sus aristas terminales. Las pruebas
+  usan Chroma nativo y dobles explícitos; el caso PDF VCN simula metadata ready
+  solo para aislar el nodo y no acredita visión completada, OCI ni Gemini reales.
