@@ -10,6 +10,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from app.api.routes.documents import upload
 from app.api.security import _peticiones_globales, _peticiones_ip
 from app.config import Configuracion
 from app.core.rag.rebuild import ManifiestoDocumento
@@ -17,6 +18,7 @@ from app.jobs.manager import CuotasModelo, CuotasProveedor
 from app.jobs.store import RegistroOperativo
 from app.main import crear_app
 from app.schemas.enums import DocumentStatus
+from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.session.recovery import restaurar_registro
 from app.storage.object_keys import clave_documento
 from app.storage.provider import StorageUnavailable
@@ -26,6 +28,8 @@ from PIL import Image, ImageDraw
 from pydantic import ValidationError
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+from starlette import formparsers
+from starlette.requests import Request
 
 pytestmark = pytest.mark.integration_mock
 TEXTO = "# Redes\n\n" + "Una VCN conecta subredes privadas y conserva aislamiento y trazabilidad.\n" * 20
@@ -108,6 +112,68 @@ def error(respuesta, status, code):
     assert datos["error"]["code"] == code
     assert datos["request_id"] == respuesta.headers["X-Request-ID"]
     return datos["error"]
+
+
+def _archivos_multipart(monkeypatch):
+    archivos = []
+    crear = formparsers.SpooledTemporaryFile
+
+    def registrar(*args, **kwargs):
+        archivo = crear(*args, **kwargs)
+        archivos.append(archivo)
+        return archivo
+
+    monkeypatch.setattr(formparsers, "SpooledTemporaryFile", registrar)
+    return archivos
+
+
+@pytest.mark.parametrize("terminacion", ["cabecera_invalida", "sin_cierre", "parte_completa_sin_cierre"])
+def test_multipart_malformado_rechazado_y_temporales_cerrados(entorno, monkeypatch, terminacion):
+    archivos = _archivos_multipart(monkeypatch)
+    cuerpo = b'--revision\r\nContent-Disposition: form-data; name="file"; filename="redes.txt"\r\n\r\ncontenido'
+    if terminacion == "cabecera_invalida":
+        cuerpo += b"\r\n--revision\r\nCabecera invalida\r\n\r\nx\r\n--revision--\r\n"
+    elif terminacion == "parte_completa_sin_cierre":
+        cuerpo += b'\r\n--revision\r\nContent-Disposition: form-data; name="titulo"\r\n\r\ntitulo sin cierre'
+    respuesta = entorno.cliente.post(
+        UPLOAD,
+        headers={**entorno.headers, "Content-Type": "multipart/form-data; boundary=revision"},
+        content=cuerpo,
+    )
+    error(respuesta, 422, "VALIDATION_ERROR")
+    assert archivos and all(archivo.closed for archivo in archivos)
+    assert entorno.db._conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_upload_stream_oversize_cierra_temporal_abierto(entorno, monkeypatch):
+    archivos = _archivos_multipart(monkeypatch)
+    entorno.admision.limites = replace(entorno.admision.limites, max_bytes_pdf=100)
+    partes = iter(
+        [
+            b'--revision\r\nContent-Disposition: form-data; name="file"; filename="redes.txt"\r\n\r\nx',
+            b"x" * (100 + 64 * 1024 + 1),
+        ]
+    )
+
+    async def recibir():
+        return {"type": "http.request", "body": next(partes), "more_body": True}
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": UPLOAD,
+            "headers": [(b"content-type", b"multipart/form-data; boundary=revision")],
+            "app": entorno.app,
+        },
+        recibir,
+    )
+    with pytest.raises(ErrorAplicacion) as capturado:
+        await upload(request, sesion=entorno.db.obtener_sesion(entorno.ws["token"]), clave=None)
+    assert capturado.value.error.code == ErrorCode.DOCUMENT_TOO_LARGE
+    assert archivos and all(archivo.closed for archivo in archivos)
+    assert entorno.db._conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 0
 
 
 @pytest.mark.parametrize("formato", ["json", "md", "txt", "pdf"])

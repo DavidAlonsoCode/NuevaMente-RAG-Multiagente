@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from python_multipart.exceptions import FormParserError
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
@@ -33,6 +34,31 @@ from app.storage.provider import StorageUnavailable
 router = APIRouter(prefix="/api/documents", tags=["Documentos"])
 ERRORES = {codigo: {"model": ErrorResponse} for codigo in (400, 401, 404, 409, 413, 422, 429, 503)}
 MARGEN_TRANSPORTE = 64 * 1024
+
+
+class _MultipartDocumental(MultiPartParser):
+    """Exige el cierre del cuerpo y libera incluso partes no entregadas al form."""
+
+    _terminado = False
+
+    def on_end(self) -> None:
+        super().on_end()
+        self._terminado = True
+
+    async def parse(self):
+        try:
+            form = await super().parse()
+            # python-multipart.finalize() no valida el estado final. Una parte
+            # truncada puede conservar un tempfile fuera de FormData.items.
+            if not self._terminado:
+                raise MultiPartException("El cuerpo multipart no está completo.")
+            return form
+        except BaseException:
+            # Starlette conserva todos los temporales creados en esta lista,
+            # también los de partes que todavía no llegaron a on_part_end.
+            for archivo in self._files_to_close_on_error:
+                archivo.close()
+            raise
 
 
 def get_consulta(request: Request) -> ServicioConsultaDocumental:
@@ -163,14 +189,14 @@ async def upload(
     if tipo != "multipart/form-data":
         raise ErrorAplicacion(ErrorCode.INVALID_REQUEST, "Usar application/json o multipart/form-data.")
     try:
-        form = await MultiPartParser(
+        form = await _MultipartDocumental(
             request.headers,
             _stream_acotado(request, servicio.limites.max_bytes_pdf + MARGEN_TRANSPORTE),
             max_files=1,
             max_fields=1,
             max_part_size=1200,
         ).parse()
-    except MultiPartException:
+    except (MultiPartException, FormParserError):
         raise ErrorAplicacion(
             ErrorCode.VALIDATION_ERROR, "Multipart inválido: usar un file y titulo opcional."
         ) from None
