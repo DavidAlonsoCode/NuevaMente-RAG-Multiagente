@@ -30,6 +30,11 @@ revalida antes y después de publicar/leer, incluyendo lápidas remotas. Los obj
 conflictivos no se sobrescriben. Un reinicio marca trabajos interrumpidos; nunca
 declara `completed` por conservar un borrador o un aprobado local.
 
+`trazabilidad.parser_version` identifica la configuración/versión efectivamente
+registrada durante la ingesta como `config-sha256:<huella_config_parser>`. Esa
+huella incluye la versión y los límites del parser; no se infiere la versión
+desde el código instalado. Una ingesta sin esa identidad no habilita generación.
+
 Verificación automatizada: `backend/tests/test_api_generate.py`, con Chroma,
 StateGraph, worker y transporte HTTP reales y dobles explícitos de IA/OCI. La
 corrida manual VCN con Gemini y OCI reales sigue pendiente: no se acredita con CI

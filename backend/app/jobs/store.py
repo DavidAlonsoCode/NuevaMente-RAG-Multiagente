@@ -283,6 +283,10 @@ MIGRACIONES.append(
         9,
         """
         ALTER TABLE generations ADD COLUMN parametros_json TEXT;
+        DROP INDEX idx_jobs_generation;
+        CREATE INDEX idx_jobs_generation ON jobs(generation_id);
+        CREATE UNIQUE INDEX idx_jobs_generation_active ON jobs(generation_id)
+            WHERE generation_id IS NOT NULL AND status IN ('queued', 'running');
         CREATE TABLE approved_outputs (
             generation_id TEXT PRIMARY KEY REFERENCES generations(generation_id) ON DELETE CASCADE,
             paquete_json TEXT NOT NULL,
@@ -1445,7 +1449,7 @@ class RegistroOperativo:
     @_sincronizado
     def job_generacion(self, generation_id: str) -> dict | None:
         fila = self._conn.execute(
-            "SELECT * FROM jobs WHERE generation_id=? ORDER BY creado_en DESC, job_id DESC LIMIT 1", (generation_id,)
+            "SELECT * FROM jobs WHERE generation_id=? ORDER BY rowid DESC LIMIT 1", (generation_id,)
         ).fetchone()
         return dict(fila) if fila else None
 
@@ -1500,8 +1504,8 @@ class RegistroOperativo:
         if clave is not None:
             self._conn.execute(
                 """DELETE FROM idempotency_keys WHERE workspace_id=? AND operacion=? AND clave=? AND recurso_id=?
-                   AND NOT EXISTS (SELECT 1 FROM jobs WHERE generation_id=?)""",
-                (workspace_id, operacion, clave, generation_id, generation_id),
+                   AND (? != 'generate' OR NOT EXISTS (SELECT 1 FROM jobs WHERE generation_id=?))""",
+                (workspace_id, operacion, clave, generation_id, operacion, generation_id),
             )
         if eliminar:
             self._conn.execute(

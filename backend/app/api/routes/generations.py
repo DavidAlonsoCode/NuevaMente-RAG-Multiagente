@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from app.api.deps import get_sesion_actual, get_session_manager
 from app.api.routes.jobs import _stream, get_gestor
 from app.jobs.manager import ColaLlenaError, DeadlineExcedidoError, EspacioOcupadoError, TrabajoCanceladoError
-from app.schemas.enums import OutputLanguage, PedagogicalFormat, RecipientProfile
+from app.schemas.enums import JobStatus, OutputLanguage, PedagogicalFormat, RecipientProfile
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.requests import GenerateRequest
 from app.schemas.responses import GenerationJobResponse
@@ -22,7 +22,7 @@ class GeneracionHistorial(BaseModel):
     model_config = ConfigDict(extra="forbid")
     generation_id: str
     document_id: str
-    status: str
+    status: JobStatus
     created_at: datetime
     parametros: GenerateRequest | None
 
