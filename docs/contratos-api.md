@@ -147,10 +147,14 @@ son precisiones nuevas. No se añade `WORKSPACE_BUSY` al enum vigente.
   No expone filas, hash/configuración interna del parser, tokens, claves OCI
   ni caché de idempotencia. Visión pendiente: job textual completed, documento
   processing; cantidad_tokens puede ser cero real y la cobertura se conserva
-  para #30. No se genera contenido visual.
+  cuando no está configurada visión. #30 completa interpretación y cobertura
+  antes de ready; una omisión termina failed y se informa en cobertura.
 - Fuentes: un fragmento por request, sin paginación ni rutas públicas nuevas
   de secciones/chunks: `{document_id, chunk_id, texto, pagina, seccion,
-  seccion_id}`; ubicación no disponible: null. El título no identifica la
+  seccion_id, source_type, interpretacion_modelo, imagen_url}`. #30 agrega los
+  tres últimos campos: tipo de fuente, indicador de interpretación del modelo
+  y URL autenticada de la página original para chunks `image_description`.
+  En texto, imagen_url=null. Ubicación no disponible: null. El título no identifica la
   sección. Se exige ready **SQLite y OCI**, admisión explícitamente confirmada
   y cobertura/metadata coherentes y completas. Legacy sin evidencia suficiente
   conserva listado/detalle, pero no habilita contenido. Se
@@ -805,7 +809,9 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
   esos identificadores, bytes, MIME y reserva de tokens. Critic comprueba esa procedencia
   y adjunta la imagen original al SDK. Sin original/loader o con revisión insuficiente no
   aprueba; no reutiliza una aprobación visual anterior. La obtención/rasterización real
-  corresponde a Issue 30: aquí se implementan contrato, transporte y pruebas con doble.
+  se implementa en Issue 30 mediante `consulta.loader_critic(contexto)`: verifica
+  fuente, índice y hash del PNG contra el manifest, revalida acceso y devuelve
+  la página original rasterizada. Una interpretación ambigua bloquea aprobación.
 - Jueces textuales/visuales usan el modelo de verificación configurado y transporte síncrono
   de `ClienteGeminiGeneracion`, siempre mediante `ctx.llamar`. Cada intento reserva TPM,
   cuota y presupuesto; el SDK mantiene un intento, sin otros bucles. Cancelación, deadline,

@@ -12,6 +12,7 @@ import json
 import logging
 
 from app.core.rag.chunker import trocear
+from app.core.rag.multimodal import InterpretadorVisual, chunks_visuales
 from app.core.rag.parser import ParserError, parsear_archivo
 from app.core.rag.rebuild import ManifiestoDocumento, _workspace_vigente
 from app.core.rag.vectorstore import IndiceInconsistenteError, ResultadoIndexacion, VectorStoreChroma
@@ -40,8 +41,16 @@ logger = logging.getLogger("nuevamente.documents.ingestion")
 
 
 class ProcesadorIngestionDocumental:
-    def __init__(self, db: RegistroOperativo, storage: StorageProvider, indice: VectorStoreChroma):
+    def __init__(
+        self,
+        db: RegistroOperativo,
+        storage: StorageProvider,
+        indice: VectorStoreChroma,
+        *,
+        vision: InterpretadorVisual | None = None,
+    ):
         self.db, self.storage, self.indice = db, storage, indice
+        self.vision = vision
         self.efectos = EfectosDocumentales(db, storage, indice)
         self.efectos.procesador = self
 
@@ -193,7 +202,53 @@ class ProcesadorIngestionDocumental:
                     "huella_config_parser": parseo.huella_config_parser,
                 }
             )
-            manifest = manifest.model_copy(update={"metadatos": metadatos, "cobertura": cobertura})
+            manifest = manifest.model_copy(
+                update={"estado": DocumentStatus.PROCESSING, "metadatos": metadatos, "cobertura": cobertura}
+            )
+            if parseo.requiere_vision and self.vision is not None:
+                # Incluso si el proveedor falla, conservar el inventario pendiente.
+                self._vigente(contexto, manifest, etag)
+                etag = self._persistir(manifest, etag)
+                self.db.guardar_metadata_documental(
+                    manifest.workspace_id, manifest.document_id, metadatos=metadatos, cobertura=cobertura
+                )
+                etapa = "VISION"
+                interpretaciones = self.vision.interpretar(
+                    original,
+                    manifest,
+                    parseo.paginas_visuales,
+                    contexto=contexto,
+                    confirmar=lambda: self._fuente_vigente(contexto, manifest, etag),
+                )
+                omitidas = [i.pagina for i in interpretaciones if i.estado == "ilegible" or not i.cobertura_completa]
+                procesadas = sorted(({p.numero for p in parseo.paginas} | set(parseo.paginas_visuales)) - set(omitidas))
+                cobertura = cobertura.model_copy(
+                    update={
+                        "paginas_procesadas": procesadas,
+                        "paginas_omitidas": omitidas,
+                        "paginas_visuales_pendientes": [],
+                        "detalle": "Interpretaciones visuales separadas del texto original. "
+                        + (
+                            f"Páginas omitidas: {omitidas}. Volver a cargar una fuente legible."
+                            if omitidas
+                            else "Cobertura completa."
+                        ),
+                    }
+                )
+                manifest = manifest.model_copy(
+                    update={"interpretaciones_visuales": interpretaciones, "cobertura": cobertura}
+                )
+                derivados = chunks_visuales(manifest, indice_inicial=len(chunks))
+                chunks.extend(derivados)
+                metadatos = metadatos.model_copy(
+                    update={"cantidad_tokens": parseo.cantidad_tokens + sum(c.cantidad_tokens for c in derivados)}
+                )
+                if metadatos.cantidad_tokens > manifest.parser.max_tokens_extraidos:
+                    raise ErrorProcesamientoDocumental(
+                        "INGESTION_LIMITE_TOKENS",
+                        "Texto e interpretaciones exceden el límite de tokens; dividir el documento.",
+                    )
+                manifest = manifest.model_copy(update={"metadatos": metadatos})
             self._vigente(contexto, manifest, etag)
             etapa = "METADATA"
             etag = self._persistir(manifest, etag)
@@ -201,6 +256,11 @@ class ProcesadorIngestionDocumental:
             self.db.guardar_metadata_documental(
                 manifest.workspace_id, manifest.document_id, metadatos=metadatos, cobertura=cobertura
             )
+            if cobertura.paginas_omitidas:
+                raise ErrorProcesamientoDocumental(
+                    "INGESTION_VISION_OMITIDA",
+                    "Hay páginas visuales ilegibles o incompletas; consultar cobertura y volver a cargar una fuente legible.",
+                )
             etapa = "INDICE"
             documento = self.db.obtener_documento(manifest.document_id)
             if documento is not None and documento.get("recuperacion_evidencia") is not None:
@@ -243,7 +303,7 @@ class ProcesadorIngestionDocumental:
                 workspace_id=manifest.workspace_id,
                 document_id=manifest.document_id,
                 hash_sha256=manifest.hash_sha256,
-                estado=parseo.estado_documento,
+                estado=DocumentStatus.PROCESSING if cobertura.paginas_visuales_pendientes else DocumentStatus.READY,
                 cantidad_chunks=indexado.cantidad_chunks,
                 reutilizado=indexado.reutilizado,
                 metadatos=metadatos,
@@ -260,6 +320,8 @@ class ProcesadorIngestionDocumental:
             raise StorageUnavailable("No se pudo confirmar la fuente o su manifiesto") from error
         except ParserError as error:
             raise ErrorProcesamientoDocumental(f"PARSER_{error.codigo.value}", error.mensaje) from error
+        except ErrorProcesamientoDocumental:
+            raise
         except Exception as error:
             raise ErrorProcesamientoDocumental(
                 f"INGESTION_{etapa}", f"No se pudo completar la etapa {etapa.lower()} del documento."
@@ -278,8 +340,10 @@ def crear_servicio_ingestion(
     storage: StorageProvider,
     gestor: GestorTrabajos,
     indice: VectorStoreChroma,
+    *,
+    vision: InterpretadorVisual | None = None,
     **opciones,
 ) -> ServicioAdmisionDocumental:
     """Composición explícita: ninguna instancia SDK, cola o thread adicional."""
-    procesador = ProcesadorIngestionDocumental(db, storage, indice)
+    procesador = ProcesadorIngestionDocumental(db, storage, indice, vision=vision)
     return ServicioAdmisionDocumental(db, storage, gestor, procesador, al_terminar=procesador.al_terminar, **opciones)

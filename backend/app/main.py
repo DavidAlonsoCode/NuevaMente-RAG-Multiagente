@@ -59,6 +59,7 @@ from app.storage.oci_storage import get_storage_provider
 from app.storage.provider import StorageUnavailable
 
 if TYPE_CHECKING:
+    from app.core.agents.critic_contracts import VerificadorSync
     from app.core.rag.embeddings import EmbeddingProvider
 
 # ContextVar: una variable que vale "para la petición actual". Los módulos
@@ -119,6 +120,7 @@ def crear_app(
     configuracion: Configuracion | None = None,
     *,
     proveedor_embeddings: EmbeddingProvider | None = None,
+    proveedor_vision: VerificadorSync | None = None,
     cuotas_proveedor: CuotasProveedor | None = None,
 ) -> FastAPI:
     """Fábrica de la aplicación. Recibe configuración inyectable para tests.
@@ -130,20 +132,25 @@ def crear_app(
     """
     ajustes = configuracion or config
     ajustes.validar_critico()
-    if cuotas_proveedor is None and ajustes.embedding_quota_rpm is not None:
-        cuotas_proveedor = CuotasProveedor(
-            {
-                ajustes.gemini_embedding_model: CuotasModelo(
-                    ajustes.embedding_quota_rpm, ajustes.embedding_quota_tpm, ajustes.embedding_quota_rpd
-                )
-            }
-        )
-    if proveedor_embeddings is not None and cuotas_proveedor is None:
+    if cuotas_proveedor is None:
+        cuotas = {}
+        if ajustes.embedding_quota_rpm is not None:
+            cuotas[ajustes.gemini_embedding_model] = CuotasModelo(
+                ajustes.embedding_quota_rpm, ajustes.embedding_quota_tpm, ajustes.embedding_quota_rpd
+            )
+        if ajustes.vision_quota_rpm is not None:
+            limites_vision = CuotasModelo(ajustes.vision_quota_rpm, ajustes.vision_quota_tpm, ajustes.vision_quota_rpd)
+            if ajustes.gemini_generation_model in cuotas and cuotas[ajustes.gemini_generation_model] != limites_vision:
+                raise ValueError("Un modelo compartido requiere los mismos límites de cuota")
+            cuotas[ajustes.gemini_generation_model] = limites_vision
+        cuotas_proveedor = CuotasProveedor(cuotas) if cuotas else None
+    if (proveedor_embeddings is not None or proveedor_vision is not None) and cuotas_proveedor is None:
         raise ValueError("El proveedor documental requiere las cuotas compartidas explícitas")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         gestor = None
+        recursos = None
         sincronizador = None
         try:
             restaurar_registro(app.state.db, app.state.storage_provider)
@@ -158,7 +165,12 @@ def crear_app(
                 from app.documents.runtime import crear_recursos_documentales
 
                 recursos = crear_recursos_documentales(
-                    ajustes, app.state.db, app.state.storage_provider, gestor, proveedor=proveedor_embeddings
+                    ajustes,
+                    app.state.db,
+                    app.state.storage_provider,
+                    gestor,
+                    proveedor=proveedor_embeddings,
+                    proveedor_vision=proveedor_vision,
                 )
                 app.state.vectorstore = recursos.indice
                 app.state.documents_admission = recursos.admision
@@ -205,8 +217,14 @@ def crear_app(
             if gestor is not None:
                 gestor.detener(timeout=None)
             try:
-                if app.state.vectorstore is not None:
-                    app.state.vectorstore.cerrar()
+                try:
+                    if recursos is not None and recursos.vision is not None:
+                        cerrar_vision = getattr(recursos.vision.proveedor, "cerrar", None)
+                        if callable(cerrar_vision):
+                            cerrar_vision()
+                finally:
+                    if app.state.vectorstore is not None:
+                        app.state.vectorstore.cerrar()
             finally:
                 app.state.documents_admission = None
                 app.state.documents_query = None

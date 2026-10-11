@@ -87,7 +87,11 @@ class Configuracion(BaseSettings):
     embedding_quota_rpm: int | None = Field(default=None, gt=0)
     embedding_quota_tpm: int | None = Field(default=None, gt=0)
     embedding_quota_rpd: int | None = Field(default=None, gt=0)
+    vision_quota_rpm: int | None = Field(default=None, gt=0)
+    vision_quota_tpm: int | None = Field(default=None, gt=0)
+    vision_quota_rpd: int | None = Field(default=None, gt=0)
     generation_max_output_tokens: int = Field(default=8192, gt=0)
+    generation_thinking_level: Literal["low", "medium", "high"] | None = None
     retrieval_k: int = Field(default=5, ge=1, le=100)
     retrieval_fetch_k: int = Field(default=15, ge=1, le=100)
     retrieval_lambda_mult: float = Field(default=0.7, ge=0, le=1)
@@ -154,6 +158,9 @@ class Configuracion(BaseSettings):
         cuotas = (self.embedding_quota_rpm, self.embedding_quota_tpm, self.embedding_quota_rpd)
         if any(c is not None for c in cuotas) and not all(c is not None for c in cuotas):
             raise ValueError("Configurar juntas EMBEDDING_QUOTA_RPM, EMBEDDING_QUOTA_TPM y EMBEDDING_QUOTA_RPD")
+        vision = (self.vision_quota_rpm, self.vision_quota_tpm, self.vision_quota_rpd)
+        if any(c is not None for c in vision) and not all(c is not None for c in vision):
+            raise ValueError("Configurar juntas VISION_QUOTA_RPM, VISION_QUOTA_TPM y VISION_QUOTA_RPD")
         if self.app_env == "production":
             if self.mock_oci or self.mock_gemini:
                 raise ValueError(

@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.core.rag.rebuild import ManifiestoDocumento, _workspace_vigente
 from app.core.rag.vectorstore import VectorStoreChroma
 from app.documents.cursor import CursorDocumental
+from app.documents.visual import FuentesVisuales
 from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
 from app.jobs.store import RegistroOperativo
 from app.schemas.documents import CoberturaDocumento, MetadatosDocumento
@@ -38,6 +39,7 @@ class ServicioConsultaDocumental:
         self.db, self.storage, self.indice = db, storage, indice
         self.plazo_lectura = plazo_lectura
         self.cursor = CursorDocumental(db.ruta_db.parent / "document-cursor.key")
+        self.visuales = FuentesVisuales(db, storage, indice)
 
     def _sesion(self, token: str) -> dict:
         sesion = self.db.obtener_sesion(token)
@@ -293,3 +295,19 @@ class ServicioConsultaDocumental:
             if chunk.seccion_id is not None:
                 resultado.setdefault(chunk.seccion_id, {"seccion_id": chunk.seccion_id, "titulo": chunk.seccion})
         return list(resultado.values())
+
+    def imagen(self, token: str, document_id: str, chunk_id: str):
+        doc = self._listo(token, document_id)
+        try:
+            imagen = self.visuales.obtener(
+                self._contexto(token, doc["workspace_id"]), document_id, doc["hash"], chunk_id
+            )
+        except TrabajoCanceladoError:
+            self._sesion(token)
+            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Fuente visual no encontrada.") from None
+        self._listo(token, document_id)
+        return imagen
+
+    def loader_critic(self, contexto: ContextoEjecucion):
+        """#29 enlaza este callback a DependenciasCritic del mismo trabajo."""
+        return self.visuales.loader_critic(contexto)

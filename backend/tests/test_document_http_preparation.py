@@ -311,6 +311,7 @@ def test_contratos_documentales_no_se_publican_sin_revision(entorno):
         "/api/documents",
         "/api/documents/{document_id}",
         "/api/documents/{document_id}/sources/{chunk_id}",
+        "/api/documents/{document_id}/sources/{chunk_id}/image",
     }
     assert "delete" in rutas["/api/documents/{document_id}"]
     assert {"202", "204", "404", "401", "503"} <= set(rutas["/api/documents/{document_id}"]["delete"]["responses"])

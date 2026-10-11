@@ -94,6 +94,29 @@ def test_persistencia_y_colecciones_por_modelo_dimension(pila):
     assert doble.llamadas_embeddings == 3
 
 
+def test_filtro_tipo_conserva_indices_anteriores_sin_reindexar(pila, monkeypatch):
+    indice, doble = pila
+    upsert = type(indice._privada).upsert
+
+    def metadata_anterior(coleccion, *args, **kwargs):
+        kwargs["metadatas"] = [
+            {k: v for k, v in m.items() if k not in ("source_type", "es_diagrama")} for m in kwargs["metadatas"]
+        ]
+        return upsert(coleccion, *args, **kwargs)
+
+    monkeypatch.setattr(type(indice._privada), "upsert", metadata_anterior)
+    indice.indexar("espacio-a", "doc-a", chunks(), contexto=ctx())
+    indice.indexar("espacio-b", "doc-a", chunks(workspace="espacio-b"), contexto=ctx("espacio-b"))
+    llamadas = doble.llamadas_embeddings
+    assert indice.indexar("espacio-a", "doc-a", chunks(), contexto=ctx()).reutilizado
+    assert doble.llamadas_embeddings == llamadas
+    hits = indice.buscar("espacio-a", "doc-a", "redes", contexto=ctx(), tipo_fuente="md")
+    assert {h.chunk.chunk_id for h in hits} == {c.chunk_id for c in chunks()}
+    llamadas = doble.llamadas_embeddings
+    assert indice.buscar("espacio-a", "doc-a", "redes", contexto=ctx(), tipo_fuente="image_description") == []
+    assert doble.llamadas_embeddings == llamadas
+
+
 def test_rechaza_coleccion_con_preparacion_incompatible(pila):
     indice, _ = pila
     indice._privada.modify(metadata={"preparacion": "vieja"})

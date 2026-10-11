@@ -304,5 +304,7 @@ class ServicioCatalogoDemo:
                     pagina=chunk.pagina,
                     seccion=chunk.seccion,
                     seccion_id=chunk.seccion_id,
+                    source_type=chunk.source_type,
+                    interpretacion_modelo=chunk.source_type == "image_description",
                 )
         raise self._no_encontrado()

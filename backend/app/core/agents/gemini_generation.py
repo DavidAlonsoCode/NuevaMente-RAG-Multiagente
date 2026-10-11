@@ -88,6 +88,7 @@ class ClienteGeminiGeneracion:
             api_key=configuracion.google_api_key,
             http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
         )
+        self._thinking_level = configuracion.generation_thinking_level
 
     def cerrar(self) -> None:
         self._cliente.close()
@@ -154,6 +155,9 @@ class ClienteGeminiGeneracion:
                 model=modelo,
                 contents=contents,
                 config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_level=self._thinking_level)
+                    if self._thinking_level is not None and modelo.startswith("gemini-3.")
+                    else None,
                     candidate_count=1,
                     system_instruction=system_instruction,
                     response_mime_type="application/json",
