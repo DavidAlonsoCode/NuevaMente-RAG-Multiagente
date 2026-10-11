@@ -304,6 +304,8 @@ class VectorStoreChroma:
                             "document_id": document_id,
                             "version_indice": version,
                             "orden": inicio + i,
+                            "source_type": c.source_type or "text",
+                            "es_diagrama": c.es_diagrama,
                             "chunk": c.model_dump_json(),
                         }
                         for i, c in enumerate(lote)
@@ -509,9 +511,10 @@ class VectorStoreChroma:
         contexto: ContextoEjecucion,
         limite: int = 15,
         seccion: str | None = None,
+        tipo_fuente: str | None = None,
     ) -> list[CoincidenciaVectorial]:
         self._autorizar(workspace_id, document_id, contexto)
-        return self._buscar(self._privada, workspace_id, document_id, consulta, contexto, limite, seccion)
+        return self._buscar(self._privada, workspace_id, document_id, consulta, contexto, limite, seccion, tipo_fuente)
 
     def buscar_demo(
         self,
@@ -521,12 +524,17 @@ class VectorStoreChroma:
         contexto: ContextoEjecucion,
         limite: int = 15,
         seccion: str | None = None,
+        tipo_fuente: str | None = None,
     ) -> list[CoincidenciaVectorial]:
         clave_documento(DEMO_WORKSPACE_ID, document_id)
         contexto.chequear()
-        return self._buscar(self._demo, DEMO_WORKSPACE_ID, document_id, consulta, contexto, limite, seccion)
+        return self._buscar(
+            self._demo, DEMO_WORKSPACE_ID, document_id, consulta, contexto, limite, seccion, tipo_fuente
+        )
 
-    def _buscar(self, coleccion, workspace_id, document_id, consulta, contexto, limite, seccion):
+    def _buscar(self, coleccion, workspace_id, document_id, consulta, contexto, limite, seccion, tipo_fuente=None):
+        if tipo_fuente not in (None, "pdf", "md", "txt", "text", "image_description"):
+            raise ValueError("Tipo de fuente no soportado")
         if type(limite) is not int or not 1 <= limite <= 100:
             raise ValueError("limite debe estar entre 1 y 100")
         activo = self._activo(coleccion, workspace_id, document_id)
@@ -546,6 +554,14 @@ class VectorStoreChroma:
                 return []
             filtro["$and"].append({"orden": {"$in": ordenes}})
             cantidad = len(ordenes)
+        if tipo_fuente is not None:
+            cantidad = sum(
+                (c.source_type or "text") == tipo_fuente and (seccion is None or seccion_del_chunk(c) == seccion)
+                for c in (Chunk.model_validate_json(m["chunk"]) for m in datos_activos["metadatas"])
+            )
+            if not cantidad:
+                return []
+            filtro["$and"].append({"source_type": tipo_fuente})
         vector = self.embeddings.embed_query(consulta, contexto=contexto)
         contexto.chequear()
         datos = coleccion.query(
@@ -559,6 +575,8 @@ class VectorStoreChroma:
             datos["metadatas"][0], datos["distances"][0], datos["embeddings"][0], strict=True
         ):
             chunk = Chunk.model_validate_json(metadata["chunk"])
+            if tipo_fuente is not None and (chunk.source_type or "text") != tipo_fuente:
+                raise IndiceInconsistenteError("El tipo de fuente no corresponde al filtro")
             if (chunk.workspace_id, chunk.document_id) != (workspace_id, document_id) or not math.isfinite(distancia):
                 raise IndiceInconsistenteError("Trazabilidad o distancia inválida")
             resultado.append(CoincidenciaVectorial(chunk, max(0.0, float(distancia)), tuple(map(float, embedding))))
