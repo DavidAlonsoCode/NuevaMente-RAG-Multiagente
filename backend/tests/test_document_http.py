@@ -665,6 +665,9 @@ def test_fuente_publica_ubicacion_y_aislamiento_de_chunk(entorno):
         "pagina": chunk.pagina,
         "seccion": chunk.seccion,
         "seccion_id": chunk.seccion_id,
+        "source_type": chunk.source_type,
+        "interpretacion_modelo": False,
+        "imagen_url": None,
     }
     error(e.cliente.get(url.rsplit("/", 1)[0] + "/noexiste", headers=e.headers), 404, "NOT_FOUND")
     assert e.doble.llamadas_embeddings == llamadas

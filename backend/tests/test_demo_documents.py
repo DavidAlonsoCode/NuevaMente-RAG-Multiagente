@@ -181,6 +181,9 @@ def test_documento_textual_integro_listado_detalle_secciones_y_fuente(entorno):
             "pagina": None,
             "seccion": chunk.seccion,
             "seccion_id": chunk.seccion_id,
+            "source_type": chunk.source_type,
+            "interpretacion_modelo": False,
+            "imagen_url": None,
         }
     error(get(e, "/demo-a/sources/inexistente"), 404, "NOT_FOUND")
 
