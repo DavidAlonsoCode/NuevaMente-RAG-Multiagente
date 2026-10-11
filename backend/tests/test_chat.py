@@ -10,6 +10,7 @@ import test_api_generate as generation_cases
 from app.chat.service import acotar_historial
 from app.jobs.manager import CuotasModelo, CuotasProveedor
 from app.schemas.chat import BorradorChat, ChatRequest
+from app.storage.provider import StorageUnavailable
 from doubles.gemini import DobleGemini
 from pydantic import ValidationError
 from test_api_generate import esperar
@@ -239,3 +240,24 @@ def test_deadline_del_worker_y_fuente_conservada(entorno):
     fallo = esperar(e, chat(e).json(), "failed")
     assert fallo["error"]["code"] == "DEADLINE" and fallo["result"] is None
     assert e.db.obtener_documento(e.doc)["estado"] == "ready"
+
+
+def test_sse_perdida_de_storage_tras_headers_emite_error_seguro(entorno, monkeypatch):
+    e = entorno
+    recibo = chat(e).json()
+    esperar(e, recibo)
+    servicio = e.app.state.chat
+    original = servicio.autorizar_resultado
+    llamadas = 0
+
+    def verificar(*args, **kwargs):
+        nonlocal llamadas
+        llamadas += 1
+        if llamadas > 1:
+            raise StorageUnavailable("contenido privado del proveedor")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(servicio, "autorizar_resultado", verificar)
+    sse = e.cliente.get(recibo["events_url"], headers=e.headers)
+    assert sse.status_code == 200 and "event: error" in sse.text
+    assert "STORAGE_UNAVAILABLE" in sse.text and "contenido privado" not in sse.text
