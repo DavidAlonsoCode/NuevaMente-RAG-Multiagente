@@ -98,12 +98,22 @@ def _leer_stream(gestor: GestorTrabajos, manager: SessionManager, sesion: dict, 
 
 
 async def _stream(
-    request: Request, gestor: GestorTrabajos, manager: SessionManager, sesion: dict, job_id: str, ultimo_id: int
+    request: Request,
+    gestor: GestorTrabajos,
+    manager: SessionManager,
+    sesion: dict,
+    job_id: str,
+    ultimo_id: int,
+    *,
+    lector=None,
+    generation_id=None,
 ):
     heartbeat = time.monotonic()
     while not await request.is_disconnected():
         try:
-            trabajo, eventos = await run_in_threadpool(_leer_stream, gestor, manager, sesion, job_id, ultimo_id)
+            trabajo, eventos = await run_in_threadpool(
+                lector or _leer_stream, gestor, manager, sesion, job_id, ultimo_id
+            )
         except ErrorAplicacion as error:
             # Headers ya enviados: informar el error y cerrar, sin revelar resultados.
             datos_error = {
@@ -114,6 +124,9 @@ async def _stream(
             return
         for evento in eventos:
             datos = {clave: evento[clave] for clave in ("job_id", "step", "status", "iteration")}
+            if generation_id is not None:
+                datos.pop("job_id")
+                datos["generation_id"] = generation_id
             yield f"id: {evento['id']}\nevent: progress\ndata: {json.dumps(datos)}\n\n"
             ultimo_id = evento["id"]
         if trabajo["status"] not in ACTIVOS:

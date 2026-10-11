@@ -111,6 +111,7 @@ class SincronizadorManifiestos:
     def _ejecutar(self) -> None:
         while not self._stop.wait(self.intervalo):
             try:
+                self.db.purgar_aprobados_expirados()
                 sincronizar_pendientes(self.db, self.storage)
             except Exception as error:
                 # El seguimiento persiste; un fallo SQLite tampoco debe matar

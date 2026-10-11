@@ -48,7 +48,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
-from app.api.routes import demo_documents, documents, jobs, workspaces
+from app.api.routes import demo_documents, documents, generations, jobs, workspaces
 from app.config import Configuracion, config
 from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos
 from app.jobs.store import RegistroOperativo
@@ -60,6 +60,7 @@ from app.storage.provider import StorageUnavailable
 
 if TYPE_CHECKING:
     from app.core.agents.critic_contracts import VerificadorSync
+    from app.core.agents.gemini_generation import GeneradorSync
     from app.core.rag.embeddings import EmbeddingProvider
 
 # ContextVar: una variable que vale "para la petición actual". Los módulos
@@ -121,6 +122,8 @@ def crear_app(
     *,
     proveedor_embeddings: EmbeddingProvider | None = None,
     proveedor_vision: VerificadorSync | None = None,
+    proveedor_generacion: GeneradorSync | None = None,
+    proveedor_verificacion: VerificadorSync | None = None,
     cuotas_proveedor: CuotasProveedor | None = None,
 ) -> FastAPI:
     """Fábrica de la aplicación. Recibe configuración inyectable para tests.
@@ -143,15 +146,27 @@ def crear_app(
             if ajustes.gemini_generation_model in cuotas and cuotas[ajustes.gemini_generation_model] != limites_vision:
                 raise ValueError("Un modelo compartido requiere los mismos límites de cuota")
             cuotas[ajustes.gemini_generation_model] = limites_vision
+        for nombre, modelo in (
+            ("generation", ajustes.gemini_generation_model),
+            ("verification", ajustes.gemini_verification_model),
+        ):
+            if getattr(ajustes, nombre + "_quota_rpm") is not None:
+                limites = CuotasModelo(*(getattr(ajustes, nombre + "_quota_" + v) for v in ("rpm", "tpm", "rpd")))
+                if modelo in cuotas and cuotas[modelo] != limites:
+                    raise ValueError("Un modelo compartido requiere los mismos límites de cuota")
+                cuotas[modelo] = limites
         cuotas_proveedor = CuotasProveedor(cuotas) if cuotas else None
     if (proveedor_embeddings is not None or proveedor_vision is not None) and cuotas_proveedor is None:
         raise ValueError("El proveedor documental requiere las cuotas compartidas explícitas")
+    if (proveedor_generacion is None) != (proveedor_verificacion is None):
+        raise ValueError("Inyectar juntos generación y verificación")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         gestor = None
         recursos = None
         sincronizador = None
+        proveedores_texto = []
         try:
             restaurar_registro(app.state.db, app.state.storage_provider)
             sincronizar_pendientes(app.state.db, app.state.storage_provider)
@@ -161,7 +176,10 @@ def crear_app(
             )
             gestor = GestorTrabajos(app.state.db, controles=controles, cuotas=cuotas_proveedor)
             app.state.jobs_manager = gestor
-            if cuotas_proveedor is not None:
+            if (
+                cuotas_proveedor is not None
+                and cuotas_proveedor.disponibles_hoy(ajustes.gemini_embedding_model) is not None
+            ):
                 from app.documents.runtime import crear_recursos_documentales
 
                 recursos = crear_recursos_documentales(
@@ -185,6 +203,24 @@ def crear_app(
                     app.state.storage_provider,
                     None,
                     plazo_lectura=ajustes.generation_deadline_seconds,
+                )
+            gen, ver = proveedor_generacion, proveedor_verificacion
+            modelos_listos = cuotas_proveedor is not None and all(
+                cuotas_proveedor.disponibles_hoy(m) is not None
+                for m in (ajustes.gemini_generation_model, ajustes.gemini_verification_model)
+            )
+            if gen is not None and (not modelos_listos or app.state.vectorstore is None):
+                raise ValueError("Generación requiere índice y cuotas compartidas de ambos modelos")
+            if gen is None and modelos_listos and app.state.vectorstore is not None and not ajustes.mock_gemini:
+                from app.core.agents.gemini_generation import ClienteGeminiGeneracion
+
+                gen = ver = ClienteGeminiGeneracion(ajustes)
+            if gen is not None:
+                from app.generations.service import ServicioGeneraciones
+
+                proveedores_texto = list({id(p): p for p in (gen, ver)}.values())
+                app.state.generations = ServicioGeneraciones(
+                    app.state.db, app.state.storage_provider, app.state.documents_query, gestor, ajustes, gen, ver
                 )
             from app.documents.demo import ServicioCatalogoDemo
             from app.documents.lifecycle import EfectosDocumentales
@@ -218,6 +254,10 @@ def crear_app(
                 gestor.detener(timeout=None)
             try:
                 try:
+                    for proveedor in proveedores_texto:
+                        cerrar = getattr(proveedor, "cerrar", None)
+                        if callable(cerrar):
+                            cerrar()
                     if recursos is not None and recursos.vision is not None:
                         cerrar_vision = getattr(recursos.vision.proveedor, "cerrar", None)
                         if callable(cerrar_vision):
@@ -228,6 +268,7 @@ def crear_app(
             finally:
                 app.state.documents_admission = None
                 app.state.documents_query = None
+                app.state.generations = None
                 app.state.demo_documents_query = None
                 app.state.documents_effects = None
                 app.state.vectorstore = None
@@ -402,11 +443,13 @@ def crear_app(
     app.state.demo_documents_query = None
     app.state.documents_effects = None
     app.state.vectorstore = None
+    app.state.generations = None
 
     app.include_router(workspaces.router)
     app.include_router(jobs.router)
     app.include_router(documents.router)
     app.include_router(demo_documents.router)
+    app.include_router(generations.router)
 
     return app
 

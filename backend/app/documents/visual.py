@@ -75,8 +75,13 @@ class FuentesVisuales:
             or metadata != manifest.metadatos
             or not metadata.cantidad_tokens
             or not metadata.huella_config_parser
-            or metadata.cantidad_paginas is None
-            or set(cobertura.paginas_procesadas) != set(range(1, metadata.cantidad_paginas + 1))
+            or (
+                metadata.extension == "pdf"
+                and (
+                    metadata.cantidad_paginas is None
+                    or set(cobertura.paginas_procesadas) != set(range(1, metadata.cantidad_paginas + 1))
+                )
+            )
             or (doc.get("recuperacion_evidencia") is not None and doc["recuperacion_estado"] != "confirmada")
         ):
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente visual no está confirmada.")

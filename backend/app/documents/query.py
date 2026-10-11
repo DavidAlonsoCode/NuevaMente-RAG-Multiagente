@@ -311,3 +311,35 @@ class ServicioConsultaDocumental:
     def loader_critic(self, contexto: ContextoEjecucion):
         """#29 enlaza este callback a DependenciasCritic del mismo trabajo."""
         return self.visuales.loader_critic(contexto)
+
+    def documento_grafo(self, contexto: ContextoEjecucion, document_id: str):
+        """Vista interna ligada al trabajo: no retiene ni recupera tokens de sesión."""
+        from app.core.agents.graph_state import DocumentoGeneracion
+        from app.core.rag.chunker import detectar_idioma
+        from app.core.rag.vectorstore import seccion_del_chunk
+        from app.schemas.responses import DocumentoFuente
+
+        contexto.chequear()
+        doc = self.db.obtener_documento(document_id)
+        if doc is None or doc["workspace_id"] != contexto.workspace_id:
+            return None
+        mf = self.visuales._autorizar(contexto, document_id, doc["hash"])
+        chunks = self.indice.listar_chunks(
+            contexto.workspace_id, document_id, contexto=contexto, source_hash=mf.hash_sha256
+        )
+        if not chunks:
+            raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente no tiene un índice confirmado.")
+        self.visuales._autorizar(contexto, document_id, mf.hash_sha256)
+        return DocumentoGeneracion(
+            workspace_id=contexto.workspace_id,
+            fuente=DocumentoFuente(
+                document_id=document_id,
+                titulo=doc["titulo"],
+                hash="sha256:" + mf.hash_sha256,
+                version=f"v{mf.version}",
+            ),
+            estado=DocumentStatus.READY,
+            idioma_origen=detectar_idioma("\n".join(c.texto for c in chunks)),
+            secciones=tuple(dict.fromkeys(seccion_del_chunk(c) for c in chunks)),
+            contiene_material_visual=any(c.es_diagrama for c in chunks),
+        )
