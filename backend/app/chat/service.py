@@ -166,7 +166,9 @@ class ServicioChat:
         grafo = DependenciasGrafo(
             ctx, lambda ws, doc_id: self.consulta.documento_grafo(ctx, doc_id) if ws == ctx.workspace_id else None
         )
-        investigador = DependenciasResearcher(grafo, self.retriever, "3", pregunta=solicitud.pregunta)
+        investigador = DependenciasResearcher(
+            grafo, self.retriever, self.consulta.version_parser(ctx, solicitud.document_id), pregunta=solicitud.pregunta
+        )
 
         def no_publicar(*args):
             raise RuntimeError("Chat no publica paquetes educativos")
