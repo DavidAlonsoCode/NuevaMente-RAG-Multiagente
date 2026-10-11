@@ -10,6 +10,7 @@ from app.config import Configuracion
 from app.core.agents.prompts import ejemplo_few_shot
 from app.jobs.manager import CuotasModelo, CuotasProveedor
 from app.main import crear_app
+from app.schemas.requests import GenerateRequest
 from app.storage.provider import StorageUnavailable
 from doubles.gemini import DobleGemini
 from fastapi.testclient import TestClient
@@ -28,7 +29,8 @@ class DobleEducativo(DobleGemini):
         datos = json.loads(prompt)
         p = datos["parametros"]
         chunk = datos["evidencia"][0]["chunk"]
-        salida = ejemplo_few_shot(p["perfil_destinatario"], p["formato_salida"], p["idioma_salida"])
+        solicitud = GenerateRequest.model_validate(p)
+        salida = ejemplo_few_shot(solicitud.perfil_destinatario, solicitud.formato_salida, solicitud.idioma_salida)
         salida = json.loads(
             json.dumps(salida)
             .replace("[SOURCE_CHUNK_ID]", chunk["chunk_id"])
@@ -40,6 +42,19 @@ class DobleEducativo(DobleGemini):
             nivel_detalle=p["nivel_detalle"],
             alcance={**p["alcance"], "secciones_cubiertas": datos["secciones_cubiertas"]},
         )
+
+        def citas(valor):
+            if isinstance(valor, dict):
+                for clave, item in valor.items():
+                    if clave == "referencias":
+                        valor[clave] = [{k: chunk[k] for k in ("chunk_id", "pagina", "seccion")}]
+                    else:
+                        citas(item)
+            elif isinstance(valor, list):
+                for item in valor:
+                    citas(item)
+
+        citas(salida)
         self.programar_generacion(json.dumps(salida))
         return super().generar_sync(prompt, **kwargs)
 
