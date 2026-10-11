@@ -566,6 +566,31 @@ def _parsear_texto(contenido: bytes, titulo_etiqueta: str, extension: str, limit
 # --------------------------------------------------------------------------
 
 
+def validar_entrada_archivo(contenido: bytes, nombre_etiqueta: str, limites: LimitesIngesta | None = None) -> str:
+    """Validación barata compartida por admisión y extracción; no parsea PDF ni cuenta tokens."""
+    limites = limites or LimitesIngesta()
+    extension = Path((nombre_etiqueta or "documento").strip().lower()).suffix.lstrip(".")
+    if extension not in ("pdf", "md", "markdown", "txt"):
+        raise ParserError(
+            ParserErrorCode.FORMATO_NO_SOPORTADO,
+            f"Formato no soportado: '.{extension}'. Los formatos aceptados son PDF, Markdown (.md) y TXT.",
+            detalles={"formatos_aceptados": ["pdf", "md", "markdown", "txt"]},
+        )
+    maximo = limites.max_bytes_pdf if extension == "pdf" else limites.max_bytes_texto
+    if len(contenido) > maximo:
+        raise _rechazo_limite(ParserErrorCode.DEMASIADO_GRANDE, maximo, len(contenido), "bytes")
+    if extension == "pdf":
+        if not _firma_pdf(contenido):
+            raise ParserError(
+                ParserErrorCode.FORMATO_NO_SOPORTADO,
+                f"El archivo '{nombre_etiqueta.strip()}' no tiene la firma de un PDF real (se esperaba '%PDF-').",
+                detalles={"sugerencia": "Subir el archivo original sin renombrar su extension."},
+            )
+    else:
+        _validar_texto_plano(contenido, extension, limites)
+    return "md" if extension == "markdown" else extension
+
+
 def parsear_archivo(contenido: bytes, nombre_etiqueta: str, limites: LimitesIngesta | None = None) -> ResultadoParseo:
     """Punto de entrada para archivos subidos (upload de #19).
 
@@ -585,29 +610,12 @@ def parsear_archivo(contenido: bytes, nombre_etiqueta: str, limites: LimitesInge
     """
     limites = limites or LimitesIngesta()
     nombre_limpio = (nombre_etiqueta or "documento").strip()
-    extension = Path(nombre_limpio.lower()).suffix.lstrip(".")
+    extension = validar_entrada_archivo(contenido, nombre_limpio, limites)
 
     if extension == "pdf":
-        if len(contenido) > limites.max_bytes_pdf:
-            raise _rechazo_limite(ParserErrorCode.DEMASIADO_GRANDE, limites.max_bytes_pdf, len(contenido), "bytes")
-        if not _firma_pdf(contenido):
-            raise ParserError(
-                ParserErrorCode.FORMATO_NO_SOPORTADO,
-                f"El archivo '{nombre_limpio}' no tiene la firma de un PDF real (se esperaba '%PDF-').",
-                detalles={"sugerencia": "Subir el archivo original sin renombrar su extension."},
-            )
         return _pdf_aislado(contenido, nombre_limpio, limites)
 
-    if extension in ("md", "markdown", "txt"):
-        if len(contenido) > limites.max_bytes_texto:
-            raise _rechazo_limite(ParserErrorCode.DEMASIADO_GRANDE, limites.max_bytes_texto, len(contenido), "bytes")
-        return _parsear_texto(contenido, nombre_limpio, "md" if extension in ("md", "markdown") else "txt", limites)
-
-    raise ParserError(
-        ParserErrorCode.FORMATO_NO_SOPORTADO,
-        f"Formato no soportado: '.{extension}'. Los formatos aceptados son PDF, Markdown (.md) y TXT.",
-        detalles={"formatos_aceptados": ["pdf", "md", "markdown", "txt"]},
-    )
+    return _parsear_texto(contenido, nombre_limpio, extension, limites)
 
 
 def parsear_texto_pegado(

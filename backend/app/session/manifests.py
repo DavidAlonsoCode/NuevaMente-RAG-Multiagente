@@ -2,6 +2,7 @@
 
 import logging
 import threading
+from collections.abc import Callable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -60,6 +61,14 @@ def sincronizar_manifiesto(db: RegistroOperativo, storage: StorageProvider, work
             raise StorageConflict("Versión de manifiesto no compatible")
         if (previo.borrado or previo.borrado_en) and not manifest.borrado:
             raise StorageConflict("Un manifiesto retirado no puede reactivarse")
+        lapidas = {(lapida.recurso_tipo, lapida.recurso_id): lapida for lapida in manifest.recursos_borrados}
+        if any(
+            (actual := lapidas.get((lapida.recurso_tipo, lapida.recurso_id))) is None
+            or actual.solicitado_en < lapida.solicitado_en
+            or actual.purga_despues_en < lapida.purga_despues_en
+            for lapida in previo.recursos_borrados
+        ):
+            raise StorageConflict("La sincronización no puede descartar lápidas remotas")
         if previo.version == manifest.version:
             if previo != manifest:
                 raise StorageConflict("Una versión identifica manifiestos diferentes")
@@ -84,8 +93,15 @@ def sincronizar_pendientes(db: RegistroOperativo, storage: StorageProvider) -> i
 class SincronizadorManifiestos:
     """Agrupa escrituras; cada operación conserva exclusivamente los retries de OCI."""
 
-    def __init__(self, db: RegistroOperativo, storage: StorageProvider, intervalo: float = 60):
+    def __init__(
+        self,
+        db: RegistroOperativo,
+        storage: StorageProvider,
+        intervalo: float = 60,
+        efectos_documentales: Callable[[], int] | None = None,
+    ):
         self.db, self.storage, self.intervalo = db, storage, intervalo
+        self.efectos_documentales = efectos_documentales
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._ejecutar, name="manifest-sync", daemon=True)
 
@@ -94,7 +110,17 @@ class SincronizadorManifiestos:
 
     def _ejecutar(self) -> None:
         while not self._stop.wait(self.intervalo):
-            sincronizar_pendientes(self.db, self.storage)
+            try:
+                sincronizar_pendientes(self.db, self.storage)
+            except Exception as error:
+                # El seguimiento persiste; un fallo SQLite tampoco debe matar
+                # el sincronizador ni registrar el mensaje crudo del proveedor.
+                logger.warning("Sincronización pendiente; tipo=%s", type(error).__name__)
+            if self.efectos_documentales is not None:
+                try:
+                    self.efectos_documentales()
+                except Exception as error:
+                    logger.warning("Efectos documentales pendientes; tipo=%s", type(error).__name__)
 
     def detener(self) -> None:
         self._stop.set()

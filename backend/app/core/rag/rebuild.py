@@ -13,12 +13,13 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from app.core.rag.chunker import ConfigChunker, trocear
 from app.core.rag.parser import LimitesIngesta, parsear_archivo
 from app.core.rag.vectorstore import DEMO_WORKSPACE_ID, ResultadoIndexacion, VectorStoreChroma
 from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
+from app.schemas.documents import CoberturaDocumento, MetadatosDocumento, PublicacionDemo
 from app.schemas.enums import DocumentStatus
 from app.storage.object_keys import clave_demo, clave_documento, clave_original, clave_workspace
 from app.storage.provider import StorageNotFound, StorageProvider
@@ -38,6 +39,29 @@ class ManifiestoDocumento(BaseModel):
     borrado: bool = False
     parser: LimitesIngesta = Field(default_factory=LimitesIngesta)
     chunker: ConfigChunker = Field(default_factory=ConfigChunker)
+    titulo: str | None = Field(default=None, min_length=1, max_length=300)
+    metadatos: MetadatosDocumento | None = None
+    cobertura: CoberturaDocumento | None = None
+    detalle_error: str | None = None
+    admision_confirmada: StrictBool | None = None
+    # None identifica manifiestos legacy. Las admisiones nuevas reservan False
+    # y solo escriben True DESPUÉS del commit de confirmar_admision_documental.
+    admision_sqlite_confirmada: StrictBool | None = None
+    # #49 expresa la confirmación de mantenimiento. No se genera al reconstruir
+    # ni admite sustituir la admisión de un documento privado.
+    publicacion_demo: PublicacionDemo | None = None
+
+    @property
+    def admision_recuperable(self) -> bool:
+        return self.admision_confirmada is not False and self.admision_sqlite_confirmada is not False
+
+    @model_validator(mode="after")
+    def vision_no_completada(self):
+        if self.publicacion_demo is not None and self.workspace_id != DEMO_WORKSPACE_ID:
+            raise ValueError("La evidencia demo pertenece exclusivamente a biblioteca-demo")
+        if self.estado == DocumentStatus.READY and self.cobertura and self.cobertura.paginas_visuales_pendientes:
+            raise ValueError("Un documento con visión pendiente no puede estar ready")
+        return self
 
 
 class DocumentoReconstruido(BaseModel):
@@ -105,6 +129,9 @@ def _reconstruir(
             )
             if manifest.borrado or retirado:
                 indice._borrar(coleccion, workspace_id, document_id)
+                continue
+            if not manifest.admision_recuperable:
+                indice._borrar(coleccion, workspace_id, document_id, definitivo=False)
                 continue
             if indice._retirado(workspace_id, document_id):
                 continue
