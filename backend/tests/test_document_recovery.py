@@ -28,11 +28,12 @@ from app.schemas.enums import DocumentStatus
 from app.session.manager import SessionManager
 from app.session.manifests import sincronizar_pendientes
 from app.session.recovery import restaurar_registro
-from app.storage.object_keys import clave_documento, clave_original
+from app.storage.object_keys import clave_documento, clave_export, clave_original, clave_output, clave_progress
 from app.storage.provider import StorageConflict, StorageNotFound, StorageUnavailable
 from doubles.gemini import DobleGemini
 from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
+from test_workspace_recovery import paquete
 
 pytestmark = pytest.mark.integration_mock
 MODELO = "gemini-embedding-2"
@@ -369,6 +370,73 @@ def test_lapida_remota_impide_reconstruccion(pila, lapida):
         assert e.db.esta_borrado("document", mf.document_id)
         assert e.cliente.get(f"/api/documents/{mf.document_id}", headers=e.headers).status_code == 404
         assert e.doble.llamadas_embeddings == 0
+        # Perder SQLite no debe abandonar una purga ya acreditada en OCI.
+        with pytest.raises(StorageNotFound):
+            pila.storage.get(clave_original(mf.workspace_id, mf.document_id))
+        with pytest.raises(StorageNotFound):
+            pila.storage.get(clave_documento(mf.workspace_id, mf.document_id))
+
+
+@pytest.mark.parametrize("manifiesto_presente", [True, False])
+def test_recuperacion_reanuda_purga_de_derivados_y_conserva_otros_espacios(pila, manifiesto_presente):
+    retirado = fuente(pila)
+    vigente = fuente(pila, doc="doc_otro", ws=pila.otro)
+    salida_retirada = paquete(pila.storage, retirado.workspace_id, retirado, "gen_retirada")
+    salida_vigente = paquete(pila.storage, vigente.workspace_id, vigente, "gen_vigente")
+    export_retirado = clave_export(retirado.workspace_id, salida_retirada.generation_id, "pdf")
+    export_vigente = clave_export(vigente.workspace_id, salida_vigente.generation_id, "pdf")
+    pila.storage.upload(export_retirado, b"pdf retirado")
+    pila.storage.upload(export_vigente, b"pdf vigente")
+    pila.storage.upload(
+        clave_progress(retirado.workspace_id),
+        json.dumps(
+            {
+                "version": 1,
+                "eventos": [{"document_id": retirado.document_id, "generation_id": salida_retirada.generation_id}],
+                "sin_referencia": {"valor": 3},
+            }
+        ),
+    )
+    pila.origen.agendar_borrado("document", retirado.document_id, retirado.workspace_id)
+    sincronizar_pendientes(pila.origen, pila.storage)
+    if not manifiesto_presente:
+        pila.storage.delete(clave_documento(retirado.workspace_id, retirado.document_id))
+
+    with abrir(pila) as e:
+        assert e.cliente.get(f"/api/documents/{retirado.document_id}", headers=e.headers).status_code == 404
+        assert e.db.obtener_generacion(salida_retirada.generation_id) is None
+        assert e.db.limpieza_documental_completada(retirado.workspace_id, retirado.document_id)
+        for clave in (
+            clave_original(retirado.workspace_id, retirado.document_id),
+            clave_documento(retirado.workspace_id, retirado.document_id),
+            clave_output(retirado.workspace_id, salida_retirada.generation_id),
+            export_retirado,
+        ):
+            with pytest.raises(StorageNotFound):
+                pila.storage.get(clave)
+        progreso = json.loads(pila.storage.get(clave_progress(retirado.workspace_id)))
+        assert progreso["eventos"] == [] and progreso["sin_referencia"] == {"valor": 3}
+        assert pila.storage.get(export_vigente) == b"pdf vigente"
+        assert pila.storage.get(clave_original(vigente.workspace_id, vigente.document_id)) == TEXTO
+        assert pila.storage.get(clave_output(vigente.workspace_id, salida_vigente.generation_id))
+
+
+def test_purga_recuperada_sin_cuotas_reintenta_al_configurar_indice(pila):
+    mf = fuente(pila)
+    pila.origen.agendar_borrado("document", mf.document_id, mf.workspace_id)
+    sincronizar_pendientes(pila.origen, pila.storage)
+    with abrir(pila, cuotas=False) as e:
+        assert e.db.esta_borrado("document", mf.document_id)
+        assert not e.db.limpieza_documental_completada(mf.workspace_id, mf.document_id)
+        assert e.db._conn.execute("SELECT COUNT(*) FROM document_cleanup").fetchone()[0] == 1
+        assert pila.storage.get(clave_original(mf.workspace_id, mf.document_id)) == TEXTO
+        assert e.doble.llamadas_embeddings == 0
+        e.db._conn.execute("UPDATE document_cleanup SET proximo_intento_en=NULL")
+    with abrir(pila) as e:
+        assert e.db.limpieza_documental_completada(mf.workspace_id, mf.document_id)
+        assert e.doble.llamadas_embeddings == 0
+        with pytest.raises(StorageNotFound):
+            pila.storage.get(clave_original(mf.workspace_id, mf.document_id))
 
 
 def test_despacho_concurrente_y_workspace_ajeno(pila, monkeypatch):

@@ -106,6 +106,13 @@ incluso sin cuotas, y se incorporan al control local antes de restaurar document
 Las retiradas aún no reflejadas en OCI usan la sincronización de lápidas existente;
 el lector no modifica el catálogo ni abre un cliente Chroma.
 
+Las lápidas también restauran filas de control y la obligación de purga, aunque
+el manifiesto documental ya haya sido borrado. Estos registros no habilitan
+lecturas ni nuevas ingestiones. Los paquetes canónicos verificables conservan
+únicamente su relación con el documento retirado para limpiar outputs, exports
+y referencias de progreso. Sin índice configurado la obligación sigue pendiente;
+se reintenta al disponer del índice, sin llamar a Gemini ni restaurar jobs.
+
 `EfectosDocumentales`, ejecutado por el sincronizador/lifespan existentes,
 reserva durablemente el ID de un nuevo intento antes de despacharlo en
 `GestorTrabajos`. Encolar job/evento y activar el intento comparten commit.

@@ -81,6 +81,8 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
         lapidas.update(("document", doc) for doc in documentos_retirados_locales)
         documentos, generaciones, progreso = [], [], None
         evidencias = {}
+        manifiestos_retirados = {}
+        generaciones_retiradas = []
         if vigente:
             for fuente in _objetos(storage, f"source_documents/{workspace_id}/"):
                 if not fuente.object_name.endswith("/manifest.json"):
@@ -93,6 +95,7 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 if doc.borrado:
                     lapidas.add(("document", doc.document_id))
                 if ("document", doc.document_id) in lapidas:
+                    manifiestos_retirados[doc.document_id] = (fuente.etag, doc)
                     continue
                 if not doc.admision_recuperable:
                     continue
@@ -135,6 +138,16 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                     raise ValueError("Paquete con almacenamiento ajeno")
                 doc = por_id.get(paquete.documento_fuente.document_id)
                 if doc is None:
+                    document_id = paquete.documento_fuente.document_id
+                    if ("document", document_id) in lapidas:
+                        retirado = manifiestos_retirados.get(document_id)
+                        if retirado is not None and (
+                            paquete.documento_fuente.hash.removeprefix("sha256:") != retirado[1].hash_sha256
+                        ):
+                            raise ValueError("Paquete de otra versión del documento retirado")
+                        # Solo relación de control para purgar sus derivados;
+                        # la lápida del documento impide servir este resultado.
+                        generaciones_retiradas.append(paquete)
                     continue
                 if paquete.documento_fuente.hash.removeprefix("sha256:") != doc.hash_sha256:
                     raise ValueError("Paquete de otra versión del documento")
@@ -158,6 +171,8 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 ):
                     raise ValueError("La fuente cambió durante su restauración")
         storage.get(objeto.object_name, if_match=objeto.etag)
+        for document_id, (etag, _) in manifiestos_retirados.items():
+            storage.get(clave_documento(workspace_id, document_id), if_match=etag)
         with db.transaccion():
             if not db.restaurar_workspace(datos):
                 continue
@@ -184,6 +199,22 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 )
             if not vigente:
                 db.restaurar_lapida(workspace_id, "workspace", workspace_id, datos["borrado_en"], datos["expira_en"])
+            for tipo, document_id in sorted(lapidas):
+                if tipo != "document":
+                    continue
+                retirado = manifiestos_retirados.get(document_id)
+                # document_cleanup requiere una fila de control. No restaurar
+                # esta relación abandona la purga tras perder SQLite, incluso
+                # cuando la lápida remota conserva correctamente el 404.
+                # El hash puede ser desconocido si el manifiesto ya se purgó.
+                db.registrar_documento(
+                    document_id,
+                    workspace_id,
+                    "Documento retirado",
+                    DocumentStatus.FAILED,
+                    retirado[1].hash_sha256 if retirado else None,
+                )
+                db.agendar_efecto_documental(workspace_id, document_id)
             for doc in documentos:
                 # Ready solo después de reconstruir su índice y, cuando corresponda, visión.
                 estado = DocumentStatus.FAILED if doc.estado == DocumentStatus.FAILED else DocumentStatus.PROCESSING
@@ -200,6 +231,10 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 if doc.document_id in evidencias:
                     db.acreditar_documento_restaurado(doc.document_id, evidencias[doc.document_id])
             for paquete in generaciones:
+                db.registrar_generacion(
+                    paquete.generation_id, workspace_id, paquete.documento_fuente.document_id, JobStatus.COMPLETED
+                )
+            for paquete in generaciones_retiradas:
                 db.registrar_generacion(
                     paquete.generation_id, workspace_id, paquete.documento_fuente.document_id, JobStatus.COMPLETED
                 )

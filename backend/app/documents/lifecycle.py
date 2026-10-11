@@ -155,7 +155,11 @@ class EfectosDocumentales:
                 raise
             manifest = None
         retirado = retirado or (manifest is not None and manifest.borrado)
-        if manifest is not None and manifest.hash_sha256 != efecto["hash"]:
+        if (
+            manifest is not None
+            and manifest.hash_sha256 != efecto["hash"]
+            and not (retirado and efecto["hash"] is None)
+        ):
             raise StorageUnavailable("Fuente ajena al efecto pendiente")
 
         purgar = retirado or efecto["admision_estado"] == "fallida"
