@@ -1289,6 +1289,8 @@ class RegistroOperativo:
                     "DELETE FROM events WHERE job_id=? AND workspace_id=?", (trabajo["job_id"], workspace_id)
                 )
             for generacion in generaciones:
+                self._conn.execute("DELETE FROM approved_outputs WHERE generation_id=?", (generacion,))
+                self._conn.execute("UPDATE generations SET parametros_json=NULL WHERE generation_id=?", (generacion,))
                 self._conn.execute("UPDATE generations SET error_message=NULL WHERE generation_id=?", (generacion,))
                 self._conn.execute(
                     "DELETE FROM events WHERE generation_id=? AND workspace_id=?", (generacion, workspace_id)
