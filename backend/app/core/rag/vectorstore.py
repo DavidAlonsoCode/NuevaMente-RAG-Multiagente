@@ -555,13 +555,23 @@ class VectorStoreChroma:
             filtro["$and"].append({"orden": {"$in": ordenes}})
             cantidad = len(ordenes)
         if tipo_fuente is not None:
-            cantidad = sum(
-                (c.source_type or "text") == tipo_fuente and (seccion is None or seccion_del_chunk(c) == seccion)
-                for c in (Chunk.model_validate_json(m["chunk"]) for m in datos_activos["metadatas"])
-            )
+            coincidencias_tipo = []
+            for metadata in datos_activos["metadatas"]:
+                chunk = Chunk.model_validate_json(metadata["chunk"])
+                if (chunk.source_type or "text") == tipo_fuente and (
+                    seccion is None or seccion_del_chunk(chunk) == seccion
+                ):
+                    coincidencias_tipo.append(metadata)
+            cantidad = len(coincidencias_tipo)
             if not cantidad:
                 return []
-            filtro["$and"].append({"source_type": tipo_fuente})
+            if all(m.get("source_type") == tipo_fuente for m in coincidencias_tipo):
+                filtro["$and"].append({"source_type": tipo_fuente})
+            else:
+                # Los índices anteriores al #30 guardan el tipo en el payload,
+                # pero no en metadata. Filtrar sus filas verificadas conserva
+                # ámbito/versión sin consumir nuevas indexaciones o vectores.
+                filtro["$and"].append({"orden": {"$in": [m["orden"] for m in coincidencias_tipo]}})
         vector = self.embeddings.embed_query(consulta, contexto=contexto)
         contexto.chequear()
         datos = coleccion.query(
