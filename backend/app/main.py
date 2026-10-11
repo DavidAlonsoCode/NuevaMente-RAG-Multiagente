@@ -39,6 +39,7 @@ import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -47,15 +48,18 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
-from app.api.routes import jobs, workspaces
+from app.api.routes import demo_documents, documents, jobs, workspaces
 from app.config import Configuracion, config
-from app.jobs.manager import ControlesOperativos, GestorTrabajos
+from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos
 from app.jobs.store import RegistroOperativo
 from app.schemas.errors import ErrorAplicacion, ErrorBody, ErrorCode, ErrorResponse
 from app.session.manifests import SincronizadorManifiestos, sincronizar_pendientes
 from app.session.recovery import restaurar_registro
 from app.storage.oci_storage import get_storage_provider
 from app.storage.provider import StorageUnavailable
+
+if TYPE_CHECKING:
+    from app.core.rag.embeddings import EmbeddingProvider
 
 # ContextVar: una variable que vale "para la petición actual". Los módulos
 # de negocio podrán leer el request_id para logging sin pasarlo a mano por
@@ -111,7 +115,12 @@ def _request_id_de(request: Request) -> str:
     return getattr(request.state, "request_id", None) or request_id_actual.get()
 
 
-def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
+def crear_app(
+    configuracion: Configuracion | None = None,
+    *,
+    proveedor_embeddings: EmbeddingProvider | None = None,
+    cuotas_proveedor: CuotasProveedor | None = None,
+) -> FastAPI:
     """Fábrica de la aplicación. Recibe configuración inyectable para tests.
 
     Al construir la app valida la configuración crítica: en producción, si
@@ -121,6 +130,16 @@ def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
     """
     ajustes = configuracion or config
     ajustes.validar_critico()
+    if cuotas_proveedor is None and ajustes.embedding_quota_rpm is not None:
+        cuotas_proveedor = CuotasProveedor(
+            {
+                ajustes.gemini_embedding_model: CuotasModelo(
+                    ajustes.embedding_quota_rpm, ajustes.embedding_quota_tpm, ajustes.embedding_quota_rpd
+                )
+            }
+        )
+    if proveedor_embeddings is not None and cuotas_proveedor is None:
+        raise ValueError("El proveedor documental requiere las cuotas compartidas explícitas")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -129,27 +148,77 @@ def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
         try:
             restaurar_registro(app.state.db, app.state.storage_provider)
             sincronizar_pendientes(app.state.db, app.state.storage_provider)
-            sincronizador = SincronizadorManifiestos(app.state.db, app.state.storage_provider)
-            sincronizador.iniciar()
             controles = ControlesOperativos(
                 max_en_cola=ajustes.max_queued_jobs,
                 deadline_ejecucion_segundos=ajustes.generation_deadline_seconds,
             )
-            gestor = GestorTrabajos(app.state.db, controles=controles)
+            gestor = GestorTrabajos(app.state.db, controles=controles, cuotas=cuotas_proveedor)
             app.state.jobs_manager = gestor
+            if cuotas_proveedor is not None:
+                from app.documents.runtime import crear_recursos_documentales
+
+                recursos = crear_recursos_documentales(
+                    ajustes, app.state.db, app.state.storage_provider, gestor, proveedor=proveedor_embeddings
+                )
+                app.state.vectorstore = recursos.indice
+                app.state.documents_admission = recursos.admision
+                app.state.documents_query = recursos.consulta
+            else:
+                from app.documents.query import ServicioConsultaDocumental
+
+                # Listado/detalle no requieren Gemini ni inventan cuotas. El
+                # upload y las fuentes con índice no configurado fallan 503.
+                app.state.documents_query = ServicioConsultaDocumental(
+                    app.state.db,
+                    app.state.storage_provider,
+                    None,
+                    plazo_lectura=ajustes.generation_deadline_seconds,
+                )
+            from app.documents.demo import ServicioCatalogoDemo
+            from app.documents.lifecycle import EfectosDocumentales
+
+            app.state.demo_documents_query = ServicioCatalogoDemo(
+                app.state.db,
+                app.state.storage_provider,
+                app.state.vectorstore,
+                plazo=ajustes.generation_deadline_seconds,
+            )
+
+            efectos = (
+                app.state.documents_admission.procesar.efectos
+                if app.state.documents_admission is not None
+                else EfectosDocumentales(app.state.db, app.state.storage_provider, None)
+            )
+            efectos.gestor = gestor
+            app.state.documents_effects = efectos
+            efectos.reconciliar()
+            sincronizador = SincronizadorManifiestos(
+                app.state.db, app.state.storage_provider, efectos_documentales=efectos.reconciliar
+            )
+            sincronizador.iniciar()
             yield
         finally:
-            # Esperar llamadas en vuelo antes de cerrar el registro compartido.
+            # Ningún finally puede cerrar recursos si stop falló. Se espera al
+            # único worker y a observadores externos; no se mata un hilo activo.
+            if sincronizador is not None:
+                sincronizador.detener()
+            if gestor is not None:
+                gestor.detener(timeout=None)
             try:
-                if gestor is not None:
-                    gestor.detener()
+                if app.state.vectorstore is not None:
+                    app.state.vectorstore.cerrar()
             finally:
-                if sincronizador is not None:
-                    sincronizador.detener()
-            cerrar_storage = getattr(app.state.storage_provider, "cerrar", None)
-            if callable(cerrar_storage):
-                cerrar_storage()
-            app.state.db.cerrar()
+                app.state.documents_admission = None
+                app.state.documents_query = None
+                app.state.demo_documents_query = None
+                app.state.documents_effects = None
+                app.state.vectorstore = None
+                try:
+                    cerrar_storage = getattr(app.state.storage_provider, "cerrar", None)
+                    if callable(cerrar_storage):
+                        cerrar_storage()
+                finally:
+                    app.state.db.cerrar()
 
     app = FastAPI(
         title="NuevaMente API",
@@ -308,9 +377,18 @@ def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
     app.state.config = ajustes
     app.state.db = RegistroOperativo(ruta_db=Path(ajustes.data_dir) / "operativo.db")
     app.state.storage_provider = get_storage_provider(configuracion=ajustes)
+    # Los schemas públicos documentales se implementan con la dirección del
+    # equipo; sus precisiones conservan revisión contract-change pendiente.
+    app.state.documents_admission = None
+    app.state.documents_query = None
+    app.state.demo_documents_query = None
+    app.state.documents_effects = None
+    app.state.vectorstore = None
 
     app.include_router(workspaces.router)
     app.include_router(jobs.router)
+    app.include_router(documents.router)
+    app.include_router(demo_documents.router)
 
     return app
 

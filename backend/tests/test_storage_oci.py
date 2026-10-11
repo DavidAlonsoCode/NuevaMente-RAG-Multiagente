@@ -313,7 +313,8 @@ def test_retry_after_se_conserva_y_no_repite_pipeline(entorno):
     with pytest.raises(StorageNotFound):
         proveedor.get("demo/prueba")
     llamadas = [c for c in sdk.calls if c[0] == "get"]
-    assert len(llamadas) == 3 and reloj[0] - inicio == 4
+    assert len(llamadas) == 3
+    assert reloj[0] - inicio == pytest.approx(4)
     assert len({c[2]["opc_client_request_id"] for c in llamadas}) == 1
 
 

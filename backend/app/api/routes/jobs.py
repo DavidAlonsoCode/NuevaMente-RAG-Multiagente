@@ -36,6 +36,7 @@ def _trabajo_propio(gestor: GestorTrabajos, job_id: str, workspace_id: str) -> d
         or trabajo["workspace_id"] != workspace_id
         or trabajo["generation_id"] is not None
         or trabajo["tipo"] not in TIPOS_COMUNES
+        or (trabajo.get("document_id") and gestor.store.obtener_documento(trabajo["document_id"]) is None)
     ):
         raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Trabajo no encontrado.")
     return trabajo

@@ -84,6 +84,9 @@ class Configuracion(BaseSettings):
     gemini_verification_model: str = "gemini-2.5-flash"
     gemini_embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = Field(default=768, gt=0)
+    embedding_quota_rpm: int | None = Field(default=None, gt=0)
+    embedding_quota_tpm: int | None = Field(default=None, gt=0)
+    embedding_quota_rpd: int | None = Field(default=None, gt=0)
     generation_max_output_tokens: int = Field(default=8192, gt=0)
     retrieval_k: int = Field(default=5, ge=1, le=100)
     retrieval_fetch_k: int = Field(default=15, ge=1, le=100)
@@ -148,6 +151,9 @@ class Configuracion(BaseSettings):
         """
         if self.retrieval_fetch_k < self.retrieval_k:
             raise ValueError("RETRIEVAL_FETCH_K debe ser mayor o igual que RETRIEVAL_K")
+        cuotas = (self.embedding_quota_rpm, self.embedding_quota_tpm, self.embedding_quota_rpd)
+        if any(c is not None for c in cuotas) and not all(c is not None for c in cuotas):
+            raise ValueError("Configurar juntas EMBEDDING_QUOTA_RPM, EMBEDDING_QUOTA_TPM y EMBEDDING_QUOTA_RPD")
         if self.app_env == "production":
             if self.mock_oci or self.mock_gemini:
                 raise ValueError(

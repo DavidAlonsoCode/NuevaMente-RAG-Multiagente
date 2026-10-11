@@ -17,10 +17,7 @@ ORIGIN_SECRET = "origen-autenticado-solamente-para-tests"
 
 
 @pytest.fixture
-def client(tmp_path):
-    security._peticiones_globales.clear()
-    security._peticiones_ip.clear()
-    security._intentos_fallidos_ip.clear()
+def client(tmp_path, aislar_estado_seguridad):
     app = crear_app(
         Configuracion(
             _env_file=None,

@@ -255,6 +255,45 @@ def test_reconstruccion_completa_paginada_desde_originales(pila, mock_storage):
     assert indice.contar("espacio-b", "doc-ajeno", contexto=ctx("espacio-b")) == 0
 
 
+@pytest.mark.parametrize("borrado", [False, True])
+def test_admision_no_confirmada_no_extrae_ni_reutiliza_indice(pila, mock_storage, monkeypatch, borrado):
+    indice, doble = pila
+    manifest = guardar_fuente(mock_storage, borrado=borrado)
+    indice.indexar("espacio-a", "doc-a", chunks(), contexto=ctx())
+    llamadas = doble.llamadas_embeddings
+    manifest.admision_confirmada = False
+    mock_storage.upload(clave_documento("espacio-a", "doc-a"), manifest.model_dump_json())
+
+    def no_extraer(*args, **kwargs):
+        pytest.fail("Una admisión pendiente no autoriza extraer ni indexar")
+
+    monkeypatch.setattr("app.core.rag.rebuild.parsear_archivo", no_extraer)
+    assert reconstruir_workspace(mock_storage, indice, contexto=ctx()) == []
+    assert indice.contar("espacio-a", "doc-a", contexto=ctx()) == 0
+    assert doble.llamadas_embeddings == llamadas
+    assert indice._retirado("espacio-a", "doc-a") is borrado
+
+
+@pytest.mark.parametrize("borrado", [False, True])
+def test_flag_oci_sin_commit_sqlite_no_reconstruye_indice(pila, mock_storage, monkeypatch, borrado):
+    indice, doble = pila
+    manifest = guardar_fuente(mock_storage, borrado=borrado)
+    indice.indexar("espacio-a", "doc-a", chunks(), contexto=ctx())
+    llamadas = doble.llamadas_embeddings
+    manifest.admision_confirmada = True
+    manifest.admision_sqlite_confirmada = False
+    mock_storage.upload(clave_documento("espacio-a", "doc-a"), manifest.model_dump_json())
+
+    def no_extraer(*args, **kwargs):
+        pytest.fail("El flag OCI solo no acredita el commit SQLite")
+
+    monkeypatch.setattr("app.core.rag.rebuild.parsear_archivo", no_extraer)
+    assert reconstruir_workspace(mock_storage, indice, contexto=ctx()) == []
+    assert indice.contar("espacio-a", "doc-a", contexto=ctx()) == 0
+    assert doble.llamadas_embeddings == llamadas
+    assert indice._retirado("espacio-a", "doc-a") is borrado
+
+
 def test_reconstruccion_verifica_hash_y_propaga_fallo_oci(pila, mock_storage, monkeypatch):
     indice, doble = pila
     guardar_fuente(mock_storage)

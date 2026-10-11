@@ -100,6 +100,229 @@ Esto supone Caddy como entrada pública directa, según la arquitectura vigente.
 | `DELETE /api/documents/{id}` | Borra original, índice, derivados, chat y progreso vinculados. |
 | `GET /api/documents/{id}/sources/{chunk_id}` | Fragmento/página original autorizado (base de «Ver la fuente»; imágenes para diagramas). |
 
+#### Issue 19 — precisiones HTTP propuestas bajo dirección del equipo (etapa 4)
+
+**Estado: implementadas localmente para revisión; requieren `contract-change`
+con revisión API+UI+AGT+RAG antes de su aprobación como contrato congelado.**
+La autorización de implementar no sustituye esa revisión. Rutas, autenticación,
+límites, estados, envolvente de errores e idempotencia ya estaban determinados
+arriba. Las formas completas, nulabilidad, cursor y traducción de incertidumbre
+son precisiones nuevas. No se añade `WORKSPACE_BUSY` al enum vigente.
+
+- Upload JSON conserva `documento_titulo` / `documento_contenido`. Multipart
+  propone un único archivo `file` y campo opcional `titulo` (1..300 caracteres
+  con texto). Campos/archivos extra o repetidos: 422 `VALIDATION_ERROR`.
+  MIME no acredita formato; el parser valida firma y contenido. El nombre es
+  etiqueta, nunca ruta ni clave de storage. El límite del archivo es 20 MiB PDF
+  o 5 MiB MD/TXT; transporte acotado a 20 MiB + 64 KiB multipart y
+  6 × 5 MiB + 64 KiB JSON para escapes y estructura. Exceso: 413, sin truncar.
+  El conteo de páginas/tokens y parseo completo ocurren en el job: un rechazo
+  posterior se informa por sus endpoints, no convierte el 202 previo en éxito
+  del procesamiento. El 202 acredita original, manifiesto, commit de admisión
+  SQLite y evidencia final OCI; nunca basta una reserva.
+- Respuesta 202: `{document_id, status: "processing", job_id, status_url,
+  events_url, cancel_url}`. URLs de `/api/jobs/{job_id}`, `/events` y `/cancel`;
+  no se duplica la API de progreso. Reintento confirmado devuelve el mismo
+  cuerpo, incluso si el trabajo ya terminó. IDs distintos pueden compartir
+  contenido; solo reutilizan embeddings compatibles dentro del mismo workspace.
+- Listado: `{items: [DocumentoResponse], next_cursor: string | null}`;
+  `limit=20`, rango 1..100. Orden **ascendente por fecha de creación UTC e ID**.
+  Cursor opaco firmado y ligado al workspace; 400 `INVALID_REQUEST` si inválido,
+  alterado o de otro espacio. No requiere que exista su documento ancla.
+  Se filtran lápidas y admisiones incompletas antes de contar elementos; el
+  lookahead no se consume. Retiradas concurrentes pueden acortar una página
+  con cursor válido. Es keyset, no snapshot: elementos creados después del
+  ancla pueden aparecer; cambios posteriores no resucitan recursos filtrados.
+- Detalle/listado: `{document_id, titulo, status, metadata, cobertura, error}`,
+  mediante schemas públicos. `metadata` contiene `extension`, `tamano_bytes`,
+  `creado_en`, `cantidad_paginas` y `cantidad_tokens`; extracción desconocida
+  usa null, nunca cero inventado. Metadata legacy ausente: null.
+  `cobertura` desconocida: null; conocida contiene `paginas_procesadas`,
+  `paginas_omitidas`, `paginas_visuales_pendientes`, `secciones_procesadas`
+  (ID, título y líneas), `secciones_omitidas`, `secciones_visuales_pendientes`.
+  No se conocen los IDs/títulos de secciones visuales: sus inventarios son
+  null mientras haya páginas pendientes; [] solo si se conoce su ausencia.
+  `error` es null salvo failed, donde lleva `{code: null, message: diagnóstico
+  seguro}`; el diagnóstico terminal detallado se consulta en el job existente.
+  No expone filas, hash/configuración interna del parser, tokens, claves OCI
+  ni caché de idempotencia. Visión pendiente: job textual completed, documento
+  processing; cantidad_tokens puede ser cero real y la cobertura se conserva
+  para #30. No se genera contenido visual.
+- Fuentes: un fragmento por request, sin paginación ni rutas públicas nuevas
+  de secciones/chunks: `{document_id, chunk_id, texto, pagina, seccion,
+  seccion_id}`; ubicación no disponible: null. El título no identifica la
+  sección. Se exige ready **SQLite y OCI**, admisión explícitamente confirmada
+  y cobertura/metadata coherentes y completas. Legacy sin evidencia suficiente
+  conserva listado/detalle, pero no habilita contenido. Se
+  revalida sesión, ownership, lápidas, hash y publicación después del I/O.
+  Processing/failed o índice inconsistente: 409 `INVALID_STATE`; recurso
+  inexistente/ajeno/retirado: 404. Storage inválido/no verificable o deadline
+  de lectura: 503 `STORAGE_UNAVAILABLE`; índice no configurado: 503
+  `PROVIDER_UNAVAILABLE`. Chroma por sí solo jamás habilita contenido.
+- Toda admisión con fila en `document_admissions` exige ambos marcadores
+  `admision_confirmada` y `admision_sqlite_confirmada` exactamente true y
+  estado encolada. Compatibilidad heredada: sin fila y ambos marcadores
+  ausentes/null. Los manifiestos nuevos reconstruidos sin su registro de
+  admisión no se tratan como legacy; quedan bloqueados para reconciliación.
+  **Precisión H02 propuesta, sujeta a revisión `contract-change`:** después
+  de perder SQLite, una procedencia local restaurada desde OCI puede autorizar
+  listado/detalle sin fabricar una admisión histórica. Exige workspace vigente,
+  identidad canónica, original presente y SHA-256 verificado, metadata válida,
+  ambos marcadores exactamente true y ausencia de lápidas locales/remotas.
+  Esa evidencia no autoriza fuentes ni generación: un nuevo trabajo real de
+  reconstrucción debe confirmar extracción, cobertura, índice completo y
+  manifiesto OCI antes del commit terminal local. Con visión pendiente se
+  conserva processing. Failed histórico no se reprocesa automáticamente.
+  Las sesiones se recuperan con el código; no se restauran tokens, jobs/eventos
+  históricos, Idempotency-Key ni respuestas de upload perdidas. Las rutas,
+  schemas y códigos HTTP permanecen iguales; esta excepción de acceso requiere
+  revisión del equipo antes de merge/publicación del contrato.
+- Un trabajo activo/encolado o admisión en curso en el workspace: 429
+  **`RATE_LIMITED`**, código ya vigente. La idempotencia se reconoce primero;
+  clave incompatible: 409 `IDEMPOTENCY_CONFLICT`. **`WORKSPACE_BUSY` continúa
+  como propuesta pendiente de revisión**, sin cambio unilateral del enum.
+- Duplicado aún sin confirmación: espera acotada (10 segundos internos por
+  defecto, sin mantener transacciones SQLite durante storage/espera); al
+  agotarse, 503 `STORAGE_UNAVAILABLE`, sin recibo ni IDs. Details:
+  `{confirmacion: "indeterminada", idempotency_key_presente: boolean}`.
+  Fallos de storage de upload: mismo código, confirmacion "no_verificable".
+  503 no afirma fracaso definitivo; conserva intención y estado. Con clave,
+  reutilizarla evita una segunda intención, pero **no garantiza reconciliación
+  ni éxito posterior**. Sin clave no se promete recuperación idempotente:
+  falta una decisión pública para identificar esa intención perdida.
+- Activación: cuotas compartidas explícitas por inyección o configuración
+  conjunta `EMBEDDING_QUOTA_RPM`, `EMBEDDING_QUOTA_TPM`, `EMBEDDING_QUOTA_RPD`,
+  positivas y para `GEMINI_EMBEDDING_MODEL`. No hay valores universales ni
+  fallback a un proveedor mock; mock exige doble explícito. Sin cuotas,
+  listado/detalle están disponibles; upload responde 503 `PROVIDER_UNAVAILABLE`
+  sin reservar documentos. La cuenta del equipo debe determinar los valores
+  de producción; no se modifica despliegue #49/#50 aquí.
+
+Ejemplo de aceptación confirmada:
+
+```json UploadDocumentoResponse
+{"document_id":"doc_ejemplo","status":"processing","job_id":"job_ejemplo","status_url":"/api/jobs/job_ejemplo","events_url":"/api/jobs/job_ejemplo/events","cancel_url":"/api/jobs/job_ejemplo/cancel"}
+```
+
+Ejemplo de detalle aún sin extracción:
+
+```json DocumentoResponse
+{"document_id":"doc_ejemplo","titulo":"Redes","status":"processing","metadata":{"extension":"txt","tamano_bytes":800,"creado_en":"2026-10-10T12:00:00Z","cantidad_paginas":null,"cantidad_tokens":null},"cobertura":null,"error":null}
+```
+
+#### DELETE documental — precisión propuesta, pendiente de revisión `contract-change`
+
+`DELETE /api/documents/{document_id}` está registrado localmente en etapa 5B.
+Requiere sesión vigente y ownership del workspace. Sin body ni otra cola.
+La lápida local y su obligación de limpieza se confirman en una transacción antes
+de responder; listado, detalle, fuentes, generaciones y trabajos vinculados dejan
+de autorizar acceso. Se solicita cancelación cooperativa, sin matar llamadas en vuelo.
+
+- **202**, `{"cleanup_pending":true}`: retirada lógica confirmada, quedan efectos
+  físicos pendientes. No afirma que el original o índice ya fueron eliminados.
+- **204**, sin body: limpieza verificada, incluido Chroma y objetos vinculados.
+- **404**: inexistente, ajeno o retirado previamente. Repetir DELETE no cancela
+  la obligación durable ni genera otra identidad; puede responder 404 aun si
+  sigue pendiente la limpieza. Los GET documentales posteriores responden 404.
+- **401**: sesión inválida. **503** con envolvente existente y
+  `STORAGE_UNAVAILABLE`: no se pudo acreditar el commit de retirada.
+
+La limpieza reutiliza `document_cleanup`, `EfectosDocumentales` y el sincronizador.
+Confirma lápidas privadas con ETag/versiones antes de eliminar evidencia; conserva
+las lápidas remotas más recientes. Retira catálogo/chunks de Chroma, original,
+manifiesto documental, output/exports de generaciones realmente relacionadas,
+resultados/eventos operativos vinculados y referencias explícitas en progreso.
+No borra el agregado completo de progreso ni recursos de otros documentos; no
+hay persistencia independiente de chat integrada. Conserva identidades, estados
+terminales, idempotencia y lápidas para protección y reintentos. No borra demo.
+Una respuesta perdida no acredita limpieza física: se verifica ausencia/estado y
+se reintenta. Productores en vuelo mantienen el efecto pendiente hasta detenerse.
+
+Los status 202/204, JSON pendiente y repetición 404 precisan el contrato anterior
+según dirección del equipo, pero requieren revisión `contract-change`. La pérdida
+completa del volumen SQLite antes de sincronizar una lápida sigue pendiente de
+decisión del equipo. Esta implementación local no declara cerrado el Issue 19.
+
+### Catálogo demo de solo lectura (Issue 19, H03)
+
+**Dirección vigente: decisiones técnicas y contractuales aprobadas por delegación
+explícita del equipo. Implementación local; la integración conserva la trazabilidad
+`contract-change` y revisión API+UI+AGT+RAG.** No cambia las rutas privadas ni el
+contrato de generación. Issue 25 consume estas lecturas, Issue 49 prepara y mantiene
+la biblioteca desplegada y Issue 30 completa visión.
+
+| Método y ruta | Respuesta 200 |
+|---|---|
+| `GET /api/demo/documents?limit=20&cursor=…` | `DocumentosResponse`: `{items, next_cursor}` |
+| `GET /api/demo/documents/{document_id}` | `DocumentoResponse`: `{document_id, titulo, status, metadata, cobertura, error}` |
+| `GET /api/demo/documents/{document_id}/sources/{chunk_id}` | `FuenteDocumentoResponse`: `{document_id, chunk_id, texto, pagina, seccion, seccion_id}` |
+
+- Bearer obligatorio; token ausente/inválido/revocado/vencido o workspace retirado:
+  401 `SESSION_INVALID`. Cada solicitud revalida sesión. Cualquier sesión válida
+  puede leer la demo compartida. Estas lecturas no renuevan actividad/retención:
+  excepción explícita a la renovación agrupada, para conservar GET sin escrituras.
+- Resolución exclusivamente por claves canónicas `demo/{document_id}/manifest.json`
+  y `demo/{document_id}/original`, ámbito fijo `biblioteca-demo` y colección demo.
+  No se acepta workspace del cliente ni se consulta un documento privado como
+  fallback. Un ID coincidente en ambos ámbitos resuelve solamente su fuente demo.
+  Los resultados futuros de generación pertenecen al workspace del usuario;
+  autorización y generación demo no se implementan mediante estas rutas.
+- OCI es el inventario autoritativo; un original o chunks sin manifiesto no crean
+  una tarjeta. Catálogo accesible sin manifiestos: 200 `{items: [], next_cursor: null}`.
+  Documento/chunk inexistente, privado o retirado: 404 `NOT_FOUND`. Lápidas demo
+  remotas y del catálogo local bloquean el acceso; DELETE privado no retira demo.
+- Paginación keyset por `document_id` ASCII ascendente, sensible a mayúsculas:
+  `limit=20`, rango 1..100; inválido: 422 `VALIDATION_ERROR`. Cursor opaco firmado
+  con dominio `biblioteca-demo`, distinto del cursor privado y sin fecha inventada.
+  Cursor inválido/alterado/privado: 400 `INVALID_REQUEST`. Es compartible entre
+  sesiones demo válidas; no autentica ni otorga permisos. No tiene expiración
+  temporal. El ancla puede desaparecer. Retiradas concurrentes pueden acortar una
+  página; el cursor no salta el lookahead. Inserciones anteriores al ancla se ven
+  al reiniciar el recorrido: no se ofrece un snapshot inmutable.
+- Metadata/cobertura desconocida: null, nunca conteos o fechas fabricados. Las
+  secciones MD/TXT conservan ID, título y líneas, ordenadas por ubicación; títulos
+  repetidos no se colapsan. PDF conserva páginas y `pagina:N` en los chunks; no
+  fabrica líneas ni temas. Un inventario textual de secciones vacío puede coexistir
+  con páginas PDF procesadas. No se añade una ruta pública de secciones.
+- `status` es disponibilidad comprobada, no promesa de un job activo. Processing
+  y failed persisten aunque existan chunks; el diagnóstico failed público es
+  seguro y no remite a un job histórico inexistente. Visión pendiente conserva
+  processing y bloquea fuentes. La lectura textual no interpreta imágenes.
+- Ready exige original con SHA-256 verificado, manifiesto vigente sin lápidas,
+  metadata coherente, cobertura completa y evidencia interna `publicacion_demo`
+  compatible con la versión activa completa de Chroma. Se comprueban modelo,
+  dimensión, preparación, cantidad/huella de chunks, orden e identidades físicas,
+  pertenencia y ubicación. No basta `estado=ready`, un booleano ni chunks sueltos.
+  No se fabrican admisiones ni confirmaciones SQLite privadas.
+- Evidencia ausente o índice comprobablemente ausente/incompleto/incompatible:
+  listado/detalle 200 processing; fuente 409 `INVALID_STATE`. Configuración de
+  índice ausente cuando se necesita comprobar ready, o Chroma temporalmente
+  inaccesible: 503 `PROVIDER_UNAVAILABLE`, sin convertir el fallo en estado durable.
+  OCI inaccesible, original ausente/hash incorrecto o metadata/manifiesto inválidos:
+  503 `STORAGE_UNAVAILABLE`, sin simular catálogo vacío. Cambio de ETag durante
+  lectura: 409 `INVALID_STATE`; se debe repetir la lectura. Se revalidan original,
+  manifiesto, lápidas, sesión y versión Chroma antes de entregar contenido.
+- Extensión interna mínima y retrocompatible del manifiesto: `publicacion_demo`
+  opcional, exclusiva de `biblioteca-demo`. Versión 1 contiene `hash_sha256`,
+  `version_indice`, `cantidad_chunks`, `huella_chunks`, `huella_config_chunker`, `huella_documental`,
+  `modelo_embeddings`, `dimensiones_embeddings`, `preparacion_embeddings`.
+  La huella de chunks usa la firma del catálogo de #17; la configuración usa
+  `ConfigChunker.huella(parser)`. `huella_documental_demo` liga metadata y cobertura
+  exactas, incluyendo fecha, conteos y huella de parser, a esa publicación.
+  Issue 49 debe emitir esta evidencia solo después
+  de verificar su publicación, con ETag vigente. H03 únicamente valida y consume
+  el bloque: no implementa precarga, ejecución de rebuild, embeddings ni runbook.
+- GET no crea embeddings, trabajos, índices ni escrituras SQLite/OCI. Conserva
+  schemas Pydantic y envolvente de errores, sin publicar configuración, hash,
+  ETags, versión Chroma, claves OCI ni tokens. Todas estas precisiones y las tres
+  rutas deben identificarse en la revisión de integración `contract-change`.
+
+Ejemplo de fuente textual (ilustrativo, no contenido desplegado):
+
+```json
+{"document_id":"demo-textual","chunk_id":"chunk-ilustrativo","texto":"Configurar destinos autorizados.","pagina":null,"seccion":"Configuración","seccion_id":"seccion:1"}
+```
+
 ### Generación (issues `Issue 31`, `Issue 29`, `Issue 32`, `Issue 33`)
 
 #### `POST /api/generate`
