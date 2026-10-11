@@ -18,6 +18,7 @@ from app.schemas.responses import (
     EvaluacionCalidad,
     IdiomaOrigen,
     Metadatos,
+    PedagogicalOutput,
     PersistenciaInfo,
     Trazabilidad,
 )
@@ -134,9 +135,12 @@ class EstadoGrafo(ContratoGrafo):
     persistencia: PersistenciaInfo | None = None
     almacenamiento: AlmacenamientoOCI | None = None
     trazabilidad: Trazabilidad | None = None
+    paquete_aprobado: PedagogicalOutput | None = None
 
     @model_validator(mode="after")
     def terminal_sin_borrador(self):
+        if self.paquete_aprobado is not None and self.status != JobStatus.COMPLETED:
+            raise ValueError("Solo completed conserva un paquete público en el estado del grafo")
         if self.status in (JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.REJECTED_QUALITY) and self.borrador:
             raise ValueError("Un estado terminal no aprobado no conserva un borrador educativo")
         if self.status == JobStatus.COMPLETED and (

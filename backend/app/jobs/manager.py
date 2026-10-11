@@ -118,6 +118,14 @@ class RechazoCalidadError(Exception):
     """El Critic agotó las revisiones sin aprobar; no es un fallo técnico."""
 
 
+class FalloTrabajoError(Exception):
+    """Diagnóstico técnico seguro de un consumidor del worker común."""
+
+    def __init__(self, codigo: str, mensaje: str):
+        super().__init__(mensaje)
+        self.codigo = codigo
+
+
 class ReintentableError(Exception):
     """Error TRANSITORIO (red, 5xx del proveedor): reintenta con backoff.
 
@@ -255,6 +263,7 @@ class ContextoEjecucion:
     reintentos_transitorios: int = 2
     base_backoff_segundos: float = 0.05
     registrar_reintento: Callable[[], None] = field(default=lambda: None, repr=False)
+    registrar_paso: Callable[[str, int], None] = field(default=lambda paso, intento: None, repr=False)
 
     def cancelado(self) -> bool:
         return self._evento_cancelacion.is_set()
@@ -574,6 +583,14 @@ class GestorTrabajos:
             reintentos_transitorios=self.controles.reintentos_transitorios,
             base_backoff_segundos=self.controles.base_backoff_segundos,
             registrar_reintento=lambda: self.store.actualizar_job(job_id, JobStatus.RUNNING, incremento_intentos=1),
+            registrar_paso=lambda paso, intento: self.store.registrar_evento(
+                workspace_id,
+                paso,
+                JobStatus.RUNNING,
+                generation_id=trabajo.get("generation_id"),
+                job_id=job_id,
+                iteration=intento,
+            ),
             _evento_cancelacion=evento_cancelacion,
         )
 
@@ -592,6 +609,9 @@ class GestorTrabajos:
             return
         except RechazoCalidadError:
             self._finalizar(job_id, JobStatus.REJECTED_QUALITY, "El contenido no superó la revisión de calidad.")
+            return
+        except FalloTrabajoError as error:
+            self._finalizar(job_id, JobStatus.FAILED, str(error), error_code=error.codigo)
             return
         except TrabajoCanceladoError:
             self._finalizar(job_id, JobStatus.CANCELLED, "Cancelado por el usuario durante la ejecución.")

@@ -138,6 +138,7 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
                 if not iniciada:
                     redacciones += 1
                     iniciada = True
+                    ctx.registrar_paso("writer", redacciones)
                 return dependencias.proveedor.generar_sync(
                     prompt,
                     modelo=dependencias.configuracion.gemini_generation_model,
@@ -167,7 +168,11 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
                 )
             )
             return update(borrador=borrador, referencias=referencias, trazabilidad=trazabilidad)
-        return fallo("VALIDATION_ERROR", "Writer agotó las redacciones sin producir un borrador válido con citas.")
+        return fallo(
+            "VALIDATION_ERROR",
+            "Writer agotó las redacciones sin producir un borrador válido con citas.",
+            JobStatus.REJECTED_QUALITY,
+        )
     except TrabajoCanceladoError:
         return fallo("CANCELLED", "Generación cancelada o espacio retirado.", JobStatus.CANCELLED)
     except DeadlineExcedidoError:
