@@ -216,7 +216,9 @@ class ServicioGeneraciones:
                 contexto,
                 lambda ws, doc: self.consulta.documento_grafo(contexto, doc) if ws == contexto.workspace_id else None,
             )
-            investigador = DependenciasResearcher(grafo, self.retriever, "3")
+            investigador = DependenciasResearcher(
+                grafo, self.retriever, self.consulta.version_parser(contexto, solicitud.document_id)
+            )
             deps = DependenciasOrquestacion(
                 grafo,
                 lambda estado: researcher(estado, investigador),
@@ -325,8 +327,9 @@ class ServicioGeneraciones:
                 return paquete
 
             try:
+                nuevo_job = None
                 self.db.actualizar_generacion(generation_id, JobStatus.QUEUED)
-                self.gestor.enqueue(
+                nuevo_job = self.gestor.enqueue(
                     fila["workspace_id"],
                     "persist",
                     ejecutar,
@@ -337,9 +340,10 @@ class ServicioGeneraciones:
                 if clave is not None:
                     self.db.idempotencia_completar(fila["workspace_id"], operacion, clave, generation_id)
             except Exception:
-                self.db.actualizar_generacion(
-                    generation_id, JobStatus.FAILED, fila["error_code"], fila["error_message"]
-                )
-                self.db.abandonar_reserva_generacion(fila["workspace_id"], generation_id, operacion, clave)
+                if nuevo_job is None:
+                    self.db.actualizar_generacion(
+                        generation_id, JobStatus.FAILED, fila["error_code"], fila["error_message"]
+                    )
+                    self.db.abandonar_reserva_generacion(fila["workspace_id"], generation_id, operacion, clave)
                 raise
         return self._propia_db(token, generation_id)

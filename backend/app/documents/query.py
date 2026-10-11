@@ -343,3 +343,14 @@ class ServicioConsultaDocumental:
             secciones=tuple(dict.fromkeys(seccion_del_chunk(c) for c in chunks)),
             contiene_material_visual=any(c.es_diagrama for c in chunks),
         )
+
+    def version_parser(self, contexto: ContextoEjecucion, document_id: str):
+        """Identidad de versión/configuración registrada por la ingesta."""
+        doc = self.db.obtener_documento(document_id)
+        if doc is None or doc["workspace_id"] != contexto.workspace_id:
+            raise TrabajoCanceladoError()
+        mf = self.visuales._autorizar(contexto, document_id, doc["hash"])
+        huella = mf.metadatos.huella_config_parser if mf.metadatos is not None else None
+        if not huella:
+            raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La ingesta no acredita la versión del parser.")
+        return "config-sha256:" + huella

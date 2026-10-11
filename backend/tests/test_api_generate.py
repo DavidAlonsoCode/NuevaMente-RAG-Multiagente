@@ -291,3 +291,51 @@ def test_historial_keyset_y_filtros(entorno):
         e.cliente.get("/api/generations", params={"cursor": primera["next_cursor"]}, headers=e.headers).status_code
         == 400
     )
+
+
+def test_confirmacion_lectura_falla_y_repetir_subida_no_regenera(entorno, monkeypatch):
+    e = entorno
+    original = e.storage.get
+
+    def lectura_inconsistente(clave, **kwargs):
+        if clave.startswith("outputs/"):
+            return b"objeto no confirmado"
+        return original(clave, **kwargs)
+
+    monkeypatch.setattr(e.storage, "get", lectura_inconsistente)
+    recibo = generar(e).json()
+    fallo = esperar(e, recibo, "failed")
+    assert fallo["error"]["code"] == "STORAGE_UNAVAILABLE" and fallo["contenido"] is None
+    llamadas = e.doble.llamadas_generacion + e.doble.llamadas_verificacion
+    monkeypatch.setattr(e.storage, "get", original)
+    assert e.cliente.post(recibo["status_url"] + "/persist", headers=e.headers).status_code == 202
+    esperar(e, recibo)
+    assert e.doble.llamadas_generacion + e.doble.llamadas_verificacion == llamadas
+
+
+@pytest.mark.parametrize("retiro", ["vencido", "documento"])
+def test_aprobado_retenido_vencido_o_retirado_no_se_publica(entorno, monkeypatch, retiro):
+    e = entorno
+    original = e.storage.upload
+
+    def fallar(clave, *args, **kwargs):
+        if clave.startswith("outputs/"):
+            raise StorageUnavailable("fallo simulado")
+        return original(clave, *args, **kwargs)
+
+    monkeypatch.setattr(e.storage, "upload", fallar)
+    recibo = generar(e).json()
+    esperar(e, recibo, "failed")
+    monkeypatch.setattr(e.storage, "upload", original)
+    llamadas = e.doble.llamadas_generacion + e.doble.llamadas_verificacion
+    if retiro == "vencido":
+        with e.db.transaccion():
+            e.db._conn.execute("UPDATE approved_outputs SET expira_en='2000-01-01T00:00:00+00:00'")
+        status = 409
+    else:
+        res = e.cliente.delete("/api/documents/" + e.doc, headers=e.headers)
+        assert res.status_code in {202, 204}
+        status = 404
+    assert e.cliente.post(recibo["status_url"] + "/persist", headers=e.headers).status_code == status
+    assert e.db._conn.execute("SELECT COUNT(*) FROM approved_outputs").fetchone()[0] == 0
+    assert e.doble.llamadas_generacion + e.doble.llamadas_verificacion == llamadas
