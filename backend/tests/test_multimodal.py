@@ -11,6 +11,7 @@ from app.config import Configuracion
 from app.core.rag.rebuild import ManifiestoDocumento, reconstruir_workspace
 from app.jobs.manager import ContextoEjecucion, CuotasModelo, CuotasProveedor
 from app.main import crear_app
+from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.storage.object_keys import clave_documento, clave_original
 from doubles.gemini import DobleGemini
 from fastapi.testclient import TestClient
@@ -259,3 +260,58 @@ def test_sqlite_nueva_reusa_descripcion_verificada_y_conserva_citas(entorno, tmp
         hasta(lambda: (d := app.state.db.obtener_documento(datos["document_id"])) and d["estado"] == "ready")
         assert app.state.documents_query.chunks(token, datos["document_id"]) == antes
         assert vision.llamadas_verificacion == 0
+
+
+@pytest.mark.parametrize("caso", ["admision", "admision_sqlite", "cobertura_sqlite", "tokens_sqlite"])
+def test_loader_critic_no_confia_en_ready_sin_admision_y_cobertura(entorno, monkeypatch, caso):
+    e = entorno
+    datos, _ = subir(e, escaneo())
+    mf = manifest(e, datos["document_id"])
+    visual = e.app.state.documents_query.chunks(e.ws["token"], mf.document_id)[0]
+    if caso in ("admision", "admision_sqlite"):
+        campo = "admision_confirmada" if caso == "admision" else "admision_sqlite_confirmada"
+        e.storage.upload(
+            clave_documento(e.ws["workspace_id"], mf.document_id),
+            mf.model_copy(update={campo: False}).model_dump_json(),
+        )
+    else:
+        cobertura, metadata = mf.cobertura, mf.metadatos
+        if caso == "cobertura_sqlite":
+            cobertura = cobertura.model_copy(update={"paginas_procesadas": []})
+        else:
+            metadata = metadata.model_copy(update={"cantidad_tokens": 0})
+        e.app.state.db.guardar_metadata_documental(
+            e.ws["workspace_id"], mf.document_id, metadatos=metadata, cobertura=cobertura
+        )
+    monkeypatch.setattr(e.app.state.vectorstore, "listar_chunks", lambda *a, **kw: pytest.fail("No autorizado"))
+    loader = e.app.state.documents_query.loader_critic(lectura(e))
+    argumentos = (e.ws["workspace_id"], mf.document_id, mf.hash_sha256, visual.chunk_id)
+    if caso in ("admision", "admision_sqlite"):
+        assert loader(*argumentos) is None
+    else:
+        with pytest.raises(ErrorAplicacion) as error:
+            loader(*argumentos)
+        assert error.value.error.code == ErrorCode.INVALID_STATE
+
+
+def test_loader_critic_revalida_retirada_durante_ultima_lectura(entorno, monkeypatch):
+    e = entorno
+    datos, _ = subir(e, escaneo())
+    mf = manifest(e, datos["document_id"])
+    visual = e.app.state.documents_query.chunks(e.ws["token"], mf.document_id)[0]
+    get_original = e.storage.get
+    lecturas = 0
+
+    def retirar(clave):
+        nonlocal lecturas
+        contenido = get_original(clave)
+        if clave == clave_original(e.ws["workspace_id"], mf.document_id):
+            lecturas += 1
+            if lecturas == 2:
+                e.app.state.db.retirar_documento(e.ws["token"], mf.document_id)
+        return contenido
+
+    monkeypatch.setattr(e.storage, "get", retirar)
+    loader = e.app.state.documents_query.loader_critic(lectura(e))
+    assert loader(e.ws["workspace_id"], mf.document_id, mf.hash_sha256, visual.chunk_id) is None
+    assert lecturas == 2
