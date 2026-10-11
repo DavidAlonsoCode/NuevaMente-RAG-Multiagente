@@ -17,6 +17,7 @@ from app.schemas.enums import JobStatus
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.internal import TrabajoComunResponse
 from app.session.manager import SessionManager
+from app.storage.provider import StorageUnavailable
 
 router = APIRouter(prefix="/api/jobs", tags=["Trabajos"])
 INTERVALO_SONDEO = 0.25
@@ -134,7 +135,9 @@ async def _stream(
             trabajo, eventos = await run_in_threadpool(
                 lector or _leer_stream, gestor, manager, sesion, job_id, ultimo_id
             )
-        except ErrorAplicacion as error:
+        except (ErrorAplicacion, StorageUnavailable) as error:
+            if isinstance(error, StorageUnavailable):
+                error = ErrorAplicacion(ErrorCode.STORAGE_UNAVAILABLE, "No se pudo verificar el acceso a las fuentes.")
             # Headers ya enviados: informar el error y cerrar, sin revelar resultados.
             datos_error = {
                 "error": error.error.model_dump(),
