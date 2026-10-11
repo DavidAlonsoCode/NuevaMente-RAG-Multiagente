@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 import pytest
-from app.api.security import _intentos_fallidos_ip, _peticiones_globales, _peticiones_ip
 from app.config import Configuracion
 from app.main import crear_app
 from app.schemas.errors import ErrorCode
@@ -28,14 +27,11 @@ def cliente(tmp_path) -> TestClient:
 
 
 @pytest.fixture(autouse=True)
-def limpiar_rate_limits():
+def limpiar_rate_limits(aislar_estado_seguridad):
     """
-    Vacia los diccionarios de seguridad en memoria antes de cada test.
+    Vacia los diccionarios de seguridad antes y después de cada test.
     Garantiza que el bloqueo de un test no contamine al siguiente.
     """
-    _peticiones_globales.clear()
-    _peticiones_ip.clear()
-    _intentos_fallidos_ip.clear()
 
 
 def test_crear_y_recuperar_espacio(cliente):

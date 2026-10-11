@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from app.api.security import _peticiones_globales, _peticiones_ip
+from app.api import security
 from app.config import Configuracion
 from app.core.rag.chunker import trocear
 from app.core.rag.embeddings import GeminiEmbeddings
@@ -49,9 +49,7 @@ def hasta(condicion):
 
 
 @pytest.fixture
-def pila(tmp_path, mock_storage):
-    _peticiones_globales.clear()
-    _peticiones_ip.clear()
+def pila(tmp_path, mock_storage, aislar_estado_seguridad):
     db = RegistroOperativo(tmp_path / "perdida" / "operativo.db")
     manager = SessionManager(db, mock_storage, 30, 24)
     ws = manager.crear_espacio()
@@ -132,6 +130,35 @@ def assert_fuente(e, mf, status=200):
     if status == 200:
         assert respuesta.json()["document_id"] == mf.document_id
         assert "VCN" in respuesta.json()["texto"]
+
+
+def test_pila_aisla_fallos_de_recuperacion_previos_y_limpia_al_salir(request):
+    registros = (
+        security._peticiones_globales,
+        security._peticiones_ip,
+        security._intentos_fallidos_ip,
+        security._intentos_en_curso,
+    )
+
+    def verificar_limpieza():
+        assert all(not registro for registro in registros)
+
+    # Se ejecutará después del teardown de pila, solicitado más abajo.
+    request.addfinalizer(verificar_limpieza)
+    for _ in range(5):
+        security.registrar_intento_fallido("testclient")
+    assert len(security._intentos_fallidos_ip["testclient"]) == 5
+    assert not security._intentos_en_curso
+
+    p = request.getfixturevalue("pila")
+    with abrir(p, cuotas=False) as e:
+        assert e.db.obtener_workspace(p.ws.workspace_id)
+        for _ in range(5):
+            respuesta = e.cliente.post("/api/sessions/recover", json={"recovery_code": "incorrecto"})
+            assert respuesta.status_code == 401
+        respuesta = e.cliente.post("/api/sessions/recover", json={"recovery_code": "incorrecto"})
+        assert respuesta.status_code == 429
+        assert respuesta.json()["error"]["code"] == "RECOVERY_LOCKED"
 
 
 @pytest.mark.parametrize("estado", [DocumentStatus.READY, DocumentStatus.PROCESSING])
