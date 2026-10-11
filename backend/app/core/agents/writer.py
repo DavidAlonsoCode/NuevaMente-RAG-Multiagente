@@ -2,6 +2,7 @@
 
 import inspect
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from app.config import Configuracion
@@ -26,6 +27,7 @@ class DependenciasWriter:
     grafo: DependenciasGrafo = field(repr=False)
     proveedor: GeneradorSync = field(repr=False)
     configuracion: Configuracion = field(repr=False)
+    transformar_entrada: Callable[[str, str, dict], tuple[str, str, dict]] | None = field(default=None, repr=False)
 
     def __post_init__(self):
         self.configuracion.validar_critico()
@@ -33,6 +35,10 @@ class DependenciasWriter:
             raise ValueError("MOCK_GEMINI debe coincidir con el proveedor explícito de Writer")
         if inspect.iscoroutinefunction(self.proveedor.generar_sync):
             raise TypeError("Writer requiere un proveedor síncrono")
+        if self.transformar_entrada is not None and (
+            not callable(self.transformar_entrada) or inspect.iscoroutinefunction(self.transformar_entrada)
+        ):
+            raise TypeError("La adaptación de entrada requiere una función síncrona")
 
 
 def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
@@ -127,10 +133,11 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
             datos["secciones_cubiertas"] = list(estado.secciones_cubiertas)
             prompt = json.dumps(datos, ensure_ascii=False, allow_nan=False)
             schema = modelo_borrador(estado.parametros.formato_salida).model_json_schema()
+            sistema = prompts.writer.system_instruction
+            if dependencias.transformar_entrada is not None:
+                sistema, prompt, schema = dependencias.transformar_entrada(sistema, prompt, schema)
             max_output = dependencias.configuracion.generation_max_output_tokens
-            estimados = (
-                TokenizadorBPE().contar(prompts.writer.system_instruction + prompt + json.dumps(schema)) + max_output
-            )
+            estimados = TokenizadorBPE().contar(sistema + prompt + json.dumps(schema)) + max_output
             iniciada = False
 
             def solicitar(*, timeout):
@@ -142,7 +149,7 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
                 return dependencias.proveedor.generar_sync(
                     prompt,
                     modelo=dependencias.configuracion.gemini_generation_model,
-                    system_instruction=prompts.writer.system_instruction,
+                    system_instruction=sistema,
                     response_json_schema=schema,
                     timeout=timeout,
                     max_output_tokens=max_output,

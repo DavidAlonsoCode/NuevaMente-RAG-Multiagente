@@ -130,22 +130,53 @@ def _revision(estado):
     return "sin_salida"
 
 
-def crear_grafo():
+def crear_grafo(*, solo_revision=False):
     builder = StateGraph(EstadoGrafo, context_schema=DependenciasOrquestacion)
     builder.add_node("supervisor", _envolver("supervisor", lambda s, d: supervisor(s, d.grafo)))
     builder.add_node("researcher", _envolver("researcher", lambda s, d: d.investigar(s)))
     builder.add_node("writer", _envolver("writer", lambda s, d: writer(s, d.escritor)))
     builder.add_node("critic", _envolver("critic", lambda s, d: critic(s, d.critico)))
-    builder.add_node("finalizer", _envolver("finalizer", _finalizar))
+    if not solo_revision:
+        builder.add_node("finalizer", _envolver("finalizer", _finalizar))
     builder.add_node("sin_salida", lambda s: _terminal("INVALID_STATE", "El grafo no tiene una salida válida."))
     builder.add_edge(START, "supervisor")
     builder.add_conditional_edges("supervisor", lambda s: _siguiente(s, "researcher"))
     builder.add_conditional_edges("researcher", lambda s: _siguiente(s, "writer"))
     builder.add_conditional_edges("writer", lambda s: _siguiente(s, "critic"))
-    builder.add_conditional_edges("critic", _revision)
-    builder.add_edge("finalizer", END)
+    builder.add_conditional_edges(
+        "critic",
+        lambda s: (
+            END
+            if solo_revision and s.status == JobStatus.RUNNING and s.destino_revision == "finalizer"
+            else _revision(s)
+        ),
+    )
+    if not solo_revision:
+        builder.add_edge("finalizer", END)
     builder.add_edge("sin_salida", END)
     return builder.compile()
+
+
+def revisar_sin_publicar(estado: EstadoGrafo, dependencias: DependenciasOrquestacion) -> EstadoGrafo:
+    """Chat #37 comparte todo el grafo de revisión; no declara persistencia OCI.
+
+    Un estado running/finalizer aprobado se entrega al adaptador de chat para su
+    proyección y registro en el trabajo común. Los terminales conservan su causa.
+    """
+    try:
+        datos = crear_grafo(solo_revision=True).invoke(
+            estado.model_dump(), {"recursion_limit": 20}, context=dependencias
+        )
+        final = EstadoGrafo.model_validate(datos)
+        if final.status in (JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.REJECTED_QUALITY):
+            return final
+        if final.status == JobStatus.RUNNING and final.destino_revision == "finalizer":
+            return final
+        raise ValueError("Revisión sin salida válida")
+    except Exception:
+        return EstadoGrafo.model_validate(
+            {**estado.model_dump(), **_terminal("INVALID_STATE", "La revisión no pudo terminar.")}
+        )
 
 
 def ejecutar_grafo(estado: EstadoGrafo, dependencias: DependenciasOrquestacion) -> EstadoGrafo:

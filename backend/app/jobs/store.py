@@ -1448,6 +1448,19 @@ class RegistroOperativo:
         return dict(fila) if fila else None
 
     @_sincronizado
+    def historial_chat(self, workspace_id: str, document_id: str, document_hash: str, limite: int):
+        if not 0 <= limite <= 50:
+            raise ValueError("Límite de turnos inválido")
+        filas = self._conn.execute(
+            """SELECT resultado FROM jobs WHERE workspace_id=? AND document_id=?
+               AND tipo='chat' AND status='completed' AND resultado IS NOT NULL
+               AND json_extract(resultado, '$.document_hash')=?
+               ORDER BY creado_en DESC, job_id DESC LIMIT ?""",
+            (workspace_id, document_id, document_hash, limite),
+        ).fetchall()
+        return [json.loads(fila[0]) for fila in reversed(filas)]
+
+    @_sincronizado
     def guardar_aprobado(self, generation_id: str, paquete_json: str, expira_en: str):
         from app.schemas.responses import PedagogicalOutput
 

@@ -56,10 +56,13 @@ class DependenciasResearcher:
     grafo: DependenciasGrafo = field(repr=False)
     retriever: RetrieverMMR = field(repr=False)
     parser_version: str
+    pregunta: str | None = None
 
     def __post_init__(self):
         if not self.parser_version.strip():
             raise ValueError("Se requiere la versión de parser registrada por la ingestión")
+        if self.pregunta is not None and not 1 <= len(self.pregunta.strip()) <= 2000:
+            raise ValueError("La pregunta debe contener entre 1 y 2000 caracteres")
         for funcion in (self.retriever.recuperar, self.retriever.indice.listar_chunks):
             if not callable(funcion) or inspect.iscoroutinefunction(funcion):
                 raise TypeError("Researcher requiere recuperación e inventario síncronos")
@@ -196,22 +199,23 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
             item = validar(item)
             pools[seccion_del_chunk(item.chunk)].append(item)
         faltantes = []
+
+        def consulta_seccion(seccion, ampliada=False):
+            base = _consulta(estado, seccion, ampliada=ampliada, titulo_seccion=titulos[seccion])
+            return ((dependencias.pregunta or "") + " | " + base)[:2000] if dependencias.pregunta else base
+
         for seccion in objetivo:
             if not pools[seccion]:
                 restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
                 if restante > 0:
-                    pools[seccion] = consultar(
-                        _consulta(estado, seccion, titulo_seccion=titulos[seccion]), seccion, restante
-                    )
+                    pools[seccion] = consultar(consulta_seccion(seccion), seccion, restante)
                 else:
                     omitidos.update(c.chunk_id for c in chunks if seccion_del_chunk(c) == seccion)
             elegido = next((item for item in pools[seccion] if agregar(item)), None)
             if elegido is None:
                 restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
                 if restante > 0:
-                    ampliacion = consultar(
-                        _consulta(estado, seccion, ampliada=True, titulo_seccion=titulos[seccion]), seccion, restante
-                    )
+                    ampliacion = consultar(consulta_seccion(seccion, True), seccion, restante)
                     pools[seccion].extend(ampliacion)
                     elegido = next((item for item in ampliacion if agregar(item)), None)
             if elegido is None:
