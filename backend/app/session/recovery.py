@@ -129,8 +129,6 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 if not salida.object_name.endswith("/content.json"):
                     continue
                 generation_id = salida.object_name.split("/")[-2]
-                if ("generation", generation_id) in lapidas:
-                    continue
                 paquete = PedagogicalOutput.model_validate_json(storage.get(salida.object_name, if_match=salida.etag))
                 if salida.object_name != clave_output(workspace_id, paquete.generation_id):
                     raise ValueError("Paquete con identidad ajena o no canónica")
@@ -148,6 +146,8 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                         # Solo relación de control para purgar sus derivados;
                         # la lápida del documento impide servir este resultado.
                         generaciones_retiradas.append(paquete)
+                    continue
+                if ("generation", generation_id) in lapidas:
                     continue
                 if paquete.documento_fuente.hash.removeprefix("sha256:") != doc.hash_sha256:
                     raise ValueError("Paquete de otra versión del documento")

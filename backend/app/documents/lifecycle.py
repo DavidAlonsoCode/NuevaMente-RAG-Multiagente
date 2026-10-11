@@ -66,18 +66,6 @@ class EfectosDocumentales:
         return generaciones
 
     def _limpiar_derivados(self, ws: str, doc: str, generaciones: list[str]) -> None:
-        for generacion in generaciones:
-            self._borrar_objeto(clave_output(ws, generacion))
-            prefijo = f"exports/{ws}/{generacion}/"
-            # La lista se materializa antes de borrar para no saltar elementos
-            # al cambiar la paginación. Solo generaciones vinculadas por SQLite.
-            from app.session.recovery import _objetos
-
-            claves = [objeto.object_name for objeto in _objetos(self.storage, prefijo)]
-            for clave in claves:
-                self._borrar_objeto(clave)
-            if self.storage.list(prefijo, limit=1).items:
-                raise StorageUnavailable("Quedan exports documentales")
         clave = clave_progress(ws)
         pagina = self.storage.list(clave, limit=1)
         objeto = next((x for x in pagina.items if x.object_name == clave), None)
@@ -92,6 +80,20 @@ class EfectosDocumentales:
                 guardado = self.storage.upload(clave, contenido, if_match=objeto.etag, content_type="application/json")
                 if self.storage.get(clave, if_match=guardado.etag) != contenido:
                     raise StorageUnavailable("Progreso retirado sin confirmación")
+        for generacion in generaciones:
+            prefijo = f"exports/{ws}/{generacion}/"
+            # La lista se materializa antes de borrar para no saltar elementos
+            # al cambiar la paginación. Solo generaciones vinculadas por SQLite.
+            from app.session.recovery import _objetos
+
+            claves = [objeto.object_name for objeto in _objetos(self.storage, prefijo)]
+            for clave in claves:
+                self._borrar_objeto(clave)
+            if self.storage.list(prefijo, limit=1).items:
+                raise StorageUnavailable("Quedan exports documentales")
+            # El paquete acredita la relación documento-generación al perder
+            # SQLite. Conservarlo hasta retirar progreso y todos sus exports.
+            self._borrar_objeto(clave_output(ws, generacion))
         with self.db.transaccion():
             self.db.purgar_datos_documentales(ws, doc)
 

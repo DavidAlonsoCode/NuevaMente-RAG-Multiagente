@@ -378,7 +378,10 @@ def test_lapida_remota_impide_reconstruccion(pila, lapida):
 
 
 @pytest.mark.parametrize("manifiesto_presente", [True, False])
-def test_recuperacion_reanuda_purga_de_derivados_y_conserva_otros_espacios(pila, manifiesto_presente):
+@pytest.mark.parametrize("generacion_retirada", [True, False])
+def test_recuperacion_reanuda_purga_de_derivados_y_conserva_otros_espacios(
+    pila, manifiesto_presente, generacion_retirada
+):
     retirado = fuente(pila)
     vigente = fuente(pila, doc="doc_otro", ws=pila.otro)
     salida_retirada = paquete(pila.storage, retirado.workspace_id, retirado, "gen_retirada")
@@ -398,6 +401,8 @@ def test_recuperacion_reanuda_purga_de_derivados_y_conserva_otros_espacios(pila,
         ),
     )
     pila.origen.agendar_borrado("document", retirado.document_id, retirado.workspace_id)
+    if generacion_retirada:
+        pila.origen.agendar_borrado("generation", salida_retirada.generation_id, retirado.workspace_id)
     sincronizar_pendientes(pila.origen, pila.storage)
     if not manifiesto_presente:
         pila.storage.delete(clave_documento(retirado.workspace_id, retirado.document_id))
@@ -419,6 +424,34 @@ def test_recuperacion_reanuda_purga_de_derivados_y_conserva_otros_espacios(pila,
         assert pila.storage.get(export_vigente) == b"pdf vigente"
         assert pila.storage.get(clave_original(vigente.workspace_id, vigente.document_id)) == TEXTO
         assert pila.storage.get(clave_output(vigente.workspace_id, salida_vigente.generation_id))
+
+
+def test_purga_interrumpida_conserva_relacion_remota_hasta_retirar_exports(pila, monkeypatch):
+    mf = fuente(pila)
+    salida = paquete(pila.storage, mf.workspace_id, mf, "gen_interrumpida")
+    export = clave_export(mf.workspace_id, salida.generation_id, "pdf")
+    pila.storage.upload(export, b"pdf")
+    pila.origen.agendar_borrado("document", mf.document_id, mf.workspace_id)
+    sincronizar_pendientes(pila.origen, pila.storage)
+    borrar = pila.storage.delete
+
+    def fallar(clave):
+        if clave == export:
+            raise StorageUnavailable("Fallo al retirar export")
+        return borrar(clave)
+
+    monkeypatch.setattr(pila.storage, "delete", fallar)
+    with abrir(pila) as e:
+        assert not e.db.limpieza_documental_completada(mf.workspace_id, mf.document_id)
+        assert pila.storage.get(clave_output(mf.workspace_id, salida.generation_id))
+    monkeypatch.setattr(pila.storage, "delete", borrar)
+    # Una segunda pérdida de SQLite todavía conserva la procedencia remota.
+    pila.ruta = pila.ruta / "otra_base"
+    with abrir(pila) as e:
+        assert e.db.limpieza_documental_completada(mf.workspace_id, mf.document_id)
+        for clave in (export, clave_output(mf.workspace_id, salida.generation_id)):
+            with pytest.raises(StorageNotFound):
+                pila.storage.get(clave)
 
 
 def test_purga_recuperada_sin_cuotas_reintenta_al_configurar_indice(pila):
