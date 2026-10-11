@@ -29,7 +29,7 @@ from app.schemas.enums import DocumentStatus, JobStatus
 from app.session.manifests import sincronizar_manifiesto
 from app.session.recovery import restaurar_registro
 from app.storage.object_keys import clave_documento, clave_original
-from app.storage.provider import StorageUnavailable
+from app.storage.provider import StorageNotFound, StorageUnavailable
 from doubles.gemini import DobleGemini
 
 pytestmark = pytest.mark.integration_mock
@@ -372,12 +372,18 @@ def test_interrupcion_en_embeddings_impide_publicacion(pila, monkeypatch, accion
     esperado = "failed" if accion in ("deadline", "borrar_storage") else "cancelled"
     fila = terminal(pila, recibo, esperado)
     assert fila["resultado"] is None
-    assert manifest(pila, recibo.document_id).estado != DocumentStatus.READY
-    hasta(lambda: pila[4].contar("ws_a", recibo.document_id, contexto=ctx(pila)) == 0)
-    if accion == "borrar_local":
+    if accion in ("borrar_local", "borrar_storage"):
+        # El terminal del job precede al observador de purga. Una retirada
+        # remota también termina con lápida local, no con un failed legible.
+        hasta(lambda: pila[0].limpieza_documental_completada("ws_a", recibo.document_id))
         assert pila[0].obtener_documento(recibo.document_id) is None
+        for clave in (clave_original("ws_a", recibo.document_id), clave_documento("ws_a", recibo.document_id)):
+            with pytest.raises(StorageNotFound):
+                pila[1].get(clave)
     else:
+        hasta(lambda: manifest(pila, recibo.document_id).estado == DocumentStatus.FAILED)
         assert pila[0].obtener_documento(recibo.document_id)["estado"] == "failed"
+    hasta(lambda: pila[4].contar("ws_a", recibo.document_id, contexto=ctx(pila)) == 0)
 
 
 def test_original_corrupto_falla_antes_de_gemini(pila):
