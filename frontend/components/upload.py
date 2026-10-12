@@ -154,7 +154,7 @@ def registrar_documento_en_sesion(
     return nuevo_doc
 
 
-def render_subida_archivo(idioma: str):
+def render_subida_archivo(idioma: str, api_client: Any = None):
     """Renderiza el bloque de subida de archivos (PDF/MD/TXT) con límites visibles."""
     st.markdown(f"#### {t('upload.titulo', idioma)}")
 
@@ -207,9 +207,26 @@ def render_subida_archivo(idioma: str):
         ext = os.path.splitext(archivo.name)[1].lower()
         paginas = max(1, archivo.size // (100 * 1024)) if ext == ".pdf" else 1
         chunks = max(1, archivo.size // (2 * 1024))
+        doc_id = f"doc-{archivo.name.replace(' ', '_')}"
+
+        token = st.session_state.get("session_token")
+        if api_client and token:
+            media_map = {".pdf": "application/pdf", ".md": "text/markdown", ".txt": "text/plain"}
+            media_type = media_map.get(ext, "application/octet-stream")
+            try:
+                res = api_client.upload_file(
+                    token=token,
+                    filename=archivo.name,
+                    content=archivo.getvalue(),
+                    media_type=media_type,
+                    title=archivo.name,
+                )
+                if isinstance(res, dict) and "document_id" in res:
+                    doc_id = str(res["document_id"])
+            except Exception:
+                pass
 
         # Registrar en estado de sesión
-        doc_id = f"doc-{archivo.name.replace(' ', '_')}"
         registrar_documento_en_sesion(
             doc_id=doc_id,
             titulo=archivo.name,
@@ -225,7 +242,7 @@ def render_subida_archivo(idioma: str):
         st.rerun()
 
 
-def render_pegar_texto(idioma: str):
+def render_pegar_texto(idioma: str, api_client: Any = None):
     """Renderiza el formulario para ingresar texto plano directamente."""
     st.markdown(f"#### {t('upload.enviar_texto', idioma)}")
     st.caption(f"ℹ️ {t('upload.limite', idioma)}")
@@ -262,6 +279,19 @@ def render_pegar_texto(idioma: str):
         tamano_bytes = len(contenido.encode("utf-8"))
         chunks = max(1, tamano_bytes // 800)
         doc_id = f"doc-txt-{titulo.strip().replace(' ', '_').lower()[:20]}"
+
+        token = st.session_state.get("session_token")
+        if api_client and token:
+            try:
+                res = api_client.upload_document(
+                    token=token,
+                    payload={"documento_titulo": titulo.strip(), "contenido_texto": contenido.strip()},
+                )
+                if isinstance(res, dict) and "document_id" in res:
+                    doc_id = str(res["document_id"])
+            except Exception:
+                pass
+
         registrar_documento_en_sesion(
             doc_id=doc_id,
             titulo=titulo.strip(),
@@ -322,9 +352,16 @@ def render_documentos_demo(idioma: str):
                     st.rerun()
 
 
-def eliminar_documento(doc_id: str):
-    """Elimina un documento del espacio en sesión."""
+def eliminar_documento(doc_id: str, api_client: Any = None):
+    """Elimina un documento del espacio en sesión y en el backend si aplica."""
     inicializar_estado_documentos()
+    token = st.session_state.get("session_token")
+    if api_client and token and not doc_id.startswith("demo-"):
+        try:
+            api_client.delete_document(token=token, document_id=doc_id)
+        except Exception:
+            pass
+
     st.session_state.documentos = [d for d in st.session_state.documentos if d["id"] != doc_id]
     if st.session_state.documento_activo_id == doc_id:
         st.session_state.documento_activo_id = (
@@ -332,7 +369,7 @@ def eliminar_documento(doc_id: str):
         )
 
 
-def render_lista_documentos(idioma: str):
+def render_lista_documentos(idioma: str, api_client: Any = None):
     """Renderiza la lista de documentos cargados en el espacio con estado y borrado."""
     inicializar_estado_documentos()
     documentos = st.session_state.documentos
@@ -383,5 +420,5 @@ def render_lista_documentos(idioma: str):
                 with st.popover("🗑️ Eliminar", use_container_width=True):
                     st.warning("⚠️ Esta acción retirará el documento del espacio.")
                     if st.button("Confirmar", key=f"btn_conf_del_{doc['id']}", type="primary"):
-                        eliminar_documento(doc["id"])
+                        eliminar_documento(doc["id"], api_client=api_client)
                         st.rerun()

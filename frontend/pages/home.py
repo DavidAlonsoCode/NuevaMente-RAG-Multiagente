@@ -1,3 +1,5 @@
+from typing import Any
+
 import streamlit as st
 from api_client import APIError
 from components.errors import mostrar_error_ui
@@ -26,7 +28,7 @@ def render(api_client, idioma_actual: str):
     if st.session_state.get("mostrando_recuperacion"):
         _render_pantalla_recuperacion(api_client, idioma_actual)
     else:
-        _render_pantalla_onboarding(idioma_actual)
+        _render_pantalla_onboarding(idioma_actual, api_client=api_client)
 
 
 def _render_banner_recuperacion(idioma_actual: str):
@@ -94,7 +96,7 @@ def _render_pantalla_recuperacion(api_client, idioma_actual: str):
         st.rerun()
 
 
-def _render_pantalla_onboarding(idioma_actual: str):
+def _render_pantalla_onboarding(idioma_actual: str, api_client: Any = None):
     """Renderiza las 4 acciones principales de la pantalla de bienvenida y el flujo de documentos."""
     st.header(t("onboarding.bienvenida_titulo", idioma_actual))
     st.markdown(
@@ -130,13 +132,13 @@ def _render_pantalla_onboarding(idioma_actual: str):
     # Renderizar el panel según la opción seleccionada
     vista = st.session_state.get("vista_onboarding", "upload")
     if vista == "upload":
-        render_subida_archivo(idioma_actual)
+        render_subida_archivo(idioma_actual, api_client=api_client)
     elif vista == "texto":
-        render_pegar_texto(idioma_actual)
+        render_pegar_texto(idioma_actual, api_client=api_client)
     elif vista == "demo":
         render_documentos_demo(idioma_actual)
 
     st.divider()
 
     # Lista de documentos activos en el espacio
-    render_lista_documentos(idioma_actual)
+    render_lista_documentos(idioma_actual, api_client=api_client)
