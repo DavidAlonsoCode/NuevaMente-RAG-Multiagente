@@ -85,5 +85,6 @@
   "error": null,
   "persistencia": null,
   "almacenamiento": null,
-  "trazabilidad": null
+  "trazabilidad": null,
+  "paquete_aprobado": null
 }
