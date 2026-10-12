@@ -58,9 +58,9 @@ jobs:
     # en ARM64, la arquitectura de la VM Oracle del despliegue (issue #47).
     runs-on: ubuntu-latest
 
-    # Techo de duración: si algo se cuelga, el job muere a los 10 minutos
-    # en vez de quemar minutos de CI. El objetivo del issue es < 5 min.
-    timeout-minutes: 10
+    # Techo de duración: suficiente para la suite completa de tests más las
+    # validaciones de integración y exportaciones añadidas (#44, #45, #52).
+    timeout-minutes: 15
 
     # "matrix" = ejecutar la MISMA receta una vez por combinación de valores.
     # Hoy una sola: Python 3.11, el target del proyecto (§12.3). Mañana,
