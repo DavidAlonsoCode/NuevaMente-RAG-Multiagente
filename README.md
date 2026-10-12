@@ -110,7 +110,7 @@ El modo se elige al arrancar, no ante un error de OCI. En desarrollo, `completed
 | Parámetro | Opciones Soportadas | Enfoque Pedagógico |
 |---|---|---|
 | **Perfil del Destinatario** | 1. `Principiante / Transición de Carrera`<br/>2. `Desarrollador Junior / Semi Senior`<br/>3. `Líder Técnico / Arquitecto`<br/>4. `Gestor / Ejecutivo (No Técnico)` | Desde analogías didácticas y sin asunciones previas hasta análisis de trade-offs, SLAs, código funcional y valor de negocio. |
-| **Formato de Salida** | 1. `Guía Práctica Paso a Paso (Tutorial)`<br/>2. `Flashcards de Memorización`<br/>3. `Quiz Interactivo con Justificaciones`<br/>4. `Resumen Ejecutivo (TL;DR)`<br/>5. `Guion de Clase / Video` | Modelados formalmente mediante contratos tipados con Pydantic v2 y exportación a Anki (`.apkg` y TSV). |
+| **Formato de Salida** | 1. `Guía Práctica Paso a Paso (Tutorial)`<br/>2. `Flashcards de Memorización`<br/>3. `Quiz Interactivo con Justificaciones`<br/>4. `Resumen Ejecutivo (TL;DR)`<br/>5. `Guion de Clase / Video` | Contratos tipados con Pydantic v2 y descargas JSON/Markdown del contenido aprobado (#43). PDF (#44) y exportación Anki de flashcards (#45) siguen previstas. |
 | **Nicho de Aplicación** | 1. `Fintech`<br/>2. `Salud`<br/>3. `E-commerce`<br/>4. `General` | Terminología situada, ejemplos contextuales y casos de uso realistas por industria. |
 | **Nivel de Detalle** | 1. `Didáctico / Conceptual`<br/>2. `Práctico / Orientado a Código`<br/>3. `Técnico Profundo / Arquitectura` | Graduación de profundidad técnica según el objetivo formativo. |
 
@@ -169,7 +169,7 @@ Inspirado en la interfaz de Linear (`awesome-design-md`):
 2. **Escenario B — Memorización / E-commerce**:
    - *Doc*: Especificación de checkout con microservicios.
    - *Perfil*: Principiante / Transición de Carrera.
-   - *Formato*: Flashcards de Memorización con exportación a mazo Anki (`.apkg`/TSV).
+   - *Formato*: Flashcards de Memorización con descarga JSON/Markdown; la exportación a mazo Anki (`.apkg`/TSV) corresponde al #45.
 3. **Escenario C — Ejecutivo / Salud**:
    - *Doc*: Directrices de gobernanza de historias clínicas electrónicas.
    - *Perfil*: Gestor / Ejecutivo (No Técnico).
