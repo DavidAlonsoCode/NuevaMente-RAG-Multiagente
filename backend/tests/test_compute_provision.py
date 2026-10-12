@@ -19,6 +19,30 @@ SPEC = importlib.util.spec_from_file_location(
 provision = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(provision)
 
+LISTENERS_SPEC = importlib.util.spec_from_file_location(
+    "verify_listeners", Path(__file__).resolve().parents[2] / "infra/oci/verify_listeners.py"
+)
+listeners = importlib.util.module_from_spec(LISTENERS_SPEC)
+LISTENERS_SPEC.loader.exec_module(listeners)
+
+
+def test_verificacion_permite_dns_ubuntu_y_app_en_loopback():
+    listeners.verify_listeners(
+        "LISTEN 0 4096 127.0.0.53%lo:53 0.0.0.0:*\n"
+        "LISTEN 0 4096 127.0.0.54:53 0.0.0.0:*\n"
+        "LISTEN 0 4096 127.0.0.1:8000 0.0.0.0:*\n"
+        "LISTEN 0 4096 [::1]:8501 [::]:*\n"
+        "LISTEN 0 4096 0.0.0.0:22 0.0.0.0:*\n"
+        "LISTEN 0 4096 [::]:443 [::]:*\n"
+        "LISTEN 0 4096 *:80 *:*\n"
+    )
+
+
+@pytest.mark.parametrize("local", ["0.0.0.0:8000", "[::]:8501", "*:8000", "10.38.1.2:8501", "0.0.0.0:53"])
+def test_verificacion_rechaza_app_y_dns_expuestos(local):
+    with pytest.raises(RuntimeError, match="Listener TCP expuesto"):
+        listeners.verify_listeners(f"LISTEN 0 4096 {local} 0.0.0.0:*")
+
 
 def instance(state="RUNNING", cpu=2, ram=12, identity="vm"):
     return Obj(

@@ -22,12 +22,5 @@ docker compose version
 docker info --format '{{.Architecture}}' | grep -Eq '^(aarch64|arm64)$'
 docker run --rm hello-world
 # Revisar los listeners reales; 8000/8501 pueden existir solo en loopback en #48.
-python3 - <<'PY'
-import subprocess
-for line in subprocess.check_output(['ss','-H','-lnt'],text=True).splitlines():
-    local=line.split()[3]
-    port = local.rsplit(':', 1)[-1]
-    if not local.startswith(('127.0.0.1:', '[::1]:')):
-        assert port in ('22', '80', '443'), 'Listener TCP expuesto fuera del proxy/SSH'
-print('Host ARM64, SSH y servicios verificados. Revisar aparte reglas OCI y prueba desde otra IP.')
-PY
+python3 "$(dirname -- "$0")/verify_listeners.py"
+printf '%s\n' 'Host ARM64, SSH y servicios verificados.'

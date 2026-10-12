@@ -11,6 +11,8 @@ Referencia: `decisiones_proyecto.md` §9 y
   automáticas de seguridad y SSH por clave sin acceso root ni contraseña.
 - `verify_host.sh`: comprobaciones que se ejecutan con sudo dentro de la VM.
   La red OCI, el acceso desde otra IP y la captura de gratuidad se verifican aparte.
+- `verify_listeners.py`: permite listeners locales en todo el rango loopback
+  (incluido el DNS de Ubuntu en `127.0.0.53`) y rechaza puertos de app expuestos.
 
 La consulta del aprovisionador se probó contra OCI real. Las guardas y la
 creación/reanudación tienen pruebas con OCI simulado; los scripts pasan `bash -n`.
@@ -130,3 +132,25 @@ autorizada y se detuvo en la guarda previa: no creó VCN/subred, VM ni discos.
 Las cuotas efectivas consultadas permitían 2 OCPU / 12 GB; el inventario seguía
 sin A1 ni volúmenes. Esto distingue falta de capacidad física de falta de cuota.
 Reportes locales de esta continuación: `.data/oci47/preflight-*.json`.
+
+### Sincronización y reconsulta del 12 de octubre de 2026
+
+La rama se sincronizó con `develop` (`370df46`, incluyendo el #25). La nueva consulta
+real en la home region `sa-vinhedo-1`, realizada a las 18:45 de Argentina, volvió a
+devolver `OUT_OF_HOST_CAPACITY` en su único dominio de disponibilidad. El inventario
+de la tenancy registró 0 OCPU A1, 0 GB de RAM A1 y 0 GB de volúmenes boot/block.
+Las cuotas de servicio permiten la configuración de 2 OCPU / 12 GB; esos valores
+no amplían la franquicia gratuita. Ubuntu 24.04 ARM64 oficial sigue disponible.
+No se crearon recursos ni se cambió a una instancia paga.
+
+El PR puede integrar la receta reproducible y sus controles; el #47 permanece
+abierto hasta obtener la VM y completar los tres criterios de aceptación reales.
+Se corrigió un falso rechazo del DNS local de Ubuntu en la verificación de listeners.
+Las pruebas cubren loopback IPv4/IPv6 y el rechazo de puertos de aplicación/DNS
+expuestos mediante direcciones públicas, privadas o wildcard.
+
+La configuración OCI local apuntaba a una ruta de clave de otra PC. Para esta
+consulta se corrigió únicamente en memoria, usando la clave contigua al archivo
+de configuración; no se copiaron secretos al repositorio. Antes de usar el CLI,
+el operador debe asegurar que `key_file` apunte a una ruta existente en su PC.
+La disponibilidad de capacidad debe reconsultarse antes de cada intento manual.
