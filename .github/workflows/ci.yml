@@ -145,10 +145,12 @@ jobs:
         env:
           QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu
           PYTHONUNBUFFERED: "1"
+          QT_DEBUG_PLUGINS: "1"
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y xvfb libxcb-cursor0 libegl1 libopengl0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libnss3 libasound2t64
           python -m pip install -r .github/requirements-anki-ui.txt
+          python -c "import pathlib, subprocess, PyQt6; subprocess.run(['ldd', str(pathlib.Path(PyQt6.__file__).parent / 'Qt6/plugins/platforms/libqxcb.so')], check=True)"
           timeout 90s xvfb-run -a python .github/scripts/verify_anki_desktop.py
 
       - name: Evidencia de Anki Desktop
