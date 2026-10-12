@@ -554,6 +554,17 @@ completed del mismo workspace/documento/hash, acotados por
 El resultado usa SQLite común, sin crear artefactos/exportaciones en `outputs/`.
 Su fuente se revalida al entregar el resultado y su retirada purga el historial.
 Detalles de revisión y adaptador interno: [issue-37-document-chat.md](issue-37-document-chat.md).
+
+Corrección de consistencia junto a #39: chat acepta `Idempotency-Key` (1–128
+caracteres); repetir una intención conserva el trabajo y no repite llamadas.
+Mismo header con otra pregunta/parámetros devuelve **409**. Consultar respuestas
+aprobadas y repetir su intención funcionan sin proveedores LLM configurados;
+una intención nueva sin proveedores devuelve **503**. Historial, consulta y
+exportación JSON de generaciones aprobadas también son lecturas independientes
+de los proveedores. Las fuentes conservan sus comprobaciones READY y de acceso.
+
+| Método y ruta | Descripción |
+|---|---|
 | `POST /api/glossaries` | `{document_id, perfil_destinatario, idioma_salida}` → 202 con glossary_id y URLs del trabajo, o 200 con resultado de caché verificado. |
 | `GET /api/glossaries/{id}` | Glosario generado con definiciones citadas. |
 

@@ -419,6 +419,7 @@ class GestorTrabajos:
         generation_id: str | None = None,
         document_id: str | None = None,
         al_terminar: Callable[[JobStatus], None] | None = None,
+        cache_key: str | None = None,
     ) -> str:
         """Registra un trabajo y devuelve su job_id. Rechaza según §7.5.
 
@@ -442,7 +443,12 @@ class GestorTrabajos:
 
             identificador = job_id or f"job_{uuid.uuid4().hex[:16]}"
             self.store.encolar_job(
-                identificador, workspace_id, tipo, generation_id=generation_id, document_id=document_id
+                identificador,
+                workspace_id,
+                tipo,
+                generation_id=generation_id,
+                document_id=document_id,
+                cache_key=cache_key,
             )
             self._ejecutables[identificador] = funcion
             self._cancelaciones[identificador] = threading.Event()

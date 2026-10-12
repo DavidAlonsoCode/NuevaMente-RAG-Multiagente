@@ -33,9 +33,7 @@ def admitir_trabajo(
             return cache
         try:
             preparar()
-            gestor.enqueue(workspace_id, tipo, ejecutar, job_id=job_id, document_id=document_id)
-            if cache_key:
-                db.vincular_cache_job(job_id, cache_key)
+            gestor.enqueue(workspace_id, tipo, ejecutar, job_id=job_id, document_id=document_id, cache_key=cache_key)
         except Exception:
             if clave is not None:
                 db.abandonar_intencion_job(workspace_id, tipo, clave, job_id)

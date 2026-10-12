@@ -25,6 +25,7 @@ def entorno(entorno_generacion, monkeypatch):
     e.entradas_glosario, e.revisiones_glosario = [], []
     e.insuficientes, e.contradiccion, e.omitir_revision = set(), False, False
     e.cita_invalida, e.traducir_api, e.json_invalido = False, False, 0
+    e.traducciones = {}
     original_juez = e.doble._revisar
 
     def generar(prompt, **kwargs):
@@ -60,7 +61,9 @@ def entorno(entorno_generacion, monkeypatch):
                     id=c["id"],
                     estado="definido",
                     definicion=texto,
-                    traduccion="API traducida" if e.traducir_api and c["es_identificador"] else None,
+                    traduccion="API traducida"
+                    if e.traducir_api and c["es_identificador"]
+                    else e.traducciones.get(c["termino_original"]),
                     referencias=[
                         {
                             k: ("ajeno" if e.cita_invalida and k == "chunk_id" else chunk[k])
@@ -270,6 +273,52 @@ def test_cancelar_no_publica_ni_cachea_y_permite_nueva_intencion(entorno):
     nuevo = glosario(e)
     assert nuevo.status_code == 202 and nuevo.json()["job_id"] != recibo["job_id"]
     esperar(e, nuevo.json())
+
+
+def test_traduccion_conceptual_revisada_y_limitacion_parcial(entorno):
+    e = entorno
+    carga = e.cliente.post(
+        "/api/documents/upload",
+        headers=e.headers,
+        json={
+            "documento_titulo": "Subredes",
+            "documento_contenido": "Una **subred** es un rango de direcciones dentro de una VCN. El bloque CIDR define su tamaño. "
+            * 20,
+        },
+    )
+    assert carga.status_code == 202
+    esperar(e, carga.json())
+    e.insuficientes, e.traducciones = {"CIDR"}, {"subred": "subnet"}
+    salida = esperar(e, glosario(e, document_id=carga.json()["document_id"], idioma_salida="en").json())["result"]
+    terminos = {t["termino_original"]: t for t in salida["terminos"]}
+    assert terminos["subred"]["traduccion"] == "subnet" and terminos["VCN"]["traduccion"] is None
+    assert terminos["CIDR"]["estado"] == "sin_definicion_suficiente" and terminos["CIDR"]["definicion"] is None
+    assert salida["estado"] == "verificado"
+    segmentos = [
+        v["texto"]
+        for revision in e.revisiones_glosario
+        if revision.get("tarea") == "descomponer"
+        for k, v in revision["segmentos"].items()
+        if k.endswith("/dorso")
+    ]
+    assert any("subred (subnet)" in texto for texto in segmentos)
+
+
+def test_cambiar_modelo_no_reutiliza_cache_del_modelo_anterior(entorno):
+    e = entorno
+    anterior = esperar(e, glosario(e).json())["job_id"]
+    cfg = e.app.state.config
+    cfg.gemini_generation_model = "modelo-generacion-nuevo"
+    e.gestor.cuotas = CuotasProveedor(
+        {
+            m: CuotasModelo(1000, 10_000_000, 1000)
+            for m in (cfg.gemini_embedding_model, cfg.gemini_generation_model, cfg.gemini_verification_model)
+        }
+    )
+    nuevo = glosario(e)
+    assert nuevo.status_code == 202 and nuevo.json()["job_id"] != anterior
+    salida = esperar(e, nuevo.json())["result"]
+    assert salida["trazabilidad"]["modelo_generacion"] == "modelo-generacion-nuevo"
 
 
 def test_pdf_vcn_principiante_es_con_fuente_y_citas_validas(entorno, documento_demo_vcn):

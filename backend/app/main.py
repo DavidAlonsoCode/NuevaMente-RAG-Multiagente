@@ -221,15 +221,15 @@ def crear_app(
 
                 gen = ver = ClienteGeminiGeneracion(ajustes)
             if gen is not None:
-                from app.generations.service import ServicioGeneraciones
-
                 proveedores_texto = list({id(p): p for p in (gen, ver)}.values())
-                app.state.generations = ServicioGeneraciones(
-                    app.state.db, app.state.storage_provider, app.state.documents_query, gestor, ajustes, gen, ver
-                )
-                from app.chat.service import ServicioChat
+            from app.chat.service import ServicioChat
+            from app.generations.service import ServicioGeneraciones
 
-                app.state.chat = ServicioChat(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
+            # Las lecturas de material ya aprobado no dependen del runtime LLM.
+            app.state.generations = ServicioGeneraciones(
+                app.state.db, app.state.storage_provider, app.state.documents_query, gestor, ajustes, gen, ver
+            )
+            app.state.chat = ServicioChat(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
             from app.documents.demo import ServicioCatalogoDemo
             from app.documents.lifecycle import EfectosDocumentales
             from app.generations.catalog import CatalogoGeneraciones

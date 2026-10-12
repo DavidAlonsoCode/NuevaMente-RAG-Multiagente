@@ -1598,6 +1598,7 @@ class RegistroOperativo:
         tipo: str,
         generation_id: str | None = None,
         document_id: str | None = None,
+        cache_key: str | None = None,
     ) -> None:
         """Acepta trabajo y evento juntos; la generación vinculada comparte su ciclo de vida."""
         self._conn.execute("BEGIN IMMEDIATE")
@@ -1631,7 +1632,8 @@ class RegistroOperativo:
                     )
             self.registrar_job(job_id, workspace_id, tipo)
             self._conn.execute(
-                "UPDATE jobs SET generation_id=?, document_id=? WHERE job_id=?", (generation_id, document_id, job_id)
+                "UPDATE jobs SET generation_id=?, document_id=?, cache_key=? WHERE job_id=?",
+                (generation_id, document_id, cache_key, job_id),
             )
             self.registrar_evento(
                 workspace_id, "encolado", JobStatus.QUEUED, job_id=job_id, generation_id=generation_id
@@ -1887,6 +1889,17 @@ class RegistroOperativo:
     # ------------------------------------------------------------------
     # Idempotencia (§7.3): el corazón atómico del issue
     # ------------------------------------------------------------------
+
+    @_sincronizado
+    def idempotencia_consultar(self, workspace_id, operacion, clave, cuerpo):
+        """Consulta una intención ya admitida sin crear reservas ni requerir IA."""
+        fila = self._conn.execute(
+            "SELECT hash_cuerpo,recurso_id FROM idempotency_keys WHERE workspace_id=? AND operacion=? AND clave=?",
+            (workspace_id, operacion, clave),
+        ).fetchone()
+        if fila is None:
+            return None
+        return ("duplicada", fila["recurso_id"]) if fila["hash_cuerpo"] == _hash_de(cuerpo) else ("conflicto", None)
 
     @_sincronizado
     def idempotencia_iniciar(
