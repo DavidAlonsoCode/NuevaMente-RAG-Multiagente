@@ -62,9 +62,10 @@ def verificar():
         (salida / "resultado.json").write_text(
             json.dumps({"anki": aqt.appVersion, "resultados": resultados}, indent=2), encoding="utf-8"
         )
-        browser.close()
-        mw.col.close()
-        app.quit()
+        # El cierre oficial espera operaciones, detiene el servidor de media
+        # y destruye WebEngine antes de Qt. Cerrar sólo col deja callbacks vivos.
+        mw.unloadProfileAndExit()
+        assert app.exec() == 0
     print("Anki Desktop: tres formatos, seis importaciones, tres notas sin duplicados")
 
 
