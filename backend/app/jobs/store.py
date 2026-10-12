@@ -63,7 +63,7 @@ from app.schemas.enums import DocumentStatus, JobStatus
 # Versión actual del esquema. Cada cambio de esquema agrega una entrada a
 # MIGRACIONES y sube este número; NUNCA se edita una migración ya aplicada
 # (las bases reales de los usuarios quedaron con la vieja).
-VERSION_ESQUEMA = 9
+VERSION_ESQUEMA = 10
 
 # Cada migración: (versión, SQL). Se aplican en orden ascendente dentro de
 # una transacción cada una. La v1 crea todas las tablas del issue #08.
@@ -294,6 +294,18 @@ MIGRACIONES.append(
         );
         CREATE INDEX idx_generations_page ON generations(workspace_id, creado_en, generation_id);
         """,
+    )
+)
+
+
+MIGRACIONES.append(
+    (
+        10,
+        """
+    ALTER TABLE jobs ADD COLUMN cache_key TEXT;
+    CREATE INDEX idx_jobs_glossary_cache ON jobs(workspace_id, cache_key, creado_en)
+        WHERE tipo='glosario';
+""",
     )
 )
 
@@ -1687,6 +1699,33 @@ class RegistroOperativo:
         if fila is None:
             return None
         return dict(fila)
+
+    @_sincronizado
+    def job_cache_glosario(self, workspace_id: str, cache_key: str) -> dict | None:
+        """Sólo aprobados confirmados o un intento activo de la misma combinación."""
+        fila = self._conn.execute(
+            """SELECT job_id FROM jobs WHERE workspace_id=? AND cache_key=? AND tipo='glosario'
+               AND (status IN ('queued','running') OR (status='completed' AND resultado IS NOT NULL))
+               ORDER BY creado_en DESC LIMIT 1""",
+            (workspace_id, cache_key),
+        ).fetchone()
+        if fila is None:
+            return None
+        job = self.obtener_job(fila[0])
+        return job if job and self.obtener_documento(job["document_id"]) is not None else None
+
+    @_sincronizado
+    def vincular_cache_job(self, job_id: str, cache_key: str):
+        self._conn.execute("UPDATE jobs SET cache_key=? WHERE job_id=? AND tipo='glosario'", (cache_key, job_id))
+
+    @_sincronizado
+    def abandonar_intencion_job(self, workspace_id, operacion, clave, job_id):
+        """Un rechazo de admisión no deja una intención que apunte a un job ausente."""
+        self._conn.execute(
+            """DELETE FROM idempotency_keys WHERE workspace_id=? AND operacion=? AND clave=? AND recurso_id=?
+               AND NOT EXISTS (SELECT 1 FROM jobs WHERE job_id=?)""",
+            (workspace_id, operacion, clave, job_id, job_id),
+        )
 
     @_sincronizado
     def _workspace_de_job(self, job_id: str) -> str | None:

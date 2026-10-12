@@ -21,6 +21,7 @@ from app.core.rag.vectorstore import DEMO_WORKSPACE_ID, ResultadoIndexacion, Vec
 from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
 from app.schemas.documents import CoberturaDocumento, MetadatosDocumento, PublicacionDemo
 from app.schemas.enums import DocumentStatus
+from app.schemas.glossary import TerminoCandidato
 from app.schemas.multimodal import InterpretacionVisual
 from app.storage.object_keys import clave_demo, clave_documento, clave_original, clave_workspace
 from app.storage.provider import StorageNotFound, StorageProvider
@@ -52,6 +53,9 @@ class ManifiestoDocumento(BaseModel):
     # ni admite sustituir la admisión de un documento privado.
     publicacion_demo: PublicacionDemo | None = None
     interpretaciones_visuales: list[InterpretacionVisual] = Field(default_factory=list)
+    terminos_candidatos: list[TerminoCandidato] = Field(default_factory=list, max_length=64)
+    candidatos_omitidos: int = Field(default=0, ge=0)
+    detector_terminos_version: str | None = None
 
     @property
     def admision_recuperable(self) -> bool:

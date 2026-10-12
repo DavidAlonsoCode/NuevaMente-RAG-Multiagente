@@ -250,6 +250,17 @@ class ProcesadorIngestionDocumental:
                     )
                 manifest = manifest.model_copy(update={"metadatos": metadatos})
             self._vigente(contexto, manifest, etag)
+            etapa = "TERMINOS"
+            from app.glossary.candidates import DETECTOR_VERSION, detectar_candidatos
+
+            candidatos, omitidos = detectar_candidatos(chunks, chequear=contexto.chequear)
+            manifest = manifest.model_copy(
+                update={
+                    "terminos_candidatos": candidatos,
+                    "candidatos_omitidos": omitidos,
+                    "detector_terminos_version": DETECTOR_VERSION,
+                }
+            )
             etapa = "METADATA"
             etag = self._persistir(manifest, etag)
             self._vigente(contexto, manifest, etag)

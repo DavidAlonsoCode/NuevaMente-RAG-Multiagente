@@ -84,6 +84,19 @@ def _autorizar_chat(request, trabajo, token=None):
     return trabajo
 
 
+def _autorizar_resultado(request, trabajo, token=None):
+    trabajo = _autorizar_chat(request, trabajo, token)
+    if trabajo["tipo"] == "glosario" and trabajo["status"] == "completed" and trabajo["resultado"] is not None:
+        servicio = request.app.state.glossary
+        try:
+            salida = servicio.autorizar_resultado(trabajo["workspace_id"], json.loads(trabajo["resultado"]), token)
+            if salida.glossary_id != trabajo["job_id"]:
+                raise StorageUnavailable("El resultado no corresponde al glosario solicitado")
+        except (TrabajoCanceladoError, DeadlineExcedidoError):
+            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Glosario no disponible.") from None
+    return trabajo
+
+
 @router.get("/{job_id}", response_model=TrabajoComunResponse, summary="Consultar trabajo")
 def consultar(
     job_id: str,
@@ -92,7 +105,7 @@ def consultar(
     gestor: GestorTrabajos = Depends(get_gestor),
 ) -> TrabajoComunResponse:
     return _respuesta(
-        _autorizar_chat(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]), sesion["token"])
+        _autorizar_resultado(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]), sesion["token"])
     )
 
 
@@ -179,7 +192,7 @@ def eventos(
     def leer(gestor, manager, sesion, job_id, ultimo_id):
         trabajo, eventos = _leer_stream(gestor, manager, sesion, job_id, ultimo_id)
         if eventos or trabajo["status"] not in ACTIVOS:
-            _autorizar_chat(request, trabajo, sesion["token"])
+            _autorizar_resultado(request, trabajo, sesion["token"])
         return trabajo, eventos
 
     return StreamingResponse(
