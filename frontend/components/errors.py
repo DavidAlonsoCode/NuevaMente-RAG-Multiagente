@@ -7,10 +7,7 @@ from i18n import CATALOGOS, t
 from components.session import manejar_sesion_invalida
 
 
-def mostrar_error_ui(error: APIError, idioma_actual: str) -> None:
-    if error.status_code == 401 and not st.session_state.get("mostrando_recuperacion"):
-        manejar_sesion_invalida()
-        st.rerun()
+def mensaje_error(error: APIError, idioma_actual: str) -> str:
     clave = f"errors.{error.code}"
     if clave not in CATALOGOS["es"]:
         clave = "errors.INTERNAL"
@@ -22,7 +19,14 @@ def mostrar_error_ui(error: APIError, idioma_actual: str) -> None:
         clave = "presupuesto.limite_recursos"
     elif motivo == "storage_budget":
         clave = "presupuesto.bloqueado"
-    st.error(f"**{t('errors.titulo', idioma_actual)}**: {t(clave, idioma_actual)}")
+    return t(clave, idioma_actual)
+
+
+def mostrar_error_ui(error: APIError, idioma_actual: str) -> None:
+    if error.status_code == 401 and not st.session_state.get("mostrando_recuperacion"):
+        manejar_sesion_invalida()
+        st.rerun()
+    st.error(f"**{t('errors.titulo', idioma_actual)}**: {mensaje_error(error, idioma_actual)}")
     if error.retry_after and error.retry_after.isdigit():
         st.caption(t("errors.reintentar_en", idioma_actual).format(segundos=error.retry_after))
     with st.expander(t("comun.detalles_tecnicos", idioma_actual)):
