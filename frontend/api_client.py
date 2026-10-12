@@ -281,3 +281,6 @@ class APIClient:
             params={"format": fmt},
             binary=True,
         )
+
+    def workspace_status(self, token: str) -> dict[str, Any]:
+        return self._solicitar("GET", "/api/workspaces/current", token=token)

@@ -94,6 +94,29 @@ def test_persistencia_y_colecciones_por_modelo_dimension(pila):
     assert doble.llamadas_embeddings == 3
 
 
+def test_filtro_tipo_conserva_indices_anteriores_sin_reindexar(pila, monkeypatch):
+    indice, doble = pila
+    upsert = type(indice._privada).upsert
+
+    def metadata_anterior(coleccion, *args, **kwargs):
+        kwargs["metadatas"] = [
+            {k: v for k, v in m.items() if k not in ("source_type", "es_diagrama")} for m in kwargs["metadatas"]
+        ]
+        return upsert(coleccion, *args, **kwargs)
+
+    monkeypatch.setattr(type(indice._privada), "upsert", metadata_anterior)
+    indice.indexar("espacio-a", "doc-a", chunks(), contexto=ctx())
+    indice.indexar("espacio-b", "doc-a", chunks(workspace="espacio-b"), contexto=ctx("espacio-b"))
+    llamadas = doble.llamadas_embeddings
+    assert indice.indexar("espacio-a", "doc-a", chunks(), contexto=ctx()).reutilizado
+    assert doble.llamadas_embeddings == llamadas
+    hits = indice.buscar("espacio-a", "doc-a", "redes", contexto=ctx(), tipo_fuente="md")
+    assert {h.chunk.chunk_id for h in hits} == {c.chunk_id for c in chunks()}
+    llamadas = doble.llamadas_embeddings
+    assert indice.buscar("espacio-a", "doc-a", "redes", contexto=ctx(), tipo_fuente="image_description") == []
+    assert doble.llamadas_embeddings == llamadas
+
+
 def test_rechaza_coleccion_con_preparacion_incompatible(pila):
     indice, _ = pila
     indice._privada.modify(metadata={"preparacion": "vieja"})
@@ -253,6 +276,45 @@ def test_reconstruccion_completa_paginada_desde_originales(pila, mock_storage):
     assert cuotas.disponibles_hoy(MODELO) == 100 - doble.llamadas_embeddings
     assert indice.buscar("espacio-a", "doc-a", "redes", contexto=ctx())
     assert indice.contar("espacio-b", "doc-ajeno", contexto=ctx("espacio-b")) == 0
+
+
+@pytest.mark.parametrize("borrado", [False, True])
+def test_admision_no_confirmada_no_extrae_ni_reutiliza_indice(pila, mock_storage, monkeypatch, borrado):
+    indice, doble = pila
+    manifest = guardar_fuente(mock_storage, borrado=borrado)
+    indice.indexar("espacio-a", "doc-a", chunks(), contexto=ctx())
+    llamadas = doble.llamadas_embeddings
+    manifest.admision_confirmada = False
+    mock_storage.upload(clave_documento("espacio-a", "doc-a"), manifest.model_dump_json())
+
+    def no_extraer(*args, **kwargs):
+        pytest.fail("Una admisión pendiente no autoriza extraer ni indexar")
+
+    monkeypatch.setattr("app.core.rag.rebuild.parsear_archivo", no_extraer)
+    assert reconstruir_workspace(mock_storage, indice, contexto=ctx()) == []
+    assert indice.contar("espacio-a", "doc-a", contexto=ctx()) == 0
+    assert doble.llamadas_embeddings == llamadas
+    assert indice._retirado("espacio-a", "doc-a") is borrado
+
+
+@pytest.mark.parametrize("borrado", [False, True])
+def test_flag_oci_sin_commit_sqlite_no_reconstruye_indice(pila, mock_storage, monkeypatch, borrado):
+    indice, doble = pila
+    manifest = guardar_fuente(mock_storage, borrado=borrado)
+    indice.indexar("espacio-a", "doc-a", chunks(), contexto=ctx())
+    llamadas = doble.llamadas_embeddings
+    manifest.admision_confirmada = True
+    manifest.admision_sqlite_confirmada = False
+    mock_storage.upload(clave_documento("espacio-a", "doc-a"), manifest.model_dump_json())
+
+    def no_extraer(*args, **kwargs):
+        pytest.fail("El flag OCI solo no acredita el commit SQLite")
+
+    monkeypatch.setattr("app.core.rag.rebuild.parsear_archivo", no_extraer)
+    assert reconstruir_workspace(mock_storage, indice, contexto=ctx()) == []
+    assert indice.contar("espacio-a", "doc-a", contexto=ctx()) == 0
+    assert doble.llamadas_embeddings == llamadas
+    assert indice._retirado("espacio-a", "doc-a") is borrado
 
 
 def test_reconstruccion_verifica_hash_y_propaga_fallo_oci(pila, mock_storage, monkeypatch):

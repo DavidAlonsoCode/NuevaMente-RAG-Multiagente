@@ -191,7 +191,10 @@ def test_claves_invalidas_rechazadas(mock):
 def test_factory_mock_oci_1_devuelve_mock(tmp_path, monkeypatch):
     monkeypatch.setenv("MOCK_OCI", "1")
     proveedor = get_storage_provider(base_dir=tmp_path / "mock_base")
-    assert isinstance(proveedor, LocalMockStorageProvider)
+    from app.storage.budgeted import StoragePresupuestado
+
+    assert isinstance(proveedor, StoragePresupuestado)
+    assert isinstance(proveedor.proveedor, LocalMockStorageProvider)
     assert isinstance(proveedor, StorageProvider)
     # Y funciona de punta a punta (criterio 1: sin red).
     proveedor.upload("demo/prueba", "ok")

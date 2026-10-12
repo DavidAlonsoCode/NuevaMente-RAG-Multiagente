@@ -5,6 +5,11 @@ existe em espanhol precisa existir aqui e em inglês, e vice-versa.
 """
 
 CATALOGO_PT: dict[str, str] = {
+    "presupuesto.vencimiento": "Seu espaço expira por inatividade em {fecha}. A atividade renova o prazo.",
+    "presupuesto.recursos": "Documentos: {documentos}/{limite_documentos} · Gerações: {generaciones}/{limite_generaciones}",
+    "presupuesto.alerta": "O armazenamento atingiu 80% do orçamento. Baixe o material que deseja guardar e exclua o que não usa.",
+    "presupuesto.bloqueado": "O orçamento de armazenamento atingiu o limite. Novas gravações estão bloqueadas; você pode excluir material para liberar capacidade. A cota mensal é renovada no próximo mês.",
+    "presupuesto.limite_recursos": "Você atingiu o limite de cinco documentos ou vinte gerações mantidas. Exclua um recurso para continuar.",
     # ------------------------- comum -------------------------
     "comun.app_nombre": "NuevaMente",
     "comun.cargando": "Carregando…",

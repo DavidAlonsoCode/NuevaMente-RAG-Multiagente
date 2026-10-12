@@ -57,12 +57,14 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
+from app.schemas.documents import CoberturaDocumento, MetadatosDocumento, ResultadoIngestionDocumental
 from app.schemas.enums import DocumentStatus, JobStatus
+from app.schemas.errors import ErrorAplicacion, ErrorCode
 
 # Versión actual del esquema. Cada cambio de esquema agrega una entrada a
 # MIGRACIONES y sube este número; NUNCA se edita una migración ya aplicada
 # (las bases reales de los usuarios quedaron con la vieja).
-VERSION_ESQUEMA = 5
+VERSION_ESQUEMA = 11
 
 # Cada migración: (versión, SQL). Se aplican en orden ascendente dentro de
 # una transacción cada una. La v1 crea todas las tablas del issue #08.
@@ -222,7 +224,132 @@ MIGRACIONES: list[tuple[int, str]] = [
         INSERT INTO recovery_state VALUES (1, CASE WHEN EXISTS(SELECT 1 FROM workspaces) THEN 0 ELSE 1 END);
         """,
     ),
+    (
+        6,
+        """
+        ALTER TABLE documents ADD COLUMN source_name TEXT;
+        ALTER TABLE documents ADD COLUMN metadatos_json TEXT;
+        ALTER TABLE documents ADD COLUMN cobertura_json TEXT;
+        ALTER TABLE jobs ADD COLUMN document_id TEXT REFERENCES documents(document_id);
+        CREATE INDEX idx_jobs_document ON jobs(document_id);
+        CREATE TABLE document_admissions (
+            document_id TEXT PRIMARY KEY REFERENCES documents(document_id),
+            workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id),
+            job_id TEXT NOT NULL UNIQUE,
+            clave_idempotencia TEXT,
+            estado TEXT NOT NULL CHECK (estado IN ('en_curso', 'encolada', 'fallida')),
+            error_code TEXT,
+            actualizado_en TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX idx_admission_workspace ON document_admissions(workspace_id)
+            WHERE estado = 'en_curso';
+        CREATE TABLE document_cleanup (
+            document_id TEXT PRIMARY KEY REFERENCES documents(document_id),
+            workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id),
+            estado TEXT NOT NULL CHECK (estado IN ('reservada', 'pendiente', 'completada')),
+            solicitado_en TEXT NOT NULL,
+            intentos INTEGER NOT NULL DEFAULT 0 CHECK (intentos >= 0),
+            ultimo_error TEXT,
+            proximo_intento_en TEXT,
+            completado_en TEXT
+        );
+        CREATE INDEX idx_document_cleanup ON document_cleanup(estado, proximo_intento_en, document_id);
+        """,
+    ),
+    (
+        7,
+        """
+        ALTER TABLE document_admissions ADD COLUMN escritura_en_curso INTEGER NOT NULL DEFAULT 0
+            CHECK (escritura_en_curso IN (0, 1));
+        """,
+    ),
+    (
+        8,
+        """
+        ALTER TABLE documents ADD COLUMN recuperacion_evidencia TEXT;
+        ALTER TABLE documents ADD COLUMN recuperacion_estado TEXT
+            CHECK (recuperacion_estado IN ('pendiente','reservada','en_curso','confirmada','fallida'));
+        ALTER TABLE documents ADD COLUMN recuperacion_job_id TEXT;
+        ALTER TABLE documents ADD COLUMN recuperacion_intentos INTEGER NOT NULL DEFAULT 0
+            CHECK (recuperacion_intentos BETWEEN 0 AND 2);
+        CREATE UNIQUE INDEX idx_document_recovery_job ON documents(recuperacion_job_id)
+            WHERE recuperacion_job_id IS NOT NULL;
+        """,
+    ),
 ]
+
+
+MIGRACIONES.append(
+    (
+        9,
+        """
+        ALTER TABLE generations ADD COLUMN parametros_json TEXT;
+        DROP INDEX idx_jobs_generation;
+        CREATE INDEX idx_jobs_generation ON jobs(generation_id);
+        CREATE UNIQUE INDEX idx_jobs_generation_active ON jobs(generation_id)
+            WHERE generation_id IS NOT NULL AND status IN ('queued', 'running');
+        CREATE TABLE approved_outputs (
+            generation_id TEXT PRIMARY KEY REFERENCES generations(generation_id) ON DELETE CASCADE,
+            paquete_json TEXT NOT NULL,
+            expira_en TEXT NOT NULL
+        );
+        CREATE INDEX idx_generations_page ON generations(workspace_id, creado_en, generation_id);
+        """,
+    )
+)
+
+
+MIGRACIONES.append(
+    (
+        10,
+        """
+    ALTER TABLE jobs ADD COLUMN cache_key TEXT;
+    CREATE INDEX idx_jobs_glossary_cache ON jobs(workspace_id, cache_key, creado_en)
+        WHERE tipo='glosario';
+""",
+    )
+)
+
+
+MIGRACIONES.append(
+    (
+        11,
+        """
+CREATE TABLE workspace_cleanup (
+    workspace_id TEXT PRIMARY KEY REFERENCES workspaces(workspace_id),
+    estado TEXT NOT NULL DEFAULT 'pendiente', intentos INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT, actualizado_en TEXT
+);
+""",
+    )
+)
+
+
+def retirar_referencias(valor, document_id: str, generaciones: set[str]):
+    """Retira únicamente registros que declaran una relación conocida."""
+    if isinstance(valor, dict):
+        if valor.get("document_id") == document_id or (
+            isinstance(valor.get("generation_id"), str) and valor["generation_id"] in generaciones
+        ):
+            return None
+        return {
+            clave: filtrado
+            for clave, item in valor.items()
+            if (filtrado := retirar_referencias(item, document_id, generaciones)) is not None or item is None
+        }
+    if isinstance(valor, list):
+        return [
+            item for original in valor if (item := retirar_referencias(original, document_id, generaciones)) is not None
+        ]
+    return valor
+
+
+class EspacioDocumentalOcupado(ValueError):
+    """Límite operativo; distinto de un estado documental incompatible."""
+
+
+class ConflictoIdempotenciaDocumento(ValueError):
+    """La clave de upload ya pertenece a otro cuerpo."""
 
 
 def _ahora() -> datetime:
@@ -365,6 +492,7 @@ class RegistroOperativo:
         de reintentos.
         """
         with self._lock:
+            self._conn.execute("UPDATE document_admissions SET escritura_en_curso=0")
             cursor = self._conn.execute(
                 """
                 UPDATE generations
@@ -375,6 +503,11 @@ class RegistroOperativo:
                 """,
                 (JobStatus.FAILED.value, _iso(_ahora()), JobStatus.RUNNING.value),
             )
+            # Las admisiones cuyo proceso murió conservan IDs y evidencia para limpieza.
+            for fila in self._conn.execute(
+                "SELECT document_id FROM document_admissions WHERE estado='en_curso'"
+            ).fetchall():
+                self.fallar_admision_documental(fila["document_id"], "INTERRUPTED", "La admisión se interrumpió.")
             return cursor.rowcount
 
     @contextmanager
@@ -454,6 +587,7 @@ class RegistroOperativo:
                 )
                 self.revocar_sesiones_de_workspace(workspace_id)
                 self.agendar_borrado("workspace", workspace_id, workspace_id)
+                self._conn.execute("INSERT OR IGNORE INTO workspace_cleanup(workspace_id) VALUES (?)", (workspace_id,))
                 self._conn.execute("COMMIT")
             except Exception:
                 self._conn.execute("ROLLBACK")
@@ -635,15 +769,132 @@ class RegistroOperativo:
         titulo: str,
         estado: DocumentStatus,
         hash_documento: str | None = None,
+        *,
+        source_name: str | None = None,
+        metadatos: MetadatosDocumento | None = None,
+        cobertura: CoberturaDocumento | None = None,
     ) -> None:
         with self._lock:
             self._conn.execute(
                 """
-                INSERT INTO documents (document_id, workspace_id, titulo, hash, estado, creado_en)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO documents (document_id, workspace_id, titulo, hash, estado, creado_en,
+                    source_name, metadatos_json, cobertura_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (document_id, workspace_id, titulo, hash_documento, estado.value, _iso(_ahora())),
+                (
+                    document_id,
+                    workspace_id,
+                    titulo,
+                    hash_documento,
+                    estado.value,
+                    _iso(_ahora()),
+                    source_name,
+                    metadatos.model_dump_json() if metadatos else None,
+                    cobertura.model_dump_json() if cobertura else None,
+                ),
             )
+
+    @_sincronizado
+    def acreditar_documento_restaurado(self, document_id: str, evidencia: dict) -> None:
+        """Procedencia validada por recovery.py; no recrea una admisión histórica."""
+        from app.core.rag.rebuild import ManifiestoDocumento
+
+        manifest = ManifiestoDocumento.model_validate_json(json.dumps(evidencia["manifest"]))
+        doc = self.obtener_documento(document_id)
+        if (
+            not doc
+            or (manifest.workspace_id, manifest.document_id, manifest.hash_sha256)
+            != (doc["workspace_id"], document_id, doc["hash"])
+            or manifest.borrado
+            or manifest.admision_confirmada is not True
+            or manifest.admision_sqlite_confirmada is not True
+            or manifest.metadatos is None
+            or not evidencia.get("etag")
+            or self.obtener_admision_documental(doc["workspace_id"], document_id) is not None
+        ):
+            raise ValueError("Procedencia documental no verificable")
+        self._conn.execute(
+            """UPDATE documents SET recuperacion_evidencia=?, recuperacion_estado=?, creado_en=?, detalle_error=?
+               WHERE document_id=? AND recuperacion_evidencia IS NULL""",
+            (
+                json.dumps(evidencia, ensure_ascii=False),
+                "fallida" if manifest.estado == DocumentStatus.FAILED else "pendiente",
+                manifest.metadatos.creado_en.isoformat(),
+                manifest.detalle_error,
+                document_id,
+            ),
+        )
+
+    @_sincronizado
+    def procedencia_documental_verificada(self, doc: dict) -> bool:
+        from app.core.rag.rebuild import ManifiestoDocumento
+
+        if not doc.get("recuperacion_evidencia"):
+            return False
+        evidencia = json.loads(doc["recuperacion_evidencia"])
+        manifest = ManifiestoDocumento.model_validate_json(json.dumps(evidencia["manifest"]))
+        return bool(
+            evidencia.get("etag")
+            and manifest.admision_confirmada is True
+            and manifest.admision_sqlite_confirmada is True
+            and not manifest.borrado
+            and manifest.metadatos is not None
+            and (manifest.workspace_id, manifest.document_id, manifest.hash_sha256, manifest.source_name)
+            == (doc["workspace_id"], doc["document_id"], doc["hash"], doc["source_name"])
+        )
+
+    @_sincronizado
+    def reconstrucciones_documentales_pendientes(self) -> list[dict]:
+        return [
+            dict(fila)
+            for fila in self._conn.execute(
+                """SELECT d.* FROM documents d LEFT JOIN jobs j ON j.job_id=d.recuperacion_job_id
+                   WHERE d.recuperacion_evidencia IS NOT NULL AND d.recuperacion_intentos<2
+                     AND (d.recuperacion_estado IN ('pendiente','reservada') OR
+                          (d.recuperacion_estado='fallida' AND j.error_code='INTERRUPTED'))
+                     AND NOT EXISTS (SELECT 1 FROM document_cleanup c WHERE c.document_id=d.document_id
+                                     AND c.estado IN ('reservada','pendiente'))
+                   ORDER BY d.creado_en, d.document_id"""
+            ).fetchall()
+            if self.obtener_documento(fila["document_id"]) is not None
+        ]
+
+    def registrar_indice_reconstruccion(self, document_id: str, job_id: str, previo: dict | None) -> None:
+        """Obligación anterior al I/O Chroma; conserva un índice compatible previo."""
+        with self.transaccion():
+            doc = self.obtener_documento(document_id)
+            if doc is None or doc["recuperacion_estado"] != "en_curso" or doc["recuperacion_job_id"] != job_id:
+                raise ValueError("El intento de reconstrucción dejó de estar vigente")
+            evidencia = json.loads(doc["recuperacion_evidencia"])
+            evidencia["indice_intento"] = {"job_id": job_id, "previo": previo}
+            self._conn.execute(
+                "UPDATE documents SET recuperacion_evidencia=? WHERE document_id=?",
+                (json.dumps(evidencia, ensure_ascii=False), document_id),
+            )
+
+    def reservar_reconstruccion_documental(self, document_id: str, job_id: str) -> dict | None:
+        """Intención durable anterior al despacho; dos intentos reales como máximo."""
+        with self.transaccion():
+            doc = self.obtener_documento(document_id)
+            if doc is None or not self.procedencia_documental_verificada(doc) or doc["recuperacion_intentos"] >= 2:
+                return None
+            if doc["recuperacion_estado"] == "reservada":
+                return doc
+            anterior = self.obtener_job(doc["recuperacion_job_id"]) if doc["recuperacion_job_id"] else None
+            if doc["recuperacion_estado"] != "pendiente" and not (
+                doc["recuperacion_estado"] == "fallida" and anterior and anterior["error_code"] == "INTERRUPTED"
+            ):
+                return None
+            if self._conn.execute(
+                "SELECT 1 FROM document_cleanup WHERE document_id=? AND estado!='completada'", (document_id,)
+            ).fetchone():
+                return None
+            self._conn.execute(
+                """UPDATE documents SET recuperacion_estado='reservada', recuperacion_job_id=?,
+                   estado='processing', detalle_error=NULL WHERE document_id=?""",
+                (job_id, document_id),
+            )
+            return self.obtener_documento(document_id)
 
     def actualizar_documento(
         self,
@@ -681,6 +932,434 @@ class RegistroOperativo:
         ).fetchone()
         return dict(fila) if fila else None
 
+    @_sincronizado
+    def listar_documentos(self, workspace_id: str, *, limit: int = 20, cursor: str = "") -> list[dict]:
+        """Página interna por ID; excluye reservas sin commit y recursos retirados.
+
+        Storage y la sesión se verifican en el servicio, fuera del lock SQLite.
+        El cursor interno no define todavía su representación HTTP.
+        """
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise ValueError("La página interna admite entre 1 y 101 filas")
+        if not isinstance(cursor, str):
+            raise ValueError("El cursor interno debe ser un ID")
+        filas = self._conn.execute(
+            """
+            SELECT d.* FROM documents d
+            JOIN workspaces w ON w.workspace_id=d.workspace_id
+            LEFT JOIN document_admissions a ON a.document_id=d.document_id
+            WHERE d.workspace_id=? AND d.document_id>?
+              AND w.borrado_en IS NULL AND w.expira_en>?
+              AND (a.document_id IS NULL OR a.estado='encolada')
+              AND NOT EXISTS (SELECT 1 FROM pending_deletes r
+                              WHERE (r.recurso_tipo='document' AND r.recurso_id=d.document_id)
+                                 OR (r.recurso_tipo='workspace' AND r.recurso_id=d.workspace_id))
+            ORDER BY d.document_id LIMIT ?
+            """,
+            (workspace_id, cursor, _iso(_ahora()), limit),
+        ).fetchall()
+        return [dict(fila) for fila in filas]
+
+    @_sincronizado
+    def pagina_documentos(
+        self, workspace_id: str, *, despues: tuple[str, str] = ("", ""), limit: int = 101
+    ) -> list[dict]:
+        """Keyset por fecha e ID; el ancla puede haber sido retirada."""
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise ValueError("La página admite entre 1 y 101 filas")
+        filas = self._conn.execute(
+            """
+            SELECT d.* FROM documents d JOIN workspaces w ON w.workspace_id=d.workspace_id
+            LEFT JOIN document_admissions a ON a.document_id=d.document_id
+            WHERE d.workspace_id=? AND (d.creado_en, d.document_id)>(?, ?)
+              AND w.borrado_en IS NULL AND w.expira_en>?
+              AND (a.document_id IS NULL OR a.estado='encolada')
+              AND NOT EXISTS (SELECT 1 FROM pending_deletes r
+                  WHERE (r.recurso_tipo='document' AND r.recurso_id=d.document_id)
+                     OR (r.recurso_tipo='workspace' AND r.recurso_id=d.workspace_id))
+            ORDER BY d.creado_en, d.document_id LIMIT ?
+            """,
+            (workspace_id, *despues, _iso(_ahora()), limit),
+        ).fetchall()
+        return [dict(fila) for fila in filas]
+
+    @_sincronizado
+    def guardar_metadata_documental(
+        self, workspace_id: str, document_id: str, *, metadatos: MetadatosDocumento, cobertura: CoberturaDocumento
+    ) -> None:
+        """Conserva cobertura/visión sin publicar ready ni permitir escrituras ajenas."""
+        documento = self.obtener_documento(document_id)
+        if documento is None or documento["workspace_id"] != workspace_id:
+            raise ValueError("El documento no está disponible en este espacio")
+        if documento["estado"] == DocumentStatus.READY.value and cobertura.paginas_visuales_pendientes:
+            raise ValueError("Un documento ready no puede adquirir visión pendiente")
+        self._conn.execute(
+            "UPDATE documents SET metadatos_json=?, cobertura_json=? WHERE document_id=?",
+            (metadatos.model_dump_json(), cobertura.model_dump_json(), document_id),
+        )
+
+    # ------------------------------------------------------------------
+    # Admisión documental
+    # ------------------------------------------------------------------
+
+    def reservar_admision_documental(
+        self,
+        *,
+        token: str,
+        document_id: str,
+        job_id: str,
+        titulo: str,
+        source_name: str,
+        hash_documento: str,
+        metadatos: MetadatosDocumento,
+        cuerpo: str,
+        clave: str | None,
+    ) -> tuple[dict, bool]:
+        with self.transaccion():
+            sesion = self.obtener_sesion(token)
+            if sesion is None:
+                raise ValueError("La sesión no está disponible")
+            workspace_id = sesion["workspace_id"]
+            if clave is not None:
+                resultado, previo = self.idempotencia_iniciar(workspace_id, "upload", clave, cuerpo, document_id)
+                if resultado == "conflicto":
+                    raise ConflictoIdempotenciaDocumento()
+                if resultado == "duplicada":
+                    registro = self.obtener_admision_documental(workspace_id, previo)
+                    if registro is None:
+                        raise ValueError("La admisión fue retirada o no está disponible")
+                    return registro, False
+            if (
+                self.contar_activos_de_workspace(workspace_id)
+                or self._conn.execute(
+                    "SELECT 1 FROM document_admissions WHERE workspace_id=? AND estado='en_curso'", (workspace_id,)
+                ).fetchone()
+            ):
+                raise EspacioDocumentalOcupado("El espacio ya tiene un trabajo o una admisión en curso")
+            self.comprobar_limite_recursos(workspace_id, "documents", 5)
+            self.registrar_documento(
+                document_id,
+                workspace_id,
+                titulo,
+                DocumentStatus.PROCESSING,
+                hash_documento,
+                source_name=source_name,
+                metadatos=metadatos,
+            )
+            ahora = _iso(_ahora())
+            self._conn.execute(
+                """INSERT INTO document_admissions
+                   (document_id, workspace_id, job_id, clave_idempotencia, estado, error_code, actualizado_en, escritura_en_curso)
+                   VALUES (?, ?, ?, ?, 'en_curso', NULL, ?, 1)""",
+                (document_id, workspace_id, job_id, clave, ahora),
+            )
+            self._conn.execute(
+                "INSERT INTO document_cleanup (document_id, workspace_id, estado, solicitado_en) VALUES (?, ?, 'reservada', ?)",
+                (document_id, workspace_id, ahora),
+            )
+            return self.obtener_admision_documental(workspace_id, document_id), True
+
+    @_sincronizado
+    def obtener_admision_documental(self, workspace_id: str, document_id: str) -> dict | None:
+        documento = self.obtener_documento(document_id)
+        if documento is None or documento["workspace_id"] != workspace_id:
+            return None
+        fila = self._conn.execute("SELECT * FROM document_admissions WHERE document_id=?", (document_id,)).fetchone()
+        if fila is None:
+            return None
+        registro = {**dict(fila), "estado_documento": documento["estado"]}
+        if registro["estado"] == "fallida" and registro["clave_idempotencia"] is not None:
+            cache = self._conn.execute(
+                "SELECT respuesta_json FROM idempotency_keys WHERE workspace_id=? AND operacion='upload' AND clave=?",
+                (workspace_id, registro["clave_idempotencia"]),
+            ).fetchone()
+            respuesta = json.loads(cache["respuesta_json"]) if cache and cache["respuesta_json"] else None
+            if respuesta and "error" in respuesta:
+                registro["respuesta_error"] = respuesta["error"]
+        return registro
+
+    def confirmar_admision_documental(self, token: str, document_id: str) -> None:
+        """Confirma el registro local; la aceptación exige además su evidencia en storage."""
+        with self.transaccion():
+            sesion = self.obtener_sesion(token)
+            registro = self.obtener_admision_documental(sesion["workspace_id"], document_id) if sesion else None
+            trabajo = self.obtener_job(registro["job_id"]) if registro else None
+            if not registro or registro["estado"] != "en_curso" or registro["estado_documento"] != "processing":
+                raise ValueError("La admisión no está disponible")
+            if not trabajo or trabajo["document_id"] != document_id or trabajo["status"] not in ("queued", "running"):
+                raise ValueError("El trabajo de ingestión no está disponible")
+            self._conn.execute(
+                "UPDATE document_admissions SET estado='encolada', actualizado_en=? WHERE document_id=?",
+                (_iso(_ahora()), document_id),
+            )
+            if registro["clave_idempotencia"] is not None:
+                self.idempotencia_completar(
+                    registro["workspace_id"],
+                    "upload",
+                    registro["clave_idempotencia"],
+                    document_id,
+                    {"document_id": document_id, "job_id": registro["job_id"]},
+                )
+            self._conn.execute(
+                "DELETE FROM document_cleanup WHERE document_id=? AND estado='reservada'", (document_id,)
+            )
+
+    def fallar_admision_documental(
+        self, document_id: str, codigo: str, mensaje: str, *, respuesta_error: dict | None = None
+    ) -> None:
+        with self.transaccion():
+            fila = self._conn.execute(
+                "SELECT * FROM document_admissions WHERE document_id=?", (document_id,)
+            ).fetchone()
+            if fila is None or fila["estado"] == "fallida":
+                return
+            self.actualizar_documento(document_id, DocumentStatus.FAILED, detalle_error=mensaje)
+            self._conn.execute(
+                "UPDATE document_admissions SET estado='fallida', error_code=?, actualizado_en=? WHERE document_id=?",
+                (codigo, _iso(_ahora()), document_id),
+            )
+            self._conn.execute(
+                """INSERT INTO document_cleanup (document_id, workspace_id, estado, solicitado_en)
+                   VALUES (?, ?, 'pendiente', ?) ON CONFLICT(document_id) DO UPDATE SET estado='pendiente'""",
+                (document_id, fila["workspace_id"], _iso(_ahora())),
+            )
+            if fila["clave_idempotencia"] is not None and respuesta_error is not None:
+                # Cuerpo público seguro, nunca la excepción cruda. Conserva la
+                # reserva y su estado: un fallo no habilita repetir el efecto.
+                _validar_respuesta_cacheada(respuesta_error)
+                self._conn.execute(
+                    "UPDATE idempotency_keys SET respuesta_json=? WHERE workspace_id=? AND operacion='upload' AND clave=?",
+                    (
+                        json.dumps({"error": respuesta_error}, ensure_ascii=False),
+                        fila["workspace_id"],
+                        fila["clave_idempotencia"],
+                    ),
+                )
+
+    @_sincronizado
+    def listar_limpiezas_documentales(self, *, limit: int = 100, cursor: str = "") -> list[dict]:
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("limit debe estar entre 1 y 100")
+        return [
+            dict(f)
+            for f in self._conn.execute(
+                """SELECT * FROM document_cleanup WHERE estado='pendiente' AND document_id>?
+               AND (proximo_intento_en IS NULL OR proximo_intento_en<=?) ORDER BY document_id LIMIT ?""",
+                (cursor, _iso(_ahora()), limit),
+            ).fetchall()
+        ]
+
+    @_sincronizado
+    def registrar_intento_limpieza_documental(
+        self,
+        workspace_id: str,
+        document_id: str,
+        *,
+        error_code: str | None = None,
+        proximo_intento: datetime | None = None,
+    ) -> None:
+        if proximo_intento is not None and proximo_intento.tzinfo is None:
+            raise ValueError("El reintento debe tener zona horaria")
+        self._conn.execute(
+            """UPDATE document_cleanup SET intentos=intentos+1, ultimo_error=?, proximo_intento_en=?,
+               estado=?, completado_en=? WHERE document_id=? AND workspace_id=? AND estado='pendiente'""",
+            (
+                error_code,
+                _iso(proximo_intento) if proximo_intento else None,
+                "pendiente" if error_code else "completada",
+                None if error_code else _iso(_ahora()),
+                document_id,
+                workspace_id,
+            ),
+        )
+
+    @_sincronizado
+    def agendar_efecto_documental(self, workspace_id: str, document_id: str) -> None:
+        """Reserva compensación terminal; no equivale a purgar el original.
+
+        También se invoca dentro del commit terminal. El registro de limpieza
+        existente distingue reservada (derivado/diagnóstico) de pendiente
+        (admisión fallida a purgar). Una solicitud nueva invalida un ack viejo.
+        """
+        previo = self._conn.execute(
+            "SELECT solicitado_en FROM document_cleanup WHERE document_id=?", (document_id,)
+        ).fetchone()
+        ahora = _ahora()
+        if previo:
+            ahora = max(ahora, datetime.fromisoformat(previo["solicitado_en"]) + timedelta(microseconds=1))
+        self._conn.execute(
+            """INSERT INTO document_cleanup (document_id, workspace_id, estado, solicitado_en)
+               VALUES (?, ?, 'reservada', ?) ON CONFLICT(document_id) DO UPDATE SET
+               estado=CASE WHEN document_cleanup.estado='pendiente' THEN 'pendiente' ELSE 'reservada' END,
+               solicitado_en=excluded.solicitado_en, completado_en=NULL, proximo_intento_en=NULL""",
+            (document_id, workspace_id, _iso(ahora)),
+        )
+
+    @_sincronizado
+    def recuperar_efectos_documentales(self) -> None:
+        """Materializa terminales antiguos cuyo observador no dejó seguimiento.
+
+        La fuente durable es el terminal SQLite. No reabre efectos ya
+        completados ni interpreta un manifiesto como éxito del pipeline.
+        """
+        self._conn.execute(
+            """INSERT INTO document_cleanup (document_id, workspace_id, estado, solicitado_en)
+               SELECT d.document_id, d.workspace_id, 'reservada', ? FROM documents d
+               WHERE (EXISTS (SELECT 1 FROM jobs j WHERE j.document_id=d.document_id
+                 AND j.workspace_id=d.workspace_id AND j.status IN ('failed','cancelled','rejected_quality'))
+                 OR EXISTS (SELECT 1 FROM pending_deletes p WHERE p.workspace_id=d.workspace_id
+                    AND ((p.recurso_tipo='document' AND p.recurso_id=d.document_id)
+                         OR (p.recurso_tipo='workspace' AND p.recurso_id=d.workspace_id))))
+               AND NOT EXISTS (SELECT 1 FROM document_cleanup c WHERE c.document_id=d.document_id)""",
+            (_iso(_ahora()),),
+        )
+
+    @_sincronizado
+    def listar_efectos_documentales(self, *, cursor: str = "", limit: int = 100) -> list[dict]:
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("limit debe estar entre 1 y 100")
+        return [
+            dict(fila)
+            for fila in self._conn.execute(
+                """SELECT c.*, a.estado AS admision_estado, COALESCE(a.job_id,d.recuperacion_job_id) AS job_id,
+                          j.status AS job_status, d.hash, d.estado AS documento_estado, a.escritura_en_curso,
+                          d.recuperacion_evidencia
+                   FROM document_cleanup c JOIN documents d USING(document_id)
+                   LEFT JOIN document_admissions a USING(document_id)
+                   LEFT JOIN jobs j ON j.job_id=COALESCE(a.job_id,d.recuperacion_job_id)
+                   WHERE c.estado IN ('reservada','pendiente') AND c.document_id>?
+                     AND (c.proximo_intento_en IS NULL OR c.proximo_intento_en<=?)
+                     AND (a.estado='fallida' OR j.status IN ('failed','cancelled','rejected_quality')
+                          OR EXISTS (SELECT 1 FROM pending_deletes p WHERE p.workspace_id=c.workspace_id
+                            AND ((p.recurso_tipo='document' AND p.recurso_id=c.document_id)
+                                 OR (p.recurso_tipo='workspace' AND p.recurso_id=c.workspace_id))))
+                   ORDER BY c.document_id LIMIT ?""",
+                (cursor, _iso(_ahora()), limit),
+            ).fetchall()
+        ]
+
+    @_sincronizado
+    def registrar_resultado_efecto_documental(self, efecto: dict, *, error_code: str | None = None) -> bool:
+        """Ack condicional: un efecto nuevo nunca se pierde por un intento anterior."""
+        cursor = self._conn.execute(
+            """UPDATE document_cleanup SET intentos=intentos+1, ultimo_error=?, proximo_intento_en=?,
+               estado=CASE WHEN ? IS NULL THEN 'completada' ELSE estado END, completado_en=?
+               WHERE document_id=? AND workspace_id=? AND solicitado_en=?
+                 AND estado IN ('reservada','pendiente')""",
+            (
+                error_code,
+                _iso(_ahora() + timedelta(seconds=60)) if error_code else None,
+                error_code,
+                None if error_code else _iso(_ahora()),
+                efecto["document_id"],
+                efecto["workspace_id"],
+                efecto["solicitado_en"],
+            ),
+        )
+        return cursor.rowcount == 1
+
+    def retirar_documento(self, token: str, document_id: str) -> bool:
+        """Lápida y obligación indivisibles; no llama a storage ni al gestor."""
+        with self.transaccion():
+            sesion = self.obtener_sesion(token)
+            documento = self.obtener_documento(document_id)
+            if sesion is None or documento is None or documento["workspace_id"] != sesion["workspace_id"]:
+                return False
+            self.agendar_borrado("document", document_id, sesion["workspace_id"])
+            self.agendar_efecto_documental(sesion["workspace_id"], document_id)
+            self._conn.execute("UPDATE document_cleanup SET estado='pendiente' WHERE document_id=?", (document_id,))
+            self.purgar_datos_documentales(sesion["workspace_id"], document_id)
+            return True
+
+    @_sincronizado
+    def finalizar_escritura_admision(self, document_id: str) -> None:
+        self._conn.execute("UPDATE document_admissions SET escritura_en_curso=0 WHERE document_id=?", (document_id,))
+
+    @_sincronizado
+    def escritura_documental_en_curso(self, workspace_id: str, document_id: str) -> bool:
+        return (
+            self._conn.execute(
+                """SELECT 1 FROM document_admissions
+            WHERE workspace_id=? AND document_id=? AND escritura_en_curso=1""",
+                (workspace_id, document_id),
+            ).fetchone()
+            is not None
+        )
+
+    @_sincronizado
+    def recursos_documentales(self, workspace_id: str, document_id: str) -> tuple[list[str], list[dict]]:
+        """Relaciones persistidas, incluso después de la retirada; nunca inferidas."""
+        generaciones = [
+            r[0]
+            for r in self._conn.execute(
+                "SELECT generation_id FROM generations WHERE workspace_id=? AND document_id=?",
+                (workspace_id, document_id),
+            )
+        ]
+        trabajos = [
+            dict(r)
+            for r in self._conn.execute(
+                """SELECT j.* FROM jobs j LEFT JOIN generations g ON g.generation_id=j.generation_id
+               WHERE j.workspace_id=? AND (j.document_id=? OR (g.workspace_id=? AND g.document_id=?))""",
+                (workspace_id, document_id, workspace_id, document_id),
+            )
+        ]
+        return generaciones, trabajos
+
+    def purgar_datos_documentales(self, workspace_id: str, document_id: str) -> None:
+        """El llamador mantiene transacción: conserva control, elimina payloads/referencias."""
+        with self._lock:
+            if not self._conn.in_transaction:
+                raise ValueError("La purga operativa requiere una transacción")
+            if not self.esta_borrado("document", document_id):
+                raise ValueError("La purga requiere una lápida")
+            generaciones, trabajos = self.recursos_documentales(workspace_id, document_id)
+            for trabajo in trabajos:
+                self._conn.execute(
+                    "UPDATE jobs SET resultado=NULL, error_message=NULL WHERE job_id=?", (trabajo["job_id"],)
+                )
+                self._conn.execute(
+                    "DELETE FROM events WHERE job_id=? AND workspace_id=?", (trabajo["job_id"], workspace_id)
+                )
+            for generacion in generaciones:
+                self._conn.execute("DELETE FROM approved_outputs WHERE generation_id=?", (generacion,))
+                self._conn.execute("UPDATE generations SET parametros_json=NULL WHERE generation_id=?", (generacion,))
+                self._conn.execute("UPDATE generations SET error_message=NULL WHERE generation_id=?", (generacion,))
+                self._conn.execute(
+                    "DELETE FROM events WHERE generation_id=? AND workspace_id=?", (generacion, workspace_id)
+                )
+            progreso = self.obtener_progreso_restaurado(workspace_id)
+            if progreso is not None:
+                nuevo = retirar_referencias(progreso, document_id, set(generaciones)) or {
+                    "version": progreso["version"]
+                }
+                if nuevo != progreso:
+                    nuevo["version"] = progreso["version"] + 1
+                    self._conn.execute(
+                        "UPDATE workspace_progress SET version=?, state_json=?, actualizado_en=? WHERE workspace_id=?",
+                        (
+                            nuevo["version"],
+                            json.dumps(nuevo, ensure_ascii=False, allow_nan=False),
+                            _iso(_ahora()),
+                            workspace_id,
+                        ),
+                    )
+            self._conn.execute(
+                """UPDATE documents SET titulo='Documento retirado', source_name=NULL,
+                metadatos_json=NULL, cobertura_json=NULL, detalle_error=NULL WHERE document_id=? AND workspace_id=?""",
+                (document_id, workspace_id),
+            )
+
+    @_sincronizado
+    def limpieza_documental_completada(self, workspace_id: str, document_id: str) -> bool:
+        return (
+            self._conn.execute(
+                "SELECT 1 FROM document_cleanup WHERE document_id=? AND workspace_id=? AND estado='completada'",
+                (document_id, workspace_id),
+            ).fetchone()
+            is not None
+        )
+
     # ------------------------------------------------------------------
     # Generaciones
     # ------------------------------------------------------------------
@@ -700,6 +1379,25 @@ class RegistroOperativo:
                 """,
                 (generation_id, workspace_id, document_id, status.value, ahora, ahora),
             )
+
+    @_sincronizado
+    def registrar_generacion_retirada(self, generation_id: str, workspace_id: str, document_id: str) -> None:
+        """Relación interna de purga; exige la lápida y nunca autoriza el resultado."""
+        documento = self._conn.execute(
+            "SELECT workspace_id FROM documents WHERE document_id=?", (document_id,)
+        ).fetchone()
+        if (
+            documento is None
+            or documento["workspace_id"] != workspace_id
+            or not self.esta_borrado("document", document_id)
+        ):
+            raise ValueError("La relación de purga requiere un documento retirado del mismo espacio")
+        ahora = _iso(_ahora())
+        self._conn.execute(
+            """INSERT INTO generations (generation_id, workspace_id, document_id, status, creado_en, actualizado_en)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (generation_id, workspace_id, document_id, JobStatus.COMPLETED.value, ahora, ahora),
+        )
 
     def actualizar_generacion(
         self, generation_id: str, status: JobStatus, error_code: str | None = None, error_message: str | None = None
@@ -767,6 +1465,136 @@ class RegistroOperativo:
     # Trabajos comunes (issue #20): ingestion, chat y glosario
     # ------------------------------------------------------------------
 
+    @_sincronizado
+    def guardar_parametros_generacion(self, generation_id: str, parametros: dict, *, creado_en: str | None = None):
+        fila = self.obtener_generacion(generation_id)
+        if fila is None or parametros["document_id"] != fila["document_id"]:
+            raise ValueError("Los parámetros no corresponden a la generación")
+        self._conn.execute(
+            "UPDATE generations SET parametros_json=?, creado_en=COALESCE(?, creado_en) WHERE generation_id=?",
+            (json.dumps(parametros, sort_keys=True, ensure_ascii=False), creado_en, generation_id),
+        )
+
+    @_sincronizado
+    def job_generacion(self, generation_id: str) -> dict | None:
+        fila = self._conn.execute(
+            "SELECT * FROM jobs WHERE generation_id=? ORDER BY rowid DESC LIMIT 1", (generation_id,)
+        ).fetchone()
+        return dict(fila) if fila else None
+
+    @_sincronizado
+    def historial_chat(self, workspace_id: str, document_id: str, document_hash: str, limite: int):
+        if not 0 <= limite <= 50:
+            raise ValueError("Límite de turnos inválido")
+        filas = self._conn.execute(
+            """SELECT resultado FROM jobs WHERE workspace_id=? AND document_id=?
+               AND tipo='chat' AND status='completed' AND resultado IS NOT NULL
+               AND json_extract(resultado, '$.document_hash')=?
+               ORDER BY creado_en DESC, job_id DESC LIMIT ?""",
+            (workspace_id, document_id, document_hash, limite),
+        ).fetchall()
+        return [json.loads(fila[0]) for fila in reversed(filas)]
+
+    @_sincronizado
+    def guardar_aprobado(self, generation_id: str, paquete_json: str, expira_en: str):
+        from app.schemas.responses import PedagogicalOutput
+
+        paquete = PedagogicalOutput.model_validate_json(paquete_json)
+        vencimiento = datetime.fromisoformat(expira_en)
+        if vencimiento.tzinfo is None or not _ahora() < vencimiento <= _ahora() + timedelta(hours=24):
+            raise ValueError("La retención debe vencer dentro de 24 horas")
+        fila = self.obtener_generacion(generation_id)
+        if (
+            fila is None
+            or len(paquete_json.encode()) > 2_000_000
+            or (paquete.generation_id, paquete.documento_fuente.document_id) != (generation_id, fila["document_id"])
+            or paquete.almacenamiento_oci.objeto_id != f"outputs/{fila['workspace_id']}/{generation_id}/content.json"
+        ):
+            raise ValueError("El aprobado no corresponde a su generación")
+        self._conn.execute(
+            "INSERT OR IGNORE INTO approved_outputs VALUES (?, ?, ?)", (generation_id, paquete_json, expira_en)
+        )
+        if (
+            self._conn.execute(
+                "SELECT paquete_json FROM approved_outputs WHERE generation_id=?", (generation_id,)
+            ).fetchone()[0]
+            != paquete_json
+        ):
+            raise ValueError("El aprobado retenido no puede sustituirse")
+
+    @_sincronizado
+    def aprobado_retenido(self, generation_id: str) -> str | None:
+        self.purgar_aprobados_expirados()
+        if self.obtener_generacion(generation_id) is None:
+            return None
+        fila = self._conn.execute(
+            "SELECT paquete_json FROM approved_outputs WHERE generation_id=? AND expira_en>?",
+            (generation_id, _iso(_ahora())),
+        ).fetchone()
+        return fila[0] if fila else None
+
+    @_sincronizado
+    def descartar_aprobado(self, generation_id: str):
+        self._conn.execute("DELETE FROM approved_outputs WHERE generation_id=?", (generation_id,))
+
+    @_sincronizado
+    def purgar_aprobados_expirados(self):
+        self._conn.execute("DELETE FROM approved_outputs WHERE expira_en<=?", (_iso(_ahora()),))
+
+    @_sincronizado
+    def abandonar_reserva_generacion(self, workspace_id, generation_id, operacion, clave, *, eliminar=False):
+        if clave is not None:
+            self._conn.execute(
+                """DELETE FROM idempotency_keys WHERE workspace_id=? AND operacion=? AND clave=? AND recurso_id=?
+                   AND (? != 'generate' OR NOT EXISTS (SELECT 1 FROM jobs WHERE generation_id=?))""",
+                (workspace_id, operacion, clave, generation_id, operacion, generation_id),
+            )
+        if eliminar:
+            self._conn.execute(
+                """DELETE FROM generations WHERE workspace_id=? AND generation_id=?
+                   AND NOT EXISTS (SELECT 1 FROM jobs WHERE generation_id=generations.generation_id)""",
+                (workspace_id, generation_id),
+            )
+
+    @_sincronizado
+    def pagina_generaciones(self, workspace_id, *, despues=None, limit=20, **filtros):
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise ValueError("Límite de página inválido")
+        condiciones = [
+            "g.workspace_id=?",
+            "w.borrado_en IS NULL",
+            "w.expira_en>?",
+            "NOT EXISTS (SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo='generation' AND p.recurso_id=g.generation_id)",
+            "NOT EXISTS (SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo='document' AND p.recurso_id=g.document_id)",
+        ]
+        valores = [workspace_id, _iso(_ahora())]
+        if despues is not None:
+            condiciones.append("(g.creado_en, g.generation_id)<(?, ?)")
+            valores.extend(despues)
+        columnas = {
+            "documento": "g.document_id",
+            "perfil": "json_extract(g.parametros_json, '$.perfil_destinatario')",
+            "formato": "json_extract(g.parametros_json, '$.formato_salida')",
+            "idioma": "json_extract(g.parametros_json, '$.idioma_salida')",
+        }
+        for nombre, valor in filtros.items():
+            if valor is None:
+                continue
+            if nombre in columnas:
+                condiciones.append(columnas[nombre] + "=?")
+            elif nombre in ("desde", "hasta"):
+                condiciones.append("g.creado_en" + (">=?" if nombre == "desde" else "<=?"))
+            else:
+                raise ValueError("Filtro no permitido")
+            valores.append(valor)
+        filas = self._conn.execute(
+            "SELECT g.* FROM generations g JOIN workspaces w ON w.workspace_id=g.workspace_id WHERE "
+            + " AND ".join(condiciones)
+            + " ORDER BY g.creado_en DESC, g.generation_id DESC LIMIT ?",
+            [*valores, limit],
+        ).fetchall()
+        return [dict(fila) for fila in filas]
+
     def registrar_job(self, job_id: str, workspace_id: str, tipo: str, status: JobStatus = JobStatus.QUEUED) -> None:
         """Registra un trabajo común en la cola (el gestor de #20 lo consume)."""
         ahora = _iso(_ahora())
@@ -780,7 +1608,15 @@ class RegistroOperativo:
             )
 
     @_sincronizado
-    def encolar_job(self, job_id: str, workspace_id: str, tipo: str, generation_id: str | None = None) -> None:
+    def encolar_job(
+        self,
+        job_id: str,
+        workspace_id: str,
+        tipo: str,
+        generation_id: str | None = None,
+        document_id: str | None = None,
+        cache_key: str | None = None,
+    ) -> None:
         """Acepta trabajo y evento juntos; la generación vinculada comparte su ciclo de vida."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
@@ -790,8 +1626,32 @@ class RegistroOperativo:
                 generacion = self.obtener_generacion(generation_id)
                 if not generacion or generacion["workspace_id"] != workspace_id or generacion["status"] != "queued":
                     raise ValueError("La generación no está disponible para encolar")
+            if document_id is not None:
+                documento = self.obtener_documento(document_id)
+                if not documento or documento["workspace_id"] != workspace_id:
+                    raise ValueError("El documento no está disponible para el trabajo")
+                if generation_id and generacion["document_id"] != document_id:
+                    raise ValueError("La generación corresponde a otro documento")
+                if tipo == "ingestion" and (generation_id or documento["estado"] != DocumentStatus.PROCESSING.value):
+                    raise ValueError("El documento no está en procesamiento")
+                if tipo != "ingestion" and (
+                    documento["estado"] != DocumentStatus.READY.value
+                    or (not generation_id and tipo not in ("chat", "glosario"))
+                ):
+                    raise ValueError("El documento no está listo para el trabajo")
+                if tipo == "ingestion" and documento["recuperacion_evidencia"] is not None:
+                    if documento["recuperacion_estado"] != "reservada" or documento["recuperacion_job_id"] != job_id:
+                        raise ValueError("La reconstrucción no corresponde al intento reservado")
+                    self._conn.execute(
+                        """UPDATE documents SET recuperacion_estado='en_curso',
+                           recuperacion_intentos=recuperacion_intentos+1 WHERE document_id=?""",
+                        (document_id,),
+                    )
             self.registrar_job(job_id, workspace_id, tipo)
-            self._conn.execute("UPDATE jobs SET generation_id=? WHERE job_id=?", (generation_id, job_id))
+            self._conn.execute(
+                "UPDATE jobs SET generation_id=?, document_id=?, cache_key=? WHERE job_id=?",
+                (generation_id, document_id, cache_key, job_id),
+            )
             self.registrar_evento(
                 workspace_id, "encolado", JobStatus.QUEUED, job_id=job_id, generation_id=generation_id
             )
@@ -860,6 +1720,33 @@ class RegistroOperativo:
         return dict(fila)
 
     @_sincronizado
+    def job_cache_glosario(self, workspace_id: str, cache_key: str) -> dict | None:
+        """Sólo aprobados confirmados o un intento activo de la misma combinación."""
+        fila = self._conn.execute(
+            """SELECT job_id FROM jobs WHERE workspace_id=? AND cache_key=? AND tipo='glosario'
+               AND (status IN ('queued','running') OR (status='completed' AND resultado IS NOT NULL))
+               ORDER BY creado_en DESC LIMIT 1""",
+            (workspace_id, cache_key),
+        ).fetchone()
+        if fila is None:
+            return None
+        job = self.obtener_job(fila[0])
+        return job if job and self.obtener_documento(job["document_id"]) is not None else None
+
+    @_sincronizado
+    def vincular_cache_job(self, job_id: str, cache_key: str):
+        self._conn.execute("UPDATE jobs SET cache_key=? WHERE job_id=? AND tipo='glosario'", (cache_key, job_id))
+
+    @_sincronizado
+    def abandonar_intencion_job(self, workspace_id, operacion, clave, job_id):
+        """Un rechazo de admisión no deja una intención que apunte a un job ausente."""
+        self._conn.execute(
+            """DELETE FROM idempotency_keys WHERE workspace_id=? AND operacion=? AND clave=? AND recurso_id=?
+               AND NOT EXISTS (SELECT 1 FROM jobs WHERE job_id=?)""",
+            (workspace_id, operacion, clave, job_id, job_id),
+        )
+
+    @_sincronizado
     def _workspace_de_job(self, job_id: str) -> str | None:
         fila = self._conn.execute("SELECT workspace_id FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
         return fila["workspace_id"] if fila else None
@@ -912,6 +1799,7 @@ class RegistroOperativo:
     @_sincronizado
     def finalizar_job(self, job_id: str, status: JobStatus, **datos) -> None:
         """Publica estado y evento juntos, sin reabrir trabajos terminales ni espacios borrados."""
+        confirmado: ResultadoIngestionDocumental | None = datos.pop("documento_confirmado", None)
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             fila = self._conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
@@ -919,19 +1807,73 @@ class RegistroOperativo:
                 if status == JobStatus.COMPLETED and (
                     self.obtener_workspace(fila["workspace_id"]) is None
                     or (fila["generation_id"] and self.obtener_generacion(fila["generation_id"]) is None)
+                    or (fila["document_id"] and self.obtener_documento(fila["document_id"]) is None)
                 ):
                     status, datos = JobStatus.CANCELLED, {"error_message": "El espacio fue retirado."}
+                if status == JobStatus.COMPLETED and fila["document_id"]:
+                    documento = self.obtener_documento(fila["document_id"])
+                    if documento and documento["estado"] == DocumentStatus.FAILED.value:
+                        status, datos = (
+                            JobStatus.FAILED,
+                            {
+                                "error_code": "INVALID_STATE",
+                                "error_message": documento["detalle_error"]
+                                or "La ingestión dejó el documento fallido.",
+                            },
+                        )
+                if status == JobStatus.COMPLETED and confirmado is not None:
+                    confirmado = ResultadoIngestionDocumental.model_validate(confirmado.model_dump())
+                    documento = self.obtener_documento(fila["document_id"])
+                    if (
+                        fila["tipo"] != "ingestion"
+                        or fila["status"] != JobStatus.RUNNING.value
+                        or (fila["workspace_id"], fila["document_id"])
+                        != (confirmado.workspace_id, confirmado.document_id)
+                        or documento is None
+                        or documento["hash"] != confirmado.hash_sha256
+                        or documento["metadatos_json"] != confirmado.metadatos.model_dump_json()
+                        or documento["cobertura_json"] != confirmado.cobertura.model_dump_json()
+                    ):
+                        raise ValueError("La confirmación no corresponde a la ingestión persistida")
+                    self.actualizar_documento(fila["document_id"], confirmado.estado)
+                    self._conn.execute(
+                        """UPDATE documents SET recuperacion_estado='confirmada'
+                           WHERE document_id=? AND recuperacion_job_id=? AND recuperacion_estado='en_curso'""",
+                        (fila["document_id"], job_id),
+                    )
                 self.actualizar_job(job_id, status, **datos)
                 if fila["generation_id"]:
                     self.actualizar_generacion(
                         fila["generation_id"], status, datos.get("error_code"), datos.get("error_message")
+                    )
+                if (
+                    fila["tipo"] == "ingestion"
+                    and fila["document_id"]
+                    and status
+                    in (
+                        JobStatus.FAILED,
+                        JobStatus.CANCELLED,
+                        JobStatus.REJECTED_QUALITY,
+                    )
+                ):
+                    self.actualizar_documento(
+                        fila["document_id"],
+                        DocumentStatus.FAILED,
+                        detalle_error=datos.get("error_message") or "La ingestión no se completó.",
+                    )
+                    self.agendar_efecto_documental(fila["workspace_id"], fila["document_id"])
+                    self._conn.execute(
+                        """UPDATE documents SET recuperacion_estado='fallida'
+                           WHERE document_id=? AND recuperacion_job_id=? AND recuperacion_estado='en_curso'""",
+                        (fila["document_id"], job_id),
                     )
                 self.registrar_evento(
                     fila["workspace_id"], fila["tipo"], status, job_id=job_id, generation_id=fila["generation_id"]
                 )
             self._conn.execute("COMMIT")
         except Exception:
-            self._conn.execute("ROLLBACK")
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
             raise
 
     def marcar_huerfanos_como_interrumpidos(self) -> int:
@@ -945,6 +1887,13 @@ class RegistroOperativo:
         """
         with self._lock:
             pendientes = self._conn.execute("SELECT job_id FROM jobs WHERE status IN ('queued', 'running')").fetchall()
+            self._conn.execute(
+                """UPDATE generations SET status='failed', error_code='INTERRUPTED',
+                   error_message='La admisión se interrumpió antes de encolar.', actualizado_en=?
+                   WHERE status='queued' AND parametros_json IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM jobs WHERE generation_id=generations.generation_id)""",
+                (_iso(_ahora()),),
+            )
             for fila in pendientes:
                 self.finalizar_job(
                     fila["job_id"],
@@ -957,6 +1906,17 @@ class RegistroOperativo:
     # ------------------------------------------------------------------
     # Idempotencia (§7.3): el corazón atómico del issue
     # ------------------------------------------------------------------
+
+    @_sincronizado
+    def idempotencia_consultar(self, workspace_id, operacion, clave, cuerpo):
+        """Consulta una intención ya admitida sin crear reservas ni requerir IA."""
+        fila = self._conn.execute(
+            "SELECT hash_cuerpo,recurso_id FROM idempotency_keys WHERE workspace_id=? AND operacion=? AND clave=?",
+            (workspace_id, operacion, clave),
+        ).fetchone()
+        if fila is None:
+            return None
+        return ("duplicada", fila["recurso_id"]) if fila["hash_cuerpo"] == _hash_de(cuerpo) else ("conflicto", None)
 
     @_sincronizado
     def idempotencia_iniciar(
@@ -1095,6 +2055,104 @@ class RegistroOperativo:
     # Tombstones de borrado (§8.5, §11.5)
     # ------------------------------------------------------------------
 
+    @_sincronizado
+    def comprobar_limite_recursos(self, workspace_id, tabla, limite):
+        if tabla not in ("documents", "generations"):
+            raise ValueError("Recurso inválido")
+        tipo, identificador = ("document", "document_id") if tabla == "documents" else ("generation", "generation_id")
+        usados = self._conn.execute(
+            f"""SELECT COUNT(*) FROM {tabla} r WHERE workspace_id=?
+            AND NOT EXISTS(SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo=? AND p.recurso_id=r.{identificador})
+            AND NOT EXISTS(SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo='document' AND p.recurso_id=r.document_id)""",
+            (workspace_id, tipo),
+        ).fetchone()[0]
+        if usados >= limite:
+            raise ErrorAplicacion(
+                ErrorCode.RATE_LIMITED,
+                "Alcanzaste el límite de recursos conservados. Borrá uno para continuar.",
+                {"motivo": "workspace_resource_limit", "recurso": tabla, "limite": limite, "usados": usados},
+            )
+
+    @_sincronizado
+    def expirar_workspaces(self):
+        for fila in self._conn.execute(
+            "SELECT workspace_id FROM workspaces WHERE borrado_en IS NULL AND expira_en<=?", (_iso(_ahora()),)
+        ).fetchall():
+            self.borrar_workspace(fila[0])
+        # Incluye lápidas reconstruidas desde OCI sin resucitar sus datos.
+        self._conn.execute(
+            "INSERT OR IGNORE INTO workspace_cleanup(workspace_id) SELECT workspace_id FROM workspaces WHERE borrado_en IS NOT NULL"
+        )
+
+    @_sincronizado
+    def limpiezas_espacios(self, pendientes=True):
+        return [
+            dict(f)
+            for f in self._conn.execute(
+                "SELECT c.*,w.borrado_en FROM workspace_cleanup c JOIN workspaces w USING(workspace_id)"
+                + (" WHERE c.estado!='completada'" if pendientes else "")
+                + " ORDER BY c.workspace_id"
+            ).fetchall()
+        ]
+
+    @_sincronizado
+    def resultado_limpieza_espacio(self, ws, estado, error=None):
+        self._conn.execute(
+            "UPDATE workspace_cleanup SET estado=?, intentos=intentos+1, error_code=?, actualizado_en=? WHERE workspace_id=?",
+            (estado, error, _iso(_ahora()), ws),
+        )
+
+    @_sincronizado
+    def recursos_espacio(self, ws):
+        documentos = [
+            r[0] for r in self._conn.execute("SELECT document_id FROM documents WHERE workspace_id=?", (ws,)).fetchall()
+        ]
+        trabajos = [
+            dict(r)
+            for r in self._conn.execute(
+                "SELECT * FROM jobs WHERE workspace_id=? AND status IN ('queued','running')", (ws,)
+            ).fetchall()
+        ]
+        escrituras = (
+            self._conn.execute(
+                "SELECT 1 FROM document_admissions WHERE workspace_id=? AND escritura_en_curso=1", (ws,)
+            ).fetchone()
+            is not None
+        )
+        return documentos, trabajos, escrituras
+
+    @_sincronizado
+    def uso_espacio(self, ws):
+        documentos = sum(
+            self.obtener_documento(r[0]) is not None
+            for r in self._conn.execute("SELECT document_id FROM documents WHERE workspace_id=?", (ws,)).fetchall()
+        )
+        generaciones = sum(
+            self.obtener_generacion(r[0]) is not None
+            for r in self._conn.execute("SELECT generation_id FROM generations WHERE workspace_id=?", (ws,)).fetchall()
+        )
+        return {
+            "documentos": documentos,
+            "limite_documentos": 5,
+            "generaciones": generaciones,
+            "limite_generaciones": 20,
+        }
+
+    def purgar_datos_espacio(self, ws):
+        with self.transaccion():
+            self._conn.execute(
+                "DELETE FROM events WHERE job_id IN (SELECT job_id FROM jobs WHERE workspace_id=?) OR generation_id IN (SELECT generation_id FROM generations WHERE workspace_id=?)",
+                (ws, ws),
+            )
+            for tabla in ("jobs", "idempotency_keys", "workspace_progress", "sessions"):
+                self._conn.execute(f"DELETE FROM {tabla} WHERE workspace_id=?", (ws,))
+            self._conn.execute(
+                "DELETE FROM approved_outputs WHERE generation_id IN (SELECT generation_id FROM generations WHERE workspace_id=?)",
+                (ws,),
+            )
+            for tabla in ("generations", "document_cleanup", "document_admissions", "documents"):
+                self._conn.execute(f"DELETE FROM {tabla} WHERE workspace_id=?", (ws,))
+
     def agendar_borrado(self, recurso_tipo: str, recurso_id: str, workspace_id: str) -> None:
         """Deja una lápida persistente; purga_despues_en indica elegibilidad para limpieza.
 
@@ -1130,6 +2188,63 @@ class RegistroOperativo:
         """Incluye espacios retirados: solo para sincronización/recuperación interna."""
         fila = self._conn.execute("SELECT * FROM workspaces WHERE workspace_id = ?", (workspace_id,)).fetchone()
         return dict(fila) if fila else None
+
+    def incorporar_lapidas_remotas(self, datos: dict) -> None:
+        """Merge conservador previo al CAS del manifiesto privado existente."""
+        ws = datos["workspace_id"]
+        with self.transaccion():
+            local = self.workspace_para_manifest(ws)
+            if local is None or local["codigo_hash"] != datos["codigo_hash"]:
+                raise ValueError("Manifiesto ajeno al espacio")
+            for lapida in datos["recursos_borrados"]:
+                tipo, identidad = lapida["recurso_tipo"], lapida["recurso_id"]
+                if tipo == "workspace":
+                    if identidad != ws:
+                        raise ValueError("Lápida de otro espacio")
+                else:
+                    tabla, columna = (
+                        ("documents", "document_id") if tipo == "document" else ("generations", "generation_id")
+                    )
+                    propietario = self._conn.execute(
+                        f"SELECT workspace_id FROM {tabla} WHERE {columna}=?", (identidad,)
+                    ).fetchone()
+                    if propietario is not None and propietario["workspace_id"] != ws:
+                        raise ValueError("Lápida de un recurso ajeno")
+                self.restaurar_lapida(
+                    ws,
+                    lapida["recurso_tipo"],
+                    lapida["recurso_id"],
+                    lapida["solicitado_en"],
+                    lapida["purga_despues_en"],
+                )
+                anterior = self._conn.execute(
+                    """SELECT solicitado_en, purga_despues_en FROM pending_deletes
+                    WHERE workspace_id=? AND recurso_tipo=? AND recurso_id=?""",
+                    (ws, lapida["recurso_tipo"], lapida["recurso_id"]),
+                ).fetchone()
+                if anterior is None:
+                    raise ValueError("Una lápida no puede cambiar de propietario")
+                fechas = [
+                    _iso(max(datetime.fromisoformat(anterior[campo]), datetime.fromisoformat(lapida[campo])))
+                    for campo in ("solicitado_en", "purga_despues_en")
+                ]
+                self._conn.execute(
+                    """UPDATE pending_deletes SET solicitado_en=?, purga_despues_en=?
+                    WHERE workspace_id=? AND recurso_tipo=? AND recurso_id=?""",
+                    (*fechas, ws, lapida["recurso_tipo"], lapida["recurso_id"]),
+                )
+            # No degradar fechas/versiones remotas ni reactivar un espacio.
+            expira = max(datetime.fromisoformat(local["expira_en"]), datetime.fromisoformat(datos["expira_en"]))
+            actividades = [x for x in (local["ultima_actividad_en"], datos.get("ultima_actividad_en")) if x]
+            actividad = max((datetime.fromisoformat(x) for x in actividades), default=None)
+            borrado = local["borrado_en"] or datos.get("borrado_en")
+            if datos["borrado"] and borrado is None:
+                borrado = _iso(_ahora())
+            self._conn.execute(
+                """UPDATE workspaces SET version_manifiesto=MAX(version_manifiesto, ?)+1,
+                manifest_pendiente=1, expira_en=?, ultima_actividad_en=?, borrado_en=? WHERE workspace_id=?""",
+                (datos["version"], _iso(expira), _iso(actividad) if actividad else None, borrado, ws),
+            )
 
     @_sincronizado
     def registrar_actividad(self, workspace_id: str, dias_validez: int, intervalo_segundos: int = 300) -> bool:
@@ -1246,6 +2361,23 @@ class RegistroOperativo:
             "SELECT state_json FROM workspace_progress WHERE workspace_id = ?", (workspace_id,)
         ).fetchone()
         return json.loads(fila[0]) if fila else None
+
+    @_sincronizado
+    def confirmar_progreso(self, workspace_id: str, state: dict) -> None:
+        """Replica un estado confirmado en OCI; nunca retrocede una versión local."""
+        _validar_respuesta_cacheada(state)
+        version = state.get("version")
+        if type(version) is not int or version < 1:
+            raise ValueError("Progreso sin versión válida")
+        if self.obtener_workspace(workspace_id) is None:
+            return
+        self._conn.execute(
+            """INSERT INTO workspace_progress VALUES (?, ?, ?, ?)
+               ON CONFLICT(workspace_id) DO UPDATE SET
+               version=excluded.version, state_json=excluded.state_json, actualizado_en=excluded.actualizado_en
+               WHERE excluded.version >= workspace_progress.version""",
+            (workspace_id, version, json.dumps(state, ensure_ascii=False, allow_nan=False), _iso(_ahora())),
+        )
 
     @_sincronizado
     def esta_borrado(self, recurso_tipo: str, recurso_id: str) -> bool:

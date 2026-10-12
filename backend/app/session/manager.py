@@ -6,6 +6,7 @@ from app.jobs.store import RegistroOperativo, _hash_de
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.responses import SessionResponse, WorkspaceCreatedResponse
 from app.session.manifests import sincronizar_manifiesto
+from app.storage.oci_budget import mantenimiento_storage
 from app.storage.provider import StorageConflict, StorageError, StorageProvider
 
 logger = logging.getLogger("nuevamente.session")
@@ -118,7 +119,8 @@ class SessionManager:
     def borrar_workspace(self, workspace_id: str) -> None:
         self.db.borrar_workspace(workspace_id)
         try:
-            sincronizar_manifiesto(self.db, self.storage_provider, workspace_id)
+            with mantenimiento_storage():
+                sincronizar_manifiesto(self.db, self.storage_provider, workspace_id)
         except (StorageError, ValueError):
             # El acceso ya está bloqueado y la marca durable local queda para sincronizar.
             logger.warning("Borrado pendiente de confirmar en storage; workspace_id=%s", workspace_id)

@@ -14,6 +14,11 @@ def mostrar_error_ui(error: APIError, idioma_actual: str) -> None:
     clave = f"errors.{error.code}"
     if clave not in CATALOGOS["es"]:
         clave = "errors.INTERNAL"
+    motivo = error.details.get("motivo")
+    if motivo == "workspace_resource_limit":
+        clave = "presupuesto.limite_recursos"
+    elif motivo == "storage_budget":
+        clave = "presupuesto.bloqueado"
     st.error(f"**{t('errors.titulo', idioma_actual)}**: {t(clave, idioma_actual)}")
     if error.retry_after and error.retry_after.isdigit():
         st.caption(t("errors.reintentar_en", idioma_actual).format(segundos=error.retry_after))

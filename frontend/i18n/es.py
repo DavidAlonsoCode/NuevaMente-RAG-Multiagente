@@ -27,6 +27,11 @@ regenera materiales; el idioma del CONTENIDO viaja aparte (idioma_salida).
 """
 
 CATALOGO_ES: dict[str, str] = {
+    "presupuesto.vencimiento": "Tu espacio vence por inactividad el {fecha}. La actividad renueva el plazo.",
+    "presupuesto.recursos": "Documentos: {documentos}/{limite_documentos} · Generaciones: {generaciones}/{limite_generaciones}",
+    "presupuesto.alerta": "Se alcanzó el 80% del presupuesto de almacenamiento. Descargá el material que quieras conservar y borrá lo que no uses.",
+    "presupuesto.bloqueado": "El presupuesto de almacenamiento llegó al límite. Las nuevas escrituras están bloqueadas; podés borrar material para liberar capacidad. La cuota mensual se renueva el próximo mes.",
+    "presupuesto.limite_recursos": "Alcanzaste el límite de cinco documentos o veinte generaciones conservadas. Borrá un recurso para continuar.",
     # ------------------------- común -------------------------
     "comun.app_nombre": "NuevaMente",
     "comun.cargando": "Cargando…",

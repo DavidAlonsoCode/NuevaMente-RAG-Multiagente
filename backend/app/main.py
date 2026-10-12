@@ -39,6 +39,7 @@ import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -47,15 +48,20 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
-from app.api.routes import jobs, workspaces
+from app.api.routes import chat, demo_documents, documents, exports, generations, glossary, jobs, progress, workspaces
 from app.config import Configuracion, config
-from app.jobs.manager import ControlesOperativos, GestorTrabajos
+from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos
 from app.jobs.store import RegistroOperativo
 from app.schemas.errors import ErrorAplicacion, ErrorBody, ErrorCode, ErrorResponse
 from app.session.manifests import SincronizadorManifiestos, sincronizar_pendientes
 from app.session.recovery import restaurar_registro
 from app.storage.oci_storage import get_storage_provider
-from app.storage.provider import StorageUnavailable
+from app.storage.provider import StorageBudgetExceeded, StorageUnavailable
+
+if TYPE_CHECKING:
+    from app.core.agents.critic_contracts import VerificadorSync
+    from app.core.agents.gemini_generation import GeneradorSync
+    from app.core.rag.embeddings import EmbeddingProvider
 
 # ContextVar: una variable que vale "para la petición actual". Los módulos
 # de negocio podrán leer el request_id para logging sin pasarlo a mano por
@@ -111,7 +117,15 @@ def _request_id_de(request: Request) -> str:
     return getattr(request.state, "request_id", None) or request_id_actual.get()
 
 
-def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
+def crear_app(
+    configuracion: Configuracion | None = None,
+    *,
+    proveedor_embeddings: EmbeddingProvider | None = None,
+    proveedor_vision: VerificadorSync | None = None,
+    proveedor_generacion: GeneradorSync | None = None,
+    proveedor_verificacion: VerificadorSync | None = None,
+    cuotas_proveedor: CuotasProveedor | None = None,
+) -> FastAPI:
     """Fábrica de la aplicación. Recibe configuración inyectable para tests.
 
     Al construir la app valida la configuración crítica: en producción, si
@@ -121,35 +135,187 @@ def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
     """
     ajustes = configuracion or config
     ajustes.validar_critico()
+    if cuotas_proveedor is None:
+        cuotas = {}
+        if ajustes.embedding_quota_rpm is not None:
+            cuotas[ajustes.gemini_embedding_model] = CuotasModelo(
+                ajustes.embedding_quota_rpm, ajustes.embedding_quota_tpm, ajustes.embedding_quota_rpd
+            )
+        if ajustes.vision_quota_rpm is not None:
+            limites_vision = CuotasModelo(ajustes.vision_quota_rpm, ajustes.vision_quota_tpm, ajustes.vision_quota_rpd)
+            if ajustes.gemini_generation_model in cuotas and cuotas[ajustes.gemini_generation_model] != limites_vision:
+                raise ValueError("Un modelo compartido requiere los mismos límites de cuota")
+            cuotas[ajustes.gemini_generation_model] = limites_vision
+        for nombre, modelo in (
+            ("generation", ajustes.gemini_generation_model),
+            ("verification", ajustes.gemini_verification_model),
+        ):
+            if getattr(ajustes, nombre + "_quota_rpm") is not None:
+                limites = CuotasModelo(*(getattr(ajustes, nombre + "_quota_" + v) for v in ("rpm", "tpm", "rpd")))
+                if modelo in cuotas and cuotas[modelo] != limites:
+                    raise ValueError("Un modelo compartido requiere los mismos límites de cuota")
+                cuotas[modelo] = limites
+        cuotas_proveedor = CuotasProveedor(cuotas) if cuotas else None
+    if (proveedor_embeddings is not None or proveedor_vision is not None) and cuotas_proveedor is None:
+        raise ValueError("El proveedor documental requiere las cuotas compartidas explícitas")
+    if (proveedor_generacion is None) != (proveedor_verificacion is None):
+        raise ValueError("Inyectar juntos generación y verificación")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         gestor = None
+        recursos = None
         sincronizador = None
+        proveedores_texto = []
         try:
             restaurar_registro(app.state.db, app.state.storage_provider)
             sincronizar_pendientes(app.state.db, app.state.storage_provider)
-            sincronizador = SincronizadorManifiestos(app.state.db, app.state.storage_provider)
-            sincronizador.iniciar()
             controles = ControlesOperativos(
                 max_en_cola=ajustes.max_queued_jobs,
                 deadline_ejecucion_segundos=ajustes.generation_deadline_seconds,
             )
-            gestor = GestorTrabajos(app.state.db, controles=controles)
+            gestor = GestorTrabajos(app.state.db, controles=controles, cuotas=cuotas_proveedor)
             app.state.jobs_manager = gestor
+            if (
+                proveedor_embeddings is not None
+                and cuotas_proveedor.disponibles_hoy(ajustes.gemini_embedding_model) is None
+            ):
+                raise ValueError("La integración documental requiere cuotas explícitas para el modelo de embeddings")
+            if (
+                cuotas_proveedor is not None
+                and cuotas_proveedor.disponibles_hoy(ajustes.gemini_embedding_model) is not None
+            ):
+                from app.documents.runtime import crear_recursos_documentales
+
+                recursos = crear_recursos_documentales(
+                    ajustes,
+                    app.state.db,
+                    app.state.storage_provider,
+                    gestor,
+                    proveedor=proveedor_embeddings,
+                    proveedor_vision=proveedor_vision,
+                )
+                app.state.vectorstore = recursos.indice
+                app.state.documents_admission = recursos.admision
+                app.state.documents_query = recursos.consulta
+            else:
+                from app.documents.query import ServicioConsultaDocumental
+
+                # Listado/detalle no requieren Gemini ni inventan cuotas. El
+                # upload y las fuentes con índice no configurado fallan 503.
+                app.state.documents_query = ServicioConsultaDocumental(
+                    app.state.db,
+                    app.state.storage_provider,
+                    None,
+                    plazo_lectura=ajustes.generation_deadline_seconds,
+                )
+            gen, ver = proveedor_generacion, proveedor_verificacion
+            modelos_listos = cuotas_proveedor is not None and all(
+                cuotas_proveedor.disponibles_hoy(m) is not None
+                for m in (ajustes.gemini_generation_model, ajustes.gemini_verification_model)
+            )
+            if gen is not None and (not modelos_listos or app.state.vectorstore is None):
+                raise ValueError("Generación requiere índice y cuotas compartidas de ambos modelos")
+            if gen is None and modelos_listos and app.state.vectorstore is not None and not ajustes.mock_gemini:
+                from app.core.agents.gemini_generation import ClienteGeminiGeneracion
+
+                gen = ver = ClienteGeminiGeneracion(ajustes)
+            if gen is not None:
+                proveedores_texto = list({id(p): p for p in (gen, ver)}.values())
+            from app.chat.service import ServicioChat
+            from app.generations.service import ServicioGeneraciones
+
+            # Las lecturas de material ya aprobado no dependen del runtime LLM.
+            app.state.generations = ServicioGeneraciones(
+                app.state.db, app.state.storage_provider, app.state.documents_query, gestor, ajustes, gen, ver
+            )
+            app.state.chat = ServicioChat(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
+            from app.documents.demo import ServicioCatalogoDemo
+            from app.documents.lifecycle import EfectosDocumentales
+            from app.exports.router import ServicioExportaciones
+            from app.generations.catalog import CatalogoGeneraciones
+            from app.glossary.service import ServicioGlosario
+            from app.progress.service import ServicioProgreso
+
+            app.state.glossary = ServicioGlosario(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
+
+            app.state.demo_documents_query = ServicioCatalogoDemo(
+                app.state.db,
+                app.state.storage_provider,
+                app.state.vectorstore,
+                plazo=ajustes.generation_deadline_seconds,
+            )
+
+            efectos = (
+                app.state.documents_admission.procesar.efectos
+                if app.state.documents_admission is not None
+                else EfectosDocumentales(app.state.db, app.state.storage_provider, None)
+            )
+            efectos.gestor = gestor
+            app.state.documents_effects = efectos
+            app.state.generations.exports = ServicioExportaciones(app.state.generations.catalogo, guardia=efectos._lock)
+            # La limpieza espera a las escrituras de estudio antes de purgar
+            # progreso: un PUT en vuelo no puede recrear referencias retiradas.
+            app.state.progress = ServicioProgreso(
+                app.state.db,
+                app.state.storage_provider,
+                CatalogoGeneraciones(
+                    app.state.db, app.state.storage_provider, app.state.documents_query, ajustes.oci_bucket_name
+                ),
+                guardia=efectos._lock,
+            )
+            efectos.reconciliar()
+            from app.session.lifecycle import CicloVidaEspacios
+
+            ciclo = CicloVidaEspacios(app.state.db, app.state.storage_provider, efectos, gestor)
+            app.state.workspace_lifecycle = ciclo
+            ciclo.reconciliar()
+
+            def mantenimiento():
+                ciclo.reconciliar()
+                return efectos.reconciliar()
+
+            sincronizador = SincronizadorManifiestos(
+                app.state.db, app.state.storage_provider, efectos_documentales=mantenimiento
+            )
+            sincronizador.iniciar()
             yield
         finally:
-            # Esperar llamadas en vuelo antes de cerrar el registro compartido.
+            # Ningún finally puede cerrar recursos si stop falló. Se espera al
+            # único worker y a observadores externos; no se mata un hilo activo.
+            if sincronizador is not None:
+                sincronizador.detener()
+            if gestor is not None:
+                gestor.detener(timeout=None)
             try:
-                if gestor is not None:
-                    gestor.detener()
+                try:
+                    for proveedor in proveedores_texto:
+                        cerrar = getattr(proveedor, "cerrar", None)
+                        if callable(cerrar):
+                            cerrar()
+                    if recursos is not None and recursos.vision is not None:
+                        cerrar_vision = getattr(recursos.vision.proveedor, "cerrar", None)
+                        if callable(cerrar_vision):
+                            cerrar_vision()
+                finally:
+                    if app.state.vectorstore is not None:
+                        app.state.vectorstore.cerrar()
             finally:
-                if sincronizador is not None:
-                    sincronizador.detener()
-            cerrar_storage = getattr(app.state.storage_provider, "cerrar", None)
-            if callable(cerrar_storage):
-                cerrar_storage()
-            app.state.db.cerrar()
+                app.state.documents_admission = None
+                app.state.documents_query = None
+                app.state.generations = None
+                app.state.chat = None
+                app.state.progress = None
+                app.state.glossary = None
+                app.state.demo_documents_query = None
+                app.state.documents_effects = None
+                app.state.vectorstore = None
+                try:
+                    cerrar_storage = getattr(app.state.storage_provider, "cerrar", None)
+                    if callable(cerrar_storage):
+                        cerrar_storage()
+                finally:
+                    app.state.db.cerrar()
 
     app = FastAPI(
         title="NuevaMente API",
@@ -221,6 +387,7 @@ def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
                 ErrorCode.STORAGE_UNAVAILABLE,
                 "El almacenamiento no está disponible; revisar OCI y su presupuesto.",
                 request_id,
+                detalles={"motivo": "storage_budget"} if isinstance(exc, StorageBudgetExceeded) else None,
                 request=request,
             ),
             headers={CABECERA_REQUEST_ID: request_id},
@@ -308,9 +475,27 @@ def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
     app.state.config = ajustes
     app.state.db = RegistroOperativo(ruta_db=Path(ajustes.data_dir) / "operativo.db")
     app.state.storage_provider = get_storage_provider(configuracion=ajustes)
+    # Los schemas públicos documentales se implementan con la dirección del
+    # equipo; sus precisiones conservan revisión contract-change pendiente.
+    app.state.documents_admission = None
+    app.state.documents_query = None
+    app.state.demo_documents_query = None
+    app.state.documents_effects = None
+    app.state.vectorstore = None
+    app.state.generations = None
+    app.state.chat = None
+    app.state.progress = None
+    app.state.glossary = None
 
     app.include_router(workspaces.router)
     app.include_router(jobs.router)
+    app.include_router(documents.router)
+    app.include_router(demo_documents.router)
+    app.include_router(generations.router)
+    app.include_router(exports.router)
+    app.include_router(chat.router)
+    app.include_router(progress.router)
+    app.include_router(glossary.router)
 
     return app
 

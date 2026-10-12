@@ -75,7 +75,7 @@ Los `code` son estables y no se traducen; los `message` se localizan según idio
 - La recuperación reserva como máximo cinco plazas por origen, contando fallos del último minuto e intentos en vuelo. Un código válido no borra los fallos previos del minuto. Los fallos técnicos liberan su plaza; un conflicto de versión devuelve `409 INVALID_STATE`. Un bloqueo devuelve `429 RECOVERY_LOCKED` con `Retry-After`.
 - La actividad autenticada renueva la retención del espacio con escrituras agrupadas cada cinco minutos. No prolonga el token. Los manifiestos pendientes se sincronizan al arrancar y cada minuto; la confirmación de una versión vieja no borra una actividad posterior.
 - El manifiesto privado conserva hash, versión, expiración, última actividad y lápidas. Las escrituras usan creación exclusiva o `if_match`; un manifiesto retirado no se reactiva. Si OCI falla al borrar, el acceso local queda bloqueado y la confirmación durable permanece pendiente, con diagnóstico y reintento. Se debe preservar SQLite hasta confirmar esa lápida: un borrado que nunca llegó a storage no puede reconstruirse después de perder también el volumen local.
-- `session/recovery.py` reconstruye el índice hash→espacio al arrancar un registro nuevo y retoma reconstrucciones interrumpidas. Pagina manifiestos, verifica identidad/ETag/hash y restaura documentos, registros de paquetes canónicos aprobados y el agregado privado de progreso; omite recursos retirados. No restaura tokens, colas, borradores ni invoca Gemini. Los documentos quedan `processing` hasta reconstruir índices (#17) y, cuando corresponda, visión (#30). Los endpoints y presentación de progreso siguen a cargo de #41/#42.
+- `session/recovery.py` reconstruye el índice hash→espacio al arrancar un registro nuevo y retoma reconstrucciones interrumpidas. Pagina manifiestos, verifica identidad/ETag/hash y restaura documentos, registros de paquetes canónicos aprobados y el agregado privado de progreso; omite recursos retirados. No restaura tokens, colas, borradores ni invoca Gemini. Los documentos quedan `processing` hasta reconstruir índices (#17) y, cuando corresponda, visión (#30). La API de progreso corresponde a #35, su presentación a #41 y la gestión visual del espacio a #42.
 - `Accept-Language` selecciona mensajes ES/EN/PT; los códigos, detalles e idioma del contenido conservan su contrato. El cliente Streamlit envía el idioma de interfaz vigente.
 
 **Origen detrás de Streamlit/Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. Streamlit transmite ambas cabeceras al backend desde su contexto del servidor. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
@@ -99,6 +99,233 @@ Esto supone Caddy como entrada pública directa, según la arquitectura vigente.
 | `GET /api/documents/{id}` | Estado + metadatos + **cobertura** (páginas/secciones procesadas y omitidas). |
 | `DELETE /api/documents/{id}` | Borra original, índice, derivados, chat y progreso vinculados. |
 | `GET /api/documents/{id}/sources/{chunk_id}` | Fragmento/página original autorizado (base de «Ver la fuente»; imágenes para diagramas). |
+
+#### Issue 19 — precisiones HTTP propuestas bajo dirección del equipo (etapa 4)
+
+**Estado: implementadas localmente para revisión; requieren `contract-change`
+con revisión API+UI+AGT+RAG antes de su aprobación como contrato congelado.**
+La autorización de implementar no sustituye esa revisión. Rutas, autenticación,
+límites, estados, envolvente de errores e idempotencia ya estaban determinados
+arriba. Las formas completas, nulabilidad, cursor y traducción de incertidumbre
+son precisiones nuevas. No se añade `WORKSPACE_BUSY` al enum vigente.
+
+- Upload JSON conserva `documento_titulo` / `documento_contenido`. Multipart
+  propone un único archivo `file` y campo opcional `titulo` (1..300 caracteres
+  con texto). Campos/archivos extra o repetidos: 422 `VALIDATION_ERROR`.
+  MIME no acredita formato; el parser valida firma y contenido. El nombre es
+  etiqueta, nunca ruta ni clave de storage. El límite del archivo es 20 MiB PDF
+  o 5 MiB MD/TXT; transporte acotado a 20 MiB + 64 KiB multipart y
+  6 × 5 MiB + 64 KiB JSON para escapes y estructura. Exceso: 413, sin truncar.
+  El conteo de páginas/tokens y parseo completo ocurren en el job: un rechazo
+  posterior se informa por sus endpoints, no convierte el 202 previo en éxito
+  del procesamiento. El 202 acredita original, manifiesto, commit de admisión
+  SQLite y evidencia final OCI; nunca basta una reserva.
+- Respuesta 202: `{document_id, status: "processing", job_id, status_url,
+  events_url, cancel_url}`. URLs de `/api/jobs/{job_id}`, `/events` y `/cancel`;
+  no se duplica la API de progreso. Reintento confirmado devuelve el mismo
+  cuerpo, incluso si el trabajo ya terminó. IDs distintos pueden compartir
+  contenido; solo reutilizan embeddings compatibles dentro del mismo workspace.
+- Listado: `{items: [DocumentoResponse], next_cursor: string | null}`;
+  `limit=20`, rango 1..100. Orden **ascendente por fecha de creación UTC e ID**.
+  Cursor opaco firmado y ligado al workspace; 400 `INVALID_REQUEST` si inválido,
+  alterado o de otro espacio. No requiere que exista su documento ancla.
+  Se filtran lápidas y admisiones incompletas antes de contar elementos; el
+  lookahead no se consume. Retiradas concurrentes pueden acortar una página
+  con cursor válido. Es keyset, no snapshot: elementos creados después del
+  ancla pueden aparecer; cambios posteriores no resucitan recursos filtrados.
+- Detalle/listado: `{document_id, titulo, status, metadata, cobertura, error}`,
+  mediante schemas públicos. `metadata` contiene `extension`, `tamano_bytes`,
+  `creado_en`, `cantidad_paginas` y `cantidad_tokens`; extracción desconocida
+  usa null, nunca cero inventado. Metadata legacy ausente: null.
+  `cobertura` desconocida: null; conocida contiene `paginas_procesadas`,
+  `paginas_omitidas`, `paginas_visuales_pendientes`, `secciones_procesadas`
+  (ID, título y líneas), `secciones_omitidas`, `secciones_visuales_pendientes`.
+  No se conocen los IDs/títulos de secciones visuales: sus inventarios son
+  null mientras haya páginas pendientes; [] solo si se conoce su ausencia.
+  `error` es null salvo failed, donde lleva `{code: null, message: diagnóstico
+  seguro}`; el diagnóstico terminal detallado se consulta en el job existente.
+  No expone filas, hash/configuración interna del parser, tokens, claves OCI
+  ni caché de idempotencia. Visión pendiente: job textual completed, documento
+  processing; cantidad_tokens puede ser cero real y la cobertura se conserva
+  cuando no está configurada visión. #30 completa interpretación y cobertura
+  antes de ready; una omisión termina failed y se informa en cobertura.
+- Fuentes: un fragmento por request, sin paginación ni rutas públicas nuevas
+  de secciones/chunks: `{document_id, chunk_id, texto, pagina, seccion,
+  seccion_id, source_type, interpretacion_modelo, imagen_url}`. #30 agrega los
+  tres últimos campos: tipo de fuente, indicador de interpretación del modelo
+  y URL autenticada de la página original para chunks `image_description`.
+  En texto, imagen_url=null. Ubicación no disponible: null. El título no identifica la
+  sección. Se exige ready **SQLite y OCI**, admisión explícitamente confirmada
+  y cobertura/metadata coherentes y completas. Legacy sin evidencia suficiente
+  conserva listado/detalle, pero no habilita contenido. Se
+  revalida sesión, ownership, lápidas, hash y publicación después del I/O.
+  Processing/failed o índice inconsistente: 409 `INVALID_STATE`; recurso
+  inexistente/ajeno/retirado: 404. Storage inválido/no verificable o deadline
+  de lectura: 503 `STORAGE_UNAVAILABLE`; índice no configurado: 503
+  `PROVIDER_UNAVAILABLE`. Chroma por sí solo jamás habilita contenido.
+- Toda admisión con fila en `document_admissions` exige ambos marcadores
+  `admision_confirmada` y `admision_sqlite_confirmada` exactamente true y
+  estado encolada. Compatibilidad heredada: sin fila y ambos marcadores
+  ausentes/null. Los manifiestos nuevos reconstruidos sin su registro de
+  admisión no se tratan como legacy; quedan bloqueados para reconciliación.
+  **Precisión H02 propuesta, sujeta a revisión `contract-change`:** después
+  de perder SQLite, una procedencia local restaurada desde OCI puede autorizar
+  listado/detalle sin fabricar una admisión histórica. Exige workspace vigente,
+  identidad canónica, original presente y SHA-256 verificado, metadata válida,
+  ambos marcadores exactamente true y ausencia de lápidas locales/remotas.
+  Esa evidencia no autoriza fuentes ni generación: un nuevo trabajo real de
+  reconstrucción debe confirmar extracción, cobertura, índice completo y
+  manifiesto OCI antes del commit terminal local. Con visión pendiente se
+  conserva processing. Failed histórico no se reprocesa automáticamente.
+  Las sesiones se recuperan con el código; no se restauran tokens, jobs/eventos
+  históricos, Idempotency-Key ni respuestas de upload perdidas. Las rutas,
+  schemas y códigos HTTP permanecen iguales; esta excepción de acceso requiere
+  revisión del equipo antes de merge/publicación del contrato.
+- Un trabajo activo/encolado o admisión en curso en el workspace: 429
+  **`RATE_LIMITED`**, código ya vigente. La idempotencia se reconoce primero;
+  clave incompatible: 409 `IDEMPOTENCY_CONFLICT`. **`WORKSPACE_BUSY` continúa
+  como propuesta pendiente de revisión**, sin cambio unilateral del enum.
+- Duplicado aún sin confirmación: espera acotada (10 segundos internos por
+  defecto, sin mantener transacciones SQLite durante storage/espera); al
+  agotarse, 503 `STORAGE_UNAVAILABLE`, sin recibo ni IDs. Details:
+  `{confirmacion: "indeterminada", idempotency_key_presente: boolean}`.
+  Fallos de storage de upload: mismo código, confirmacion "no_verificable".
+  503 no afirma fracaso definitivo; conserva intención y estado. Con clave,
+  reutilizarla evita una segunda intención, pero **no garantiza reconciliación
+  ni éxito posterior**. Sin clave no se promete recuperación idempotente:
+  falta una decisión pública para identificar esa intención perdida.
+- Activación: cuotas compartidas explícitas por inyección o configuración
+  conjunta `EMBEDDING_QUOTA_RPM`, `EMBEDDING_QUOTA_TPM`, `EMBEDDING_QUOTA_RPD`,
+  positivas y para `GEMINI_EMBEDDING_MODEL`. No hay valores universales ni
+  fallback a un proveedor mock; mock exige doble explícito. Sin cuotas,
+  listado/detalle están disponibles; upload responde 503 `PROVIDER_UNAVAILABLE`
+  sin reservar documentos. La cuenta del equipo debe determinar los valores
+  de producción; no se modifica despliegue #49/#50 aquí.
+
+Ejemplo de aceptación confirmada:
+
+```json UploadDocumentoResponse
+{"document_id":"doc_ejemplo","status":"processing","job_id":"job_ejemplo","status_url":"/api/jobs/job_ejemplo","events_url":"/api/jobs/job_ejemplo/events","cancel_url":"/api/jobs/job_ejemplo/cancel"}
+```
+
+Ejemplo de detalle aún sin extracción:
+
+```json DocumentoResponse
+{"document_id":"doc_ejemplo","titulo":"Redes","status":"processing","metadata":{"extension":"txt","tamano_bytes":800,"creado_en":"2026-10-10T12:00:00Z","cantidad_paginas":null,"cantidad_tokens":null},"cobertura":null,"error":null}
+```
+
+#### DELETE documental — precisión propuesta, pendiente de revisión `contract-change`
+
+`DELETE /api/documents/{document_id}` está registrado localmente en etapa 5B.
+Requiere sesión vigente y ownership del workspace. Sin body ni otra cola.
+La lápida local y su obligación de limpieza se confirman en una transacción antes
+de responder; listado, detalle, fuentes, generaciones y trabajos vinculados dejan
+de autorizar acceso. Se solicita cancelación cooperativa, sin matar llamadas en vuelo.
+
+- **202**, `{"cleanup_pending":true}`: retirada lógica confirmada, quedan efectos
+  físicos pendientes. No afirma que el original o índice ya fueron eliminados.
+- **204**, sin body: limpieza verificada, incluido Chroma y objetos vinculados.
+- **404**: inexistente, ajeno o retirado previamente. Repetir DELETE no cancela
+  la obligación durable ni genera otra identidad; puede responder 404 aun si
+  sigue pendiente la limpieza. Los GET documentales posteriores responden 404.
+- **401**: sesión inválida. **503** con envolvente existente y
+  `STORAGE_UNAVAILABLE`: no se pudo acreditar el commit de retirada.
+
+La limpieza reutiliza `document_cleanup`, `EfectosDocumentales` y el sincronizador.
+Confirma lápidas privadas con ETag/versiones antes de eliminar evidencia; conserva
+las lápidas remotas más recientes. Retira catálogo/chunks de Chroma, original,
+manifiesto documental, output/exports de generaciones realmente relacionadas,
+resultados/eventos operativos vinculados y referencias explícitas en progreso.
+No borra el agregado completo de progreso ni recursos de otros documentos; no
+hay persistencia independiente de chat integrada. Conserva identidades, estados
+terminales, idempotencia y lápidas para protección y reintentos. No borra demo.
+Una respuesta perdida no acredita limpieza física: se verifica ausencia/estado y
+se reintenta. Productores en vuelo mantienen el efecto pendiente hasta detenerse.
+
+Los status 202/204, JSON pendiente y repetición 404 precisan el contrato anterior
+según dirección del equipo, pero requieren revisión `contract-change`. La pérdida
+completa del volumen SQLite antes de sincronizar una lápida sigue pendiente de
+decisión del equipo. Esta implementación local no declara cerrado el Issue 19.
+
+### Catálogo demo de solo lectura (Issue 19, H03)
+
+**Dirección vigente: decisiones técnicas y contractuales aprobadas por delegación
+explícita del equipo. Implementación local; la integración conserva la trazabilidad
+`contract-change` y revisión API+UI+AGT+RAG.** No cambia las rutas privadas ni el
+contrato de generación. Issue 25 consume estas lecturas, Issue 49 prepara y mantiene
+la biblioteca desplegada y Issue 30 completa visión.
+
+| Método y ruta | Respuesta 200 |
+|---|---|
+| `GET /api/demo/documents?limit=20&cursor=…` | `DocumentosResponse`: `{items, next_cursor}` |
+| `GET /api/demo/documents/{document_id}` | `DocumentoResponse`: `{document_id, titulo, status, metadata, cobertura, error}` |
+| `GET /api/demo/documents/{document_id}/sources/{chunk_id}` | `FuenteDocumentoResponse`: `{document_id, chunk_id, texto, pagina, seccion, seccion_id}` |
+
+- Bearer obligatorio; token ausente/inválido/revocado/vencido o workspace retirado:
+  401 `SESSION_INVALID`. Cada solicitud revalida sesión. Cualquier sesión válida
+  puede leer la demo compartida. Estas lecturas no renuevan actividad/retención:
+  excepción explícita a la renovación agrupada, para conservar GET sin escrituras.
+- Resolución exclusivamente por claves canónicas `demo/{document_id}/manifest.json`
+  y `demo/{document_id}/original`, ámbito fijo `biblioteca-demo` y colección demo.
+  No se acepta workspace del cliente ni se consulta un documento privado como
+  fallback. Un ID coincidente en ambos ámbitos resuelve solamente su fuente demo.
+  Los resultados futuros de generación pertenecen al workspace del usuario;
+  autorización y generación demo no se implementan mediante estas rutas.
+- OCI es el inventario autoritativo; un original o chunks sin manifiesto no crean
+  una tarjeta. Catálogo accesible sin manifiestos: 200 `{items: [], next_cursor: null}`.
+  Documento/chunk inexistente, privado o retirado: 404 `NOT_FOUND`. Lápidas demo
+  remotas y del catálogo local bloquean el acceso; DELETE privado no retira demo.
+- Paginación keyset por `document_id` ASCII ascendente, sensible a mayúsculas:
+  `limit=20`, rango 1..100; inválido: 422 `VALIDATION_ERROR`. Cursor opaco firmado
+  con dominio `biblioteca-demo`, distinto del cursor privado y sin fecha inventada.
+  Cursor inválido/alterado/privado: 400 `INVALID_REQUEST`. Es compartible entre
+  sesiones demo válidas; no autentica ni otorga permisos. No tiene expiración
+  temporal. El ancla puede desaparecer. Retiradas concurrentes pueden acortar una
+  página; el cursor no salta el lookahead. Inserciones anteriores al ancla se ven
+  al reiniciar el recorrido: no se ofrece un snapshot inmutable.
+- Metadata/cobertura desconocida: null, nunca conteos o fechas fabricados. Las
+  secciones MD/TXT conservan ID, título y líneas, ordenadas por ubicación; títulos
+  repetidos no se colapsan. PDF conserva páginas y `pagina:N` en los chunks; no
+  fabrica líneas ni temas. Un inventario textual de secciones vacío puede coexistir
+  con páginas PDF procesadas. No se añade una ruta pública de secciones.
+- `status` es disponibilidad comprobada, no promesa de un job activo. Processing
+  y failed persisten aunque existan chunks; el diagnóstico failed público es
+  seguro y no remite a un job histórico inexistente. Visión pendiente conserva
+  processing y bloquea fuentes. La lectura textual no interpreta imágenes.
+- Ready exige original con SHA-256 verificado, manifiesto vigente sin lápidas,
+  metadata coherente, cobertura completa y evidencia interna `publicacion_demo`
+  compatible con la versión activa completa de Chroma. Se comprueban modelo,
+  dimensión, preparación, cantidad/huella de chunks, orden e identidades físicas,
+  pertenencia y ubicación. No basta `estado=ready`, un booleano ni chunks sueltos.
+  No se fabrican admisiones ni confirmaciones SQLite privadas.
+- Evidencia ausente o índice comprobablemente ausente/incompleto/incompatible:
+  listado/detalle 200 processing; fuente 409 `INVALID_STATE`. Configuración de
+  índice ausente cuando se necesita comprobar ready, o Chroma temporalmente
+  inaccesible: 503 `PROVIDER_UNAVAILABLE`, sin convertir el fallo en estado durable.
+  OCI inaccesible, original ausente/hash incorrecto o metadata/manifiesto inválidos:
+  503 `STORAGE_UNAVAILABLE`, sin simular catálogo vacío. Cambio de ETag durante
+  lectura: 409 `INVALID_STATE`; se debe repetir la lectura. Se revalidan original,
+  manifiesto, lápidas, sesión y versión Chroma antes de entregar contenido.
+- Extensión interna mínima y retrocompatible del manifiesto: `publicacion_demo`
+  opcional, exclusiva de `biblioteca-demo`. Versión 1 contiene `hash_sha256`,
+  `version_indice`, `cantidad_chunks`, `huella_chunks`, `huella_config_chunker`, `huella_documental`,
+  `modelo_embeddings`, `dimensiones_embeddings`, `preparacion_embeddings`.
+  La huella de chunks usa la firma del catálogo de #17; la configuración usa
+  `ConfigChunker.huella(parser)`. `huella_documental_demo` liga metadata y cobertura
+  exactas, incluyendo fecha, conteos y huella de parser, a esa publicación.
+  Issue 49 debe emitir esta evidencia solo después
+  de verificar su publicación, con ETag vigente. H03 únicamente valida y consume
+  el bloque: no implementa precarga, ejecución de rebuild, embeddings ni runbook.
+- GET no crea embeddings, trabajos, índices ni escrituras SQLite/OCI. Conserva
+  schemas Pydantic y envolvente de errores, sin publicar configuración, hash,
+  ETags, versión Chroma, claves OCI ni tokens. Todas estas precisiones y las tres
+  rutas deben identificarse en la revisión de integración `contract-change`.
+
+Ejemplo de fuente textual (ilustrativo, no contenido desplegado):
+
+```json
+{"document_id":"demo-textual","chunk_id":"chunk-ilustrativo","texto":"Configurar destinos autorizados.","pagina":null,"seccion":"Configuración","seccion_id":"seccion:1"}
+```
 
 ### Generación (issues `Issue 31`, `Issue 29`, `Issue 32`, `Issue 33`)
 
@@ -160,6 +387,48 @@ Listado paginado con filtros: `documento`, `perfil`, `formato`, `idioma`, `desde
 | `POST /api/quizzes/{generation_id}/answers` | Body `{question_id, option_id, event_id}` → `{correcta, correct_option_id, justificacion, referencias}`. Determinista, sin LLM. La vista inicial del estudiante nunca recibe la clave. |
 | `POST /api/progress/events` | Eventos idempotentes (`event_id` estable): `concepto_revisado`, `flashcard_vista`, el evento respuesta_quiz es interno y lo crea el endpoint de respuestas; primer_intento y acierto los calcula exclusivamente el backend. |
 | `GET /api/progress` | Agregados del espacio: conceptos, flashcards, aciertos de primer intento, tiempo restante estimado. |
+
+Precisiones de implementación del Issue 35 (revisión `contract-change`):
+
+- Los tres endpoints requieren Bearer y autorizan el espacio, documento y
+  generación. Un quiz/flashcard ajeno o retirado devuelve **404**; un paquete
+  no completado devuelve **409**, un formato/opción incompatible **422**.
+  El feedback contiene exclusivamente los cuatro campos de la tabla, para la
+  pregunta respondida. No crea un trabajo ni requiere un proveedor Gemini.
+- `event_id` es global dentro del espacio y admite hasta 128 caracteres.
+  `question_id`/`flashcard_id`/`option_id` admiten hasta 64; `concepto`, hasta
+  500. El cliente emite `flashcard_vista` después de consultar **frente y dorso**.
+  Los campos de puntaje, `primer_intento` y el tipo `respuesta_quiz` se rechazan
+  en el endpoint genérico. No se aceptan campos de otro tipo de evento.
+- `POST /api/progress/events` responde **200** con `{event_id, version}`;
+  `version` identifica el registro original y se conserva al repetirlo.
+  Los dos POST aceptan `Idempotency-Key` (1–128 caracteres). Reutilizar el
+  mismo evento o header con otro cuerpo devuelve **409 IDEMPOTENCY_CONFLICT**.
+  El header se guarda únicamente como hash, sin tokens de sesión.
+- `GET /api/progress` responde **200** con `version`, `conceptos_revisados`,
+  `flashcards_vistas`, `quiz_intentos`, `quiz_aciertos_primer_intento`,
+  `quiz_total_primer_intento`, `quiz_aciertos_posteriores` y
+  `tiempo_estimado_restante_minutos`. Sin eventos, versión y contadores son 0.
+  Conceptos se cuentan por documento, generación opcional y nombre; tarjetas
+  por generación e ID. Primer intento se calcula por generación y pregunta,
+  según el orden confirmado en storage. Otros intentos no cambian ese resultado.
+- El tiempo es una orientación: para cada generación aprobada cuya fuente
+  está READY, se reparte su estimación entre preguntas, tarjetas o conceptos
+  (otros formatos), y se suma la proporción pendiente, redondeada a dos decimales.
+  Una pregunta deja de estar pendiente con cualquier respuesta; una tarjeta,
+  con su evento frente/dorso; un concepto marcado a nivel documento aplica a
+  sus adaptaciones. No implica dominio ni certificación. Material retirado
+  o todavía en reconstrucción no participa de la estimación.
+- `progress/{workspace_id}/state.json` guarda versión, eventos mínimos y
+  hashes de claves; no incluye claves de respuesta, justificaciones ni tokens.
+  Escrituras usan creación condicional/ETag y confirmación de lectura; conflictos
+  de versión permiten hasta tres combinaciones. Un fallo OCI devuelve **503**
+  sin prometer un registro local; repetir el mismo ID recupera un PUT confirmado
+  cuya respuesta se perdió. SQLite replica el estado confirmado y OCI permite
+  recuperarlo aun perdiendo el disco. La purga documental retira eventos y claves.
+  El límite es 10.000 eventos y 10.000 claves por espacio (**429** al alcanzarlo).
+
+Verificación: `pytest backend/tests/test_quiz_progress.py backend/tests/test_api_quiz_progress.py`.
 
 ### Contrato de ejecución de proveedores (issues 13 y 20)
 
@@ -272,8 +541,79 @@ Upload conserva document_id y agrega las URLs del trabajo de ingestión.
 | Método y ruta | Descripción |
 |---|---|
 | `POST /api/chat` | `{document_id, pregunta, perfil_destinatario, idioma_salida}` → 202 y URLs del trabajo; su result contiene respuesta revisada con citas o abstención explícita. |
+
+Precisión #37 (`contract-change`): el recibo es `TrabajoComunResponse`; consulta,
+SSE/reconexión y cancelación se realizan en `/api/jobs/{job_id}`. `result` es
+`ChatAnswer`: `document_id`, `document_hash`, `pregunta`, `perfil_destinatario`,
+`idioma_salida`, `estado`, `respuesta`, `referencias` y `evaluacion_calidad`.
+`estado=respondida` requiere revisión completa aprobada; `fuera_de_alcance` sólo
+entrega una abstención fija que pide precisar, con referencias vacías y evaluación
+nula. `rejected_quality` no entrega result. El historial usa únicamente turnos
+completed del mismo workspace/documento/hash, acotados por
+`CHAT_HISTORY_TURNS`/`CHAT_HISTORY_MAX_TOKENS`; no es evidencia ni se envía al Critic.
+El resultado usa SQLite común, sin crear artefactos/exportaciones en `outputs/`.
+Su fuente se revalida al entregar el resultado y su retirada purga el historial.
+Detalles de revisión y adaptador interno: [issue-37-document-chat.md](issue-37-document-chat.md).
+
+Corrección de consistencia junto a #39: chat acepta `Idempotency-Key` (1–128
+caracteres); repetir una intención conserva el trabajo y no repite llamadas.
+Mismo header con otra pregunta/parámetros devuelve **409**. Consultar respuestas
+aprobadas y repetir su intención funcionan sin proveedores LLM configurados;
+una intención nueva sin proveedores devuelve **503**. Historial, consulta y
+exportación JSON de generaciones aprobadas también son lecturas independientes
+de los proveedores. Las fuentes conservan sus comprobaciones READY y de acceso.
+
+| Método y ruta | Descripción |
+|---|---|
 | `POST /api/glossaries` | `{document_id, perfil_destinatario, idioma_salida}` → 202 con glossary_id y URLs del trabajo, o 200 con resultado de caché verificado. |
 | `GET /api/glossaries/{id}` | Glosario generado con definiciones citadas. |
+
+Precisión #39 (`contract-change`):
+
+- La ingesta detecta candidatos y sus ubicaciones sin generar definiciones ni
+  llamar a Gemini para esta detección. Guarda `terminos_candidatos`,
+  `detector_terminos_version` y `candidatos_omitidos` en el manifiesto privado.
+  La extracción es heurística: siglas, identificadores, productos con proveedor,
+  títulos, texto destacado y expresiones de definición. Selecciona hasta 64
+  términos y hasta 8 ubicaciones por término; los candidatos restantes se cuentan
+  explícitamente. Documentos anteriores se detectan desde sus chunks autorizados.
+- `POST /api/glossaries` recibe `GlossaryRequest`, con documento READY autorizado,
+  perfil e idioma. `Idempotency-Key` (1–128 caracteres) conserva la intención;
+  mismo header con otro cuerpo devuelve **409 IDEMPOTENCY_CONFLICT**. Un trabajo
+  activo de la misma combinación devuelve el mismo recibo. Un nuevo glosario
+  devuelve **202 GlossaryJobResponse**: campos de `TrabajoComunResponse` y
+  `glossary_id` (el mismo ID que el trabajo común). Una caché verificada devuelve
+  **200** con el mismo recibo y `result`, sin crear trabajos ni llamadas.
+- `GET /api/glossaries/{glossary_id}` devuelve **200 GlossaryOutput**:
+  `schema_version`, `glossary_id`, `documento_fuente`, `perfil_destinatario`,
+  `idioma_salida`, `estado`, `terminos`, `candidatos_omitidos`,
+  `evaluacion_calidad`, `trazabilidad`, `prompt_version` y `created_at`.
+  Una consulta antes de completarse devuelve **409**; un recurso ajeno/retirado,
+  **404**. `/api/jobs/{id}` entrega el mismo resultado autorizado; SSE y cancelación
+  conservan el contrato común.
+- Cada término contiene `id`, `termino_original`, `es_identificador`,
+  `traduccion`, `estado`, `definicion`, `referencias` y `limitacion`. El estado
+  `definido` requiere definición citada y revisión completa aprobada. Productos,
+  comandos y APIs conservan su nombre original sin traducción. Definición y
+  traducción pasan juntas por el Critic; el extractor factual debe cubrir cada
+  definición. No se publican borradores rechazados ni incompletos.
+- Un término sin respaldo usa `estado=sin_definicion_suficiente`, definición y
+  traducción nulas y una limitación fija en el idioma solicitado. Sus citas las
+  asigna el backend para mostrar dónde aparece el término; no prueban una definición.
+  Si no hay definiciones, el glosario declara `sin_definiciones` con evaluación
+  nula; sin candidatos declara `sin_terminos`. Estas limitaciones no reciben
+  un score ficticio. El estado `verificado` requiere definiciones y calidad aprobada.
+- La clave de caché incluye espacio, documento/hash/versión, configuración del
+  parser, modelos de generación/verificación/embeddings, perfil, idioma, versiones
+  del prompt de glosario/base y detector. SQLite conserva trabajos y resultados
+  verificados; fallos y cancelaciones no son caché reutilizable. Un reinicio
+  normal conserva esa caché; tras perder el disco se puede volver a generar el
+  glosario sobre la fuente recuperada. El borrado documental purga sus resultados.
+- Generación, juez y embeddings usan adaptadores síncronos, cuotas compartidas,
+  deadline/cancelación y hasta tres redacciones de la política existente.
+  La consulta y caché de un resultado verificado funcionan sin proveedores LLM.
+
+Verificación: `pytest backend/tests/test_glossary.py backend/tests/test_glossary_models.py`.
 
 ### Exportaciones (issues `Issue 43`–`Issue 45`, `Issue 46`)
 
@@ -282,6 +622,60 @@ Upload conserva document_id y agrega las URLs del trabajo de ingestión.
 - Solo sobre trabajos `completed` (si no → **409**).
 - `csv|tsv|apkg` solo para `formato_salida=flashcards` (si no → **422** `EXPORT_INCOMPATIBLE`).
 - Descarga pasa por la API con verificación de ownership; sin secretos en el contenido exportado.
+
+**Implementado:** `json` (predeterminado) y `md` para los cinco formatos (#43),
+y `csv|tsv|apkg` para flashcards (#45). PDF corresponde a #44; mientras no esté
+implementado devuelve 422 `EXPORT_INCOMPATIBLE` con
+`details.formatos_disponibles=["json","md","csv","tsv","apkg"]`.
+Un nombre desconocido o una combinación incompatible también devuelve 422.
+El espacio y el estado se autorizan antes de acceder a derivados: recurso ajeno
+o retirado → 404; generación propia no `completed` → 409.
+
+| Descarga | Content-Type | Contenido |
+|---|---|---|
+| `json` | `application/json` | Bytes exactos del objeto `outputs/{ws}/{gen}/content.json`; sin reserializar ni añadir estado de transporte |
+| `md` | `text/markdown; charset=utf-8` | Plantilla determinista del canónico tipado, con etiquetas en su `idioma_salida` |
+| `csv` | `text/csv; charset=utf-8` | Flashcards con cabeceras Anki y columnas Front/Back/Tags/GUID/Deck |
+| `tsv` | `text/tab-separated-values; charset=utf-8` | Las mismas columnas separadas por tabuladores |
+| `apkg` | `application/octet-stream` | Colección genanki con modelo/mazo estables, sin media |
+
+Todas usan `Content-Disposition: attachment; filename="{generation_id}.{format}"`,
+`Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` y `X-Request-ID`.
+El nombre del archivo usa el ID generado; los títulos no se interpolan en headers.
+No se redirige a URLs públicas ni se incrustan tokens/códigos de recuperación.
+El JSON completo conserva las soluciones del quiz; Markdown coloca todas las
+preguntas antes de una sección separada de soluciones y justificaciones.
+
+Markdown incluye título, audiencia, idioma, tiempo estimado, objetivos,
+prerrequisitos, conceptos, cuerpo específico de cada formato y referencias por
+fragmento/página/sección. El código del tutorial es un bloque literal con fence
+seguro; el resto del texto se escapa para impedir HTML o markup activo inyectado.
+Ninguna exportación vuelve a llamar al LLM ni transforma un tutorial en flashcards.
+
+Al persistir una generación aprobada se confirman todos los formatos compatibles en
+`exports/{workspace_id}/{generation_id}/{format}` usando el `StorageProvider`
+existente, incluidas sus reservas de capacidad/cuota en OCI real. Un fallo de
+derivados deja el trabajo `failed/STORAGE_UNAVAILABLE`; el aprobado se conserva
+según el plazo de 24 horas para `/persist`, que completa la escritura sin IA.
+Para aprobados anteriores sin caché, la primera descarga crea únicamente el
+formato pedido desde el canónico. Una caché presente pero distinta de la vista
+esperada devuelve 503 `STORAGE_UNAVAILABLE`; nunca entrega contenido alterado.
+Las lecturas siguen disponibles sin configurar proveedores LLM ni Chroma.
+La autorización se revalida después de I/O y la exclusión compartida con la
+retirada documental evita recrear exports tras su limpieza. El borrado y la
+retención existentes abarcan el prefijo de derivados.
+
+Anki es una exportación opcional; estudiar tarjetas dentro de NuevaMente corresponde
+a la interfaz del #34. La importación, identidad estable y neutralización de fórmulas,
+HTML y directivas de media se documentan en [Importación Anki](importacion-anki.md).
+
+### Uso y vencimiento del espacio (#50)
+
+`GET /api/workspaces/current` → `workspace_id`, `expira_en`, `ultima_actividad_en`,
+`uso` (documentos/generaciones y límites 5/20), `almacenamiento` (agregados del
+ledger, límites/margen, alerta 80%, bloqueo y proveedor). Requiere la sesión;
+no devuelve contenido ni nombres de objetos. Es una adición de lectura al contrato.
+Los detalles y el diagnóstico administrativo están en [Gobernanza de costos](gobernanza-costos.md).
 
 ### Salud
 
@@ -582,7 +976,9 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
   esos identificadores, bytes, MIME y reserva de tokens. Critic comprueba esa procedencia
   y adjunta la imagen original al SDK. Sin original/loader o con revisión insuficiente no
   aprueba; no reutiliza una aprobación visual anterior. La obtención/rasterización real
-  corresponde a Issue 30: aquí se implementan contrato, transporte y pruebas con doble.
+  se implementa en Issue 30 mediante `consulta.loader_critic(contexto)`: verifica
+  fuente, índice y hash del PNG contra el manifest, revalida acceso y devuelve
+  la página original rasterizada. Una interpretación ambigua bloquea aprobación.
 - Jueces textuales/visuales usan el modelo de verificación configurado y transporte síncrono
   de `ClienteGeminiGeneracion`, siempre mediante `ctx.llamar`. Cada intento reserva TPM,
   cuota y presupuesto; el SDK mantiene un intento, sin otros bucles. Cancelación, deadline,

@@ -6,6 +6,7 @@ import inspect
 import random
 import time
 import uuid
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -15,7 +16,7 @@ import oci
 
 from app.config import Configuracion
 from app.storage.object_keys import BUCKET_PRODUCCION, validar_nombre
-from app.storage.oci_budget import PresupuestoOCI
+from app.storage.oci_budget import PresupuestoOCI, mantenimiento_storage
 from app.storage.provider import (
     ListedObject,
     StorageBudgetExceeded,
@@ -81,6 +82,7 @@ class OCIObjectStorageProvider(StorageProvider):
     ):
         self.cfg, self._dormir = configuracion, dormir
         self.solicitudes = 0
+        self._inicializando = True
         self._contador_lock = Lock()
         self._clientes_propios = cliente is None
         self.cliente = self.identidad = None
@@ -107,7 +109,18 @@ class OCIObjectStorageProvider(StorageProvider):
                 cliente, identidad, tenancy_id = self._clientes()
             self.cliente, self.identidad = cliente, identidad
             for servicio, metodos in (
-                (cliente, ("get_namespace", "get_bucket", "put_object", "get_object", "list_objects", "delete_object")),
+                (
+                    cliente,
+                    (
+                        "get_namespace",
+                        "get_bucket",
+                        "get_object_lifecycle_policy",
+                        "put_object",
+                        "get_object",
+                        "list_objects",
+                        "delete_object",
+                    ),
+                ),
                 (identidad, ("list_region_subscriptions",)),
             ):
                 if any(
@@ -147,6 +160,17 @@ class OCIObjectStorageProvider(StorageProvider):
                 self._llamar(cliente.create_bucket, self.namespace, detalles)
                 bucket = self._llamar(cliente.get_bucket, self.namespace, BUCKET_PRODUCCION).data
             self._validar_bucket(bucket)
+            try:
+                politica = self._llamar(cliente.get_object_lifecycle_policy, self.namespace, BUCKET_PRODUCCION).data
+            except StorageNotFound:
+                reglas = []
+            else:
+                reglas = politica.items
+            if not isinstance(reglas, list) or any(r.is_enabled and r.action != "DELETE" for r in reglas):
+                raise StorageConfigError("El bucket no puede tener transiciones de clase habilitadas")
+            self.inspeccion_bucket = dict(
+                versionado="Disabled", replicacion=False, auto_tiering="Disabled", transiciones=False
+            )
             # Inventario remoto para no tratar un bucket ya utilizado como vacío.
             cursor = None
             vistos = set()
@@ -166,6 +190,7 @@ class OCIObjectStorageProvider(StorageProvider):
                 if cursor in vistos:
                     raise StorageUnavailable("OCI devolvió un cursor de inventario repetido")
                 vistos.add(cursor)
+            self._inicializando = False
         except StorageNotFound:
             self.cerrar()
             raise StorageConfigError(
@@ -235,13 +260,17 @@ class OCIObjectStorageProvider(StorageProvider):
         while (restante := fin - time.monotonic()) > 0:
             self._dormir(restante)
 
-    def _llamar(self, funcion, *args, reintentar=True, con_request_id=True, _deadline=None, **kwargs):
+    def _llamar(self, funcion, *args, reintentar=True, con_request_id=True, _deadline=None, _tipo=None, **kwargs):
         request_id = uuid.uuid4().hex
         deadline = _deadline if _deadline is not None else time.monotonic() + 300
         for intento in range(3 if reintentar else 1):
             if time.monotonic() >= deadline:
                 raise StorageUnavailable("La operación OCI agotó su deadline")
-            self.presupuesto.reservar_solicitud()
+            # Un reinicio al alcanzar el techo ordinario debe poder validar
+            # el bucket y arrancar el reconciliador usando el margen reservado.
+            con_margen = self._inicializando and funcion.__name__ != "create_bucket"
+            with mantenimiento_storage() if con_margen else nullcontext():
+                self.presupuesto.reservar_solicitud(_tipo or funcion.__name__)
             with self._contador_lock:
                 self.solicitudes += 1
             try:
@@ -295,6 +324,7 @@ class OCIObjectStorageProvider(StorageProvider):
             object_name,
             reintentar=reintentar,
             _deadline=_deadline,
+            _tipo="get_object",
             **({"if_match": if_match} if if_match is not None else {}),
         )
 

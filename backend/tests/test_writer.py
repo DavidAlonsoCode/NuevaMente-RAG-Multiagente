@@ -173,7 +173,7 @@ def test_respuesta_malformada_no_expone_borrador(entorno, mala):
     estado = estado_inicial(entorno)
     entorno[0].proveedor.programar_generacion(mala, mala, mala)
     nuevo = aplicar(estado, writer(estado, entorno[0]))
-    assert nuevo.status == "failed" and nuevo.error.code == "VALIDATION_ERROR"
+    assert nuevo.status == "rejected_quality" and nuevo.error.code == "VALIDATION_ERROR"
     assert nuevo.intento == nuevo.presupuesto.usadas == entorno[0].proveedor.llamadas_generacion == 3
     assert nuevo.borrador is None and not nuevo.referencias
     assert mala not in nuevo.model_dump_json()

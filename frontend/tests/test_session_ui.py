@@ -157,6 +157,15 @@ def test_error_inicial_desconocido_es_amigable(monkeypatch, lang):
 def workspace_ui(monkeypatch):
     monkeypatch.setattr(
         APIClient,
+        "workspace_status",
+        lambda *_: {
+            "expira_en": "2026-11-12T12:00:00Z",
+            "uso": {"documentos": 0, "limite_documentos": 5, "generaciones": 0, "limite_generaciones": 20},
+            "almacenamiento": {"alerta": False, "escrituras_bloqueadas": False},
+        },
+    )
+    monkeypatch.setattr(
+        APIClient,
         "create_workspace",
         lambda _: {
             "workspace_id": "ws_prueba",

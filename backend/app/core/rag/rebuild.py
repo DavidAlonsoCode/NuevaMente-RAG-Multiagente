@@ -13,13 +13,16 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from app.core.rag.chunker import ConfigChunker, trocear
 from app.core.rag.parser import LimitesIngesta, parsear_archivo
 from app.core.rag.vectorstore import DEMO_WORKSPACE_ID, ResultadoIndexacion, VectorStoreChroma
 from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
+from app.schemas.documents import CoberturaDocumento, MetadatosDocumento, PublicacionDemo
 from app.schemas.enums import DocumentStatus
+from app.schemas.glossary import TerminoCandidato
+from app.schemas.multimodal import InterpretacionVisual
 from app.storage.object_keys import clave_demo, clave_documento, clave_original, clave_workspace
 from app.storage.provider import StorageNotFound, StorageProvider
 
@@ -38,6 +41,41 @@ class ManifiestoDocumento(BaseModel):
     borrado: bool = False
     parser: LimitesIngesta = Field(default_factory=LimitesIngesta)
     chunker: ConfigChunker = Field(default_factory=ConfigChunker)
+    titulo: str | None = Field(default=None, min_length=1, max_length=300)
+    metadatos: MetadatosDocumento | None = None
+    cobertura: CoberturaDocumento | None = None
+    detalle_error: str | None = None
+    admision_confirmada: StrictBool | None = None
+    # None identifica manifiestos legacy. Las admisiones nuevas reservan False
+    # y solo escriben True DESPUÉS del commit de confirmar_admision_documental.
+    admision_sqlite_confirmada: StrictBool | None = None
+    # #49 expresa la confirmación de mantenimiento. No se genera al reconstruir
+    # ni admite sustituir la admisión de un documento privado.
+    publicacion_demo: PublicacionDemo | None = None
+    interpretaciones_visuales: list[InterpretacionVisual] = Field(default_factory=list)
+    terminos_candidatos: list[TerminoCandidato] = Field(default_factory=list, max_length=64)
+    candidatos_omitidos: int = Field(default=0, ge=0)
+    detector_terminos_version: str | None = None
+
+    @property
+    def admision_recuperable(self) -> bool:
+        return self.admision_confirmada is not False and self.admision_sqlite_confirmada is not False
+
+    @model_validator(mode="after")
+    def vision_no_completada(self):
+        if len({i.pagina for i in self.interpretaciones_visuales}) != len(self.interpretaciones_visuales) or any(
+            (i.document_id, i.hash_sha256) != (self.document_id, self.hash_sha256)
+            for i in self.interpretaciones_visuales
+        ):
+            raise ValueError("Interpretaciones visuales ajenas o duplicadas")
+        if self.publicacion_demo is not None and self.workspace_id != DEMO_WORKSPACE_ID:
+            raise ValueError("La evidencia demo pertenece exclusivamente a biblioteca-demo")
+        if self.estado == DocumentStatus.READY and (
+            (self.cobertura and (self.cobertura.paginas_visuales_pendientes or self.cobertura.paginas_omitidas))
+            or any(i.estado == "ilegible" or not i.cobertura_completa for i in self.interpretaciones_visuales)
+        ):
+            raise ValueError("Un documento con visión pendiente u omitida no puede estar ready")
+        return self
 
 
 class DocumentoReconstruido(BaseModel):
@@ -106,6 +144,9 @@ def _reconstruir(
             if manifest.borrado or retirado:
                 indice._borrar(coleccion, workspace_id, document_id)
                 continue
+            if not manifest.admision_recuperable:
+                indice._borrar(coleccion, workspace_id, document_id, definitivo=False)
+                continue
             if indice._retirado(workspace_id, document_id):
                 continue
             original = clave_demo(f"{document_id}/original") if demo else clave_original(workspace_id, document_id)
@@ -133,6 +174,30 @@ def _reconstruir(
                 # Si cambió/borró el manifiesto durante Gemini no se publica.
                 storage.get(clave, if_match=etag)
 
+            vision_pendiente = parseo.requiere_vision
+            if parseo.requiere_vision and manifest.interpretaciones_visuales:
+                from app.core.rag.multimodal import VERSION_PROMPT, chunks_visuales
+                from app.core.rag.raster import VERSION_RASTER, rasterizar_pagina
+
+                validas = []
+                for interpretacion in manifest.interpretaciones_visuales:
+                    if (
+                        interpretacion.pagina not in parseo.paginas_visuales
+                        or not interpretacion.cobertura_completa
+                        or interpretacion.estado == "ilegible"
+                        or (interpretacion.version_raster, interpretacion.version_prompt)
+                        != (VERSION_RASTER, VERSION_PROMPT)
+                    ):
+                        continue
+                    confirmar()
+                    imagen = rasterizar_pagina(contenido, interpretacion.pagina, contexto=contexto)
+                    if hashlib.sha256(imagen.contenido).hexdigest() != interpretacion.imagen_sha256:
+                        raise ValueError("La interpretación no corresponde a la página original")
+                    validas.append(interpretacion)
+                confirmar()
+                verificado = manifest.model_copy(update={"interpretaciones_visuales": validas})
+                chunks.extend(chunks_visuales(verificado, indice_inicial=len(chunks)))
+                vision_pendiente = {i.pagina for i in validas} != set(parseo.paginas_visuales)
             if chunks:
                 indexado = indice._indexar(coleccion, workspace_id, document_id, chunks, contexto, confirmar)
             elif parseo.requiere_vision:
@@ -143,14 +208,13 @@ def _reconstruir(
                 indexado = ResultadoIndexacion(document_id, 0, False)
             else:
                 raise ValueError("El documento no produjo chunks indexables")
-            # El #30 reconstruirá las interpretaciones visuales. No reutilizamos
-            # un ready anterior para saltarnos la visión del original.
+            # Sólo interpretaciones verificadas contra el original completan visión.
             resultado.append(
                 DocumentoReconstruido(
                     document_id=document_id,
                     cantidad_chunks=indexado.cantidad_chunks,
-                    requiere_vision=parseo.requiere_vision,
-                    estado=parseo.estado_documento,
+                    requiere_vision=vision_pendiente,
+                    estado=DocumentStatus.PROCESSING if vision_pendiente else DocumentStatus.READY,
                     reutilizado=indexado.reutilizado,
                 )
             )

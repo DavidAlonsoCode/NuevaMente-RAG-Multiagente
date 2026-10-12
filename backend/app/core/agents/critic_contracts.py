@@ -67,6 +67,7 @@ class ImagenOriginal(ContratoGrafo):
     contenido: bytes = Field(min_length=1, max_length=20_000_000, repr=False)
     mime_type: Literal["image/png", "image/jpeg", "image/webp"]
     tokens_estimados: int = Field(gt=0, description="Reserva visual estimada por el loader autorizado.")
+    interpretacion_ambigua: bool = False
 
 
 class RevisionVisual(ContratoGrafo):

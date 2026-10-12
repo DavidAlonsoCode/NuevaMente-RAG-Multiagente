@@ -6,15 +6,20 @@ No restaura sesiones ni llama al LLM. Índices/visión requieren su reconstrucci
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 
+from app.core.rag.parser import ParserError, validar_entrada_archivo
 from app.core.rag.rebuild import ManifiestoDocumento
+from app.core.rag.vectorstore import VectorStoreChroma
 from app.jobs.store import RegistroOperativo
 from app.schemas.enums import DocumentStatus, JobStatus
 from app.schemas.responses import PedagogicalOutput
 from app.session.manifests import ManifiestoEspacio
 from app.storage.object_keys import clave_documento, clave_original, clave_output, clave_progress, clave_workspace
 from app.storage.provider import StorageNotFound, StorageProvider
+
+logger = logging.getLogger("nuevamente.session.recovery")
 
 
 def _objetos(storage: StorageProvider, prefijo: str):
@@ -56,6 +61,7 @@ def _progreso_vigente(valor, documentos: set[str], generaciones: set[str]):
 def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
     if not db.recuperacion_pendiente():
         return 0
+    retirados_locales = VectorStoreChroma.lapidas_persistidas(db.ruta_db.parent / "chroma")
     restaurados = 0
     for objeto in _objetos(storage, "workspaces/"):
         if not objeto.object_name.endswith("/manifest.json"):
@@ -71,7 +77,12 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
         if not vigente:
             datos["borrado_en"] = datos["borrado_en"] or datetime.now(timezone.utc).isoformat()
         lapidas = {(lapida.recurso_tipo, lapida.recurso_id) for lapida in manifest.recursos_borrados}
+        documentos_retirados_locales = {doc for ws, doc in retirados_locales if ws == workspace_id}
+        lapidas.update(("document", doc) for doc in documentos_retirados_locales)
         documentos, generaciones, progreso = [], [], None
+        evidencias = {}
+        manifiestos_retirados = {}
+        generaciones_retiradas = []
         if vigente:
             for fuente in _objetos(storage, f"source_documents/{workspace_id}/"):
                 if not fuente.object_name.endswith("/manifest.json"):
@@ -84,18 +95,40 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 if doc.borrado:
                     lapidas.add(("document", doc.document_id))
                 if ("document", doc.document_id) in lapidas:
+                    manifiestos_retirados[doc.document_id] = (fuente.etag, doc)
                     continue
-                original = storage.get(clave_original(workspace_id, doc.document_id))
+                if not doc.admision_recuperable:
+                    continue
+                nueva = doc.admision_confirmada is True and doc.admision_sqlite_confirmada is True
+                try:
+                    original = storage.get(clave_original(workspace_id, doc.document_id))
+                except StorageNotFound:
+                    if not nueva:
+                        raise
+                    logger.warning("Fuente restaurable ausente; documento no autorizado")
+                    continue
                 if hashlib.sha256(original).hexdigest() != doc.hash_sha256:
+                    if nueva:
+                        logger.warning("Hash restaurable inconsistente; documento no autorizado")
+                        continue
                     raise ValueError("Original distinto al manifiesto confirmado")
+                if nueva:
+                    try:
+                        extension = validar_entrada_archivo(original, doc.source_name, doc.parser)
+                        if doc.metadatos is None or (
+                            doc.metadatos.tamano_bytes != len(original) or doc.metadatos.extension != extension
+                        ):
+                            raise ValueError("Metadata de fuente inconsistente")
+                    except (ParserError, ValueError):
+                        logger.warning("Metadata restaurable inconsistente; documento no autorizado")
+                        continue
+                    evidencias[doc.document_id] = {"etag": fuente.etag, "manifest": doc.model_dump(mode="json")}
                 documentos.append(doc)
             por_id = {doc.document_id: doc for doc in documentos}
             for salida in _objetos(storage, f"outputs/{workspace_id}/"):
                 if not salida.object_name.endswith("/content.json"):
                     continue
                 generation_id = salida.object_name.split("/")[-2]
-                if ("generation", generation_id) in lapidas:
-                    continue
                 paquete = PedagogicalOutput.model_validate_json(storage.get(salida.object_name, if_match=salida.etag))
                 if salida.object_name != clave_output(workspace_id, paquete.generation_id):
                     raise ValueError("Paquete con identidad ajena o no canónica")
@@ -103,6 +136,18 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                     raise ValueError("Paquete con almacenamiento ajeno")
                 doc = por_id.get(paquete.documento_fuente.document_id)
                 if doc is None:
+                    document_id = paquete.documento_fuente.document_id
+                    if ("document", document_id) in lapidas:
+                        retirado = manifiestos_retirados.get(document_id)
+                        if retirado is not None and (
+                            paquete.documento_fuente.hash.removeprefix("sha256:") != retirado[1].hash_sha256
+                        ):
+                            raise ValueError("Paquete de otra versión del documento retirado")
+                        # Solo relación de control para purgar sus derivados;
+                        # la lápida del documento impide servir este resultado.
+                        generaciones_retiradas.append(paquete)
+                    continue
+                if ("generation", generation_id) in lapidas:
                     continue
                 if paquete.documento_fuente.hash.removeprefix("sha256:") != doc.hash_sha256:
                     raise ValueError("Paquete de otra versión del documento")
@@ -115,6 +160,19 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 raise ValueError("Progreso inválido")
         # Revalidar tras leer los originales/paquetes, antes de publicar registros.
         storage.get(objeto.object_name, if_match=objeto.etag)
+        for doc in documentos:
+            if doc.document_id in evidencias:
+                storage.get(
+                    clave_documento(workspace_id, doc.document_id), if_match=evidencias[doc.document_id]["etag"]
+                )
+                if (
+                    hashlib.sha256(storage.get(clave_original(workspace_id, doc.document_id))).hexdigest()
+                    != doc.hash_sha256
+                ):
+                    raise ValueError("La fuente cambió durante su restauración")
+        storage.get(objeto.object_name, if_match=objeto.etag)
+        for document_id, (etag, _) in manifiestos_retirados.items():
+            storage.get(clave_documento(workspace_id, document_id), if_match=etag)
         with db.transaccion():
             if not db.restaurar_workspace(datos):
                 continue
@@ -127,6 +185,11 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                     ),
                     None,
                 )
+                if tipo == "document" and recurso_id in documentos_retirados_locales and lapida is None:
+                    # Una retirada que sobrevivió en el catálogo no se presume
+                    # sincronizada: reservar su confirmación remota existente.
+                    db.agendar_borrado(tipo, recurso_id, workspace_id)
+                    continue
                 db.restaurar_lapida(
                     workspace_id,
                     tipo,
@@ -136,13 +199,58 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 )
             if not vigente:
                 db.restaurar_lapida(workspace_id, "workspace", workspace_id, datos["borrado_en"], datos["expira_en"])
+            for tipo, document_id in sorted(lapidas):
+                if tipo != "document":
+                    continue
+                retirado = manifiestos_retirados.get(document_id)
+                # document_cleanup requiere una fila de control. No restaurar
+                # esta relación abandona la purga tras perder SQLite, incluso
+                # cuando la lápida remota conserva correctamente el 404.
+                # El hash puede ser desconocido si el manifiesto ya se purgó.
+                db.registrar_documento(
+                    document_id,
+                    workspace_id,
+                    "Documento retirado",
+                    DocumentStatus.FAILED,
+                    retirado[1].hash_sha256 if retirado else None,
+                )
+                db.agendar_efecto_documental(workspace_id, document_id)
             for doc in documentos:
                 # Ready solo después de reconstruir su índice y, cuando corresponda, visión.
                 estado = DocumentStatus.FAILED if doc.estado == DocumentStatus.FAILED else DocumentStatus.PROCESSING
-                db.registrar_documento(doc.document_id, workspace_id, doc.source_name, estado, doc.hash_sha256)
+                db.registrar_documento(
+                    doc.document_id,
+                    workspace_id,
+                    doc.titulo or doc.source_name,
+                    estado,
+                    doc.hash_sha256,
+                    source_name=doc.source_name,
+                    metadatos=doc.metadatos,
+                    cobertura=doc.cobertura,
+                )
+                if doc.document_id in evidencias:
+                    db.acreditar_documento_restaurado(doc.document_id, evidencias[doc.document_id])
             for paquete in generaciones:
                 db.registrar_generacion(
                     paquete.generation_id, workspace_id, paquete.documento_fuente.document_id, JobStatus.COMPLETED
+                )
+                datos = paquete.metadatos.model_dump(mode="json")
+                db.guardar_parametros_generacion(
+                    paquete.generation_id,
+                    {
+                        "document_id": paquete.documento_fuente.document_id,
+                        "perfil_destinatario": datos["perfil_aplicado"],
+                        "formato_salida": datos["formato_generado"],
+                        "nicho_sector": datos["nicho_sector"],
+                        "nivel_detalle": datos["nivel_detalle"],
+                        "idioma_salida": datos["idioma_salida"],
+                        "alcance": {k: v for k, v in datos["alcance"].items() if k != "secciones_cubiertas"},
+                    },
+                    creado_en=paquete.created_at.isoformat(),
+                )
+            for paquete in generaciones_retiradas:
+                db.registrar_generacion_retirada(
+                    paquete.generation_id, workspace_id, paquete.documento_fuente.document_id
                 )
             if progreso is not None:
                 # Preservar el agregado; #42 implementará su consumo por la UI.

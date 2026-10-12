@@ -20,9 +20,11 @@ from typing import Callable
 
 import chromadb
 from chromadb.config import Settings
+from chromadb.errors import NotFoundError
 
 from app.core.rag.embeddings import GeminiEmbeddings
 from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
+from app.schemas.documents import PublicacionDemo
 from app.schemas.internal import Chunk
 from app.storage.object_keys import clave_documento
 
@@ -95,6 +97,18 @@ class VectorStoreChroma:
     índice anterior y nunca publica un documento a medias.
     """
 
+    @staticmethod
+    def lapidas_persistidas(ruta: str | Path) -> set[tuple[str, str]]:
+        """Control sobreviviente de retirada, sin abrir Chroma ni consumir cuotas."""
+        archivo = Path(ruta) / "catalogo.sqlite3"
+        if not archivo.is_file():
+            return set()
+        db = sqlite3.connect(archivo.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            return {(ws, doc) for ws, doc in db.execute("SELECT workspace, documento FROM retirados")}
+        finally:
+            db.close()
+
     def __init__(self, ruta: str | Path, embeddings: GeminiEmbeddings, *, tamano_lote: int = 64) -> None:
         if type(tamano_lote) is not int or tamano_lote < 1:
             raise ValueError("tamano_lote debe ser un entero positivo")
@@ -122,6 +136,15 @@ class VectorStoreChroma:
                 CREATE TABLE IF NOT EXISTS retirados (
                     workspace TEXT NOT NULL, documento TEXT NOT NULL, PRIMARY KEY (workspace, documento));
             """)
+
+    def cerrar(self) -> None:
+        """Libera el cliente persistente, sin borrar ni modificar el índice.
+
+        El dueño del lifespan espera al worker antes de cerrar. Client.close
+        administra referencias del System compartido y es idempotente.
+        """
+        with self._lock:
+            self._cliente.close()
 
     def _coleccion(self, nombre: str, metadata: dict):
         coleccion = self._cliente.get_or_create_collection(
@@ -185,10 +208,16 @@ class VectorStoreChroma:
         return len(self._datos(self._privada, activo)["ids"]) if activo else 0
 
     def indexar(
-        self, workspace_id: str, document_id: str, chunks: list[Chunk], *, contexto: ContextoEjecucion
+        self,
+        workspace_id: str,
+        document_id: str,
+        chunks: list[Chunk],
+        *,
+        contexto: ContextoEjecucion,
+        confirmar: Callable[[], None] = lambda: None,
     ) -> ResultadoIndexacion:
         self._autorizar(workspace_id, document_id, contexto)
-        return self._indexar(self._privada, workspace_id, document_id, chunks, contexto)
+        return self._indexar(self._privada, workspace_id, document_id, chunks, contexto, confirmar)
 
     def _indexar(
         self,
@@ -275,6 +304,8 @@ class VectorStoreChroma:
                             "document_id": document_id,
                             "version_indice": version,
                             "orden": inicio + i,
+                            "source_type": c.source_type or "text",
+                            "es_diagrama": c.es_diagrama,
                             "chunk": c.model_dump_json(),
                         }
                         for i, c in enumerate(lote)
@@ -333,6 +364,58 @@ class VectorStoreChroma:
                     where=_filtro(workspace_id, document_id)
                 )
 
+    def _retirar_verificado(self, workspace_id: str, document_id: str, *, definitivo: bool = False) -> None:
+        """Compensa usando el borrado existente y confirma también chunks físicos."""
+        clave_documento(workspace_id, document_id)
+        if workspace_id == DEMO_WORKSPACE_ID:
+            raise PermissionError("No es un documento privado")
+        with self._lock:
+            self._borrar(self._privada, workspace_id, document_id, definitivo=definitivo)
+            for modelo in self._cliente.list_collections():
+                if (
+                    modelo.name.startswith("embeddings-")
+                    and self._cliente.get_collection(modelo.name, embedding_function=None).get(
+                        where=_filtro(workspace_id, document_id), include=[]
+                    )["ids"]
+                ):
+                    raise IndiceInconsistenteError("La retirada física del índice no está confirmada")
+            if self._activo(self._privada, workspace_id, document_id) is not None:
+                raise IndiceInconsistenteError("El catálogo todavía publica el índice")
+
+    def _retirar_versiones_inactivas_verificado(self, workspace_id: str, document_id: str, previo: dict) -> None:
+        """Retira derivados ajenos al puntero conservado sin borrar su catálogo."""
+        clave_documento(workspace_id, document_id)
+        if workspace_id == DEMO_WORKSPACE_ID:
+            raise PermissionError("No es un documento privado")
+        with self._lock:
+            activo = self._activo(self._privada, workspace_id, document_id)
+            if activo is None or dict(activo) != previo:
+                raise IndiceInconsistenteError("El índice conservado cambió antes de compensar")
+            self._datos(self._privada, activo)
+            for modelo in self._cliente.list_collections():
+                if not modelo.name.startswith("embeddings-"):
+                    continue
+                filtro = _filtro(workspace_id, document_id)
+                if modelo.name == previo["coleccion"]:
+                    filtro["$and"].append({"version_indice": {"$ne": previo["version"]}})
+                self._cliente.get_collection(modelo.name, embedding_function=None).delete(where=filtro)
+            # Enumerar otra vez también detecta una colección creada durante el barrido.
+            for modelo in self._cliente.list_collections():
+                if not modelo.name.startswith("embeddings-"):
+                    continue
+                datos = self._cliente.get_collection(modelo.name, embedding_function=None).get(
+                    where=_filtro(workspace_id, document_id), include=["metadatas"]
+                )
+                if datos["ids"] and (
+                    modelo.name != previo["coleccion"]
+                    or any(m.get("version_indice") != previo["version"] for m in datos["metadatas"])
+                ):
+                    raise IndiceInconsistenteError("La retirada de versiones inactivas no está confirmada")
+            actual = self._activo(self._privada, workspace_id, document_id)
+            if actual is None or dict(actual) != previo:
+                raise IndiceInconsistenteError("El índice conservado cambió durante la compensación")
+            self._datos(self._privada, actual)
+
     def listar_chunks(
         self,
         workspace_id: str,
@@ -343,20 +426,78 @@ class VectorStoreChroma:
     ) -> list[Chunk]:
         """Inventario de la versión privada autorizada; no consulta Gemini."""
         self._autorizar(workspace_id, document_id, contexto)
-        activo = self._activo(self._privada, workspace_id, document_id)
+        return self._listar_chunks(self._privada, workspace_id, document_id, contexto, source_hash)
+
+    def listar_chunks_demo(
+        self,
+        document_id: str,
+        *,
+        contexto: ContextoEjecucion,
+        source_hash: str,
+        publicacion: PublicacionDemo,
+    ) -> list[Chunk]:
+        """Lectura demo explícita, sin embeddings ni acceso a colecciones privadas."""
+        clave_documento(DEMO_WORKSPACE_ID, document_id)
+        contexto.chequear()
+        if (publicacion.modelo_embeddings, publicacion.dimensiones_embeddings, publicacion.preparacion_embeddings) != (
+            self.embeddings.modelo,
+            self.embeddings.dimensiones,
+            self.embeddings.preparation_version,
+        ):
+            raise IndiceInconsistenteError("La publicación demo utiliza otra configuración de embeddings")
+        # Revalidar la colección física, incluso si cambió después de abrirla.
+        try:
+            coleccion = self._cliente.get_collection(self._demo.name, embedding_function=None)
+        except NotFoundError:
+            return []
+        esperada = {
+            "modelo": self.embeddings.modelo,
+            "dimensiones": self.embeddings.dimensiones,
+            "preparacion": self.embeddings.preparation_version,
+            "schema_indice": 1,
+        }
+        if coleccion.metadata != esperada or coleccion.configuration["hnsw"]["space"] != "cosine":
+            raise IndiceInconsistenteError("La colección demo dejó de ser compatible")
+        return self._listar_chunks(coleccion, DEMO_WORKSPACE_ID, document_id, contexto, source_hash, publicacion)
+
+    def _listar_chunks(self, coleccion, workspace_id, document_id, contexto, source_hash, publicacion=None):
+        activo = self._activo(coleccion, workspace_id, document_id)
         if activo is None:
             return []
         if activo["hash"] != source_hash:
             raise IndiceInconsistenteError("El índice no corresponde a la fuente autorizada")
-        datos = self._datos(self._privada, activo)
+        if publicacion is not None and (
+            publicacion.hash_sha256 != source_hash
+            or publicacion.version_indice != activo["version"]
+            or publicacion.cantidad_chunks != activo["cantidad"]
+            or publicacion.huella_chunks != activo["firma"]
+        ):
+            raise IndiceInconsistenteError("La versión demo no corresponde a su publicación confirmada")
+        datos = self._datos(coleccion, activo)
         chunks = [Chunk.model_validate_json(m["chunk"]) for m in sorted(datos["metadatas"], key=lambda m: m["orden"])]
         if any(
             (c.workspace_id, c.document_id, c.document_hash) != (workspace_id, document_id, source_hash) for c in chunks
         ):
             raise IndiceInconsistenteError("El inventario contiene chunks ajenos o de otra versión")
+        if publicacion is not None and (
+            _huella(chunks) != publicacion.huella_chunks
+            or [m["orden"] for m in sorted(datos["metadatas"], key=lambda m: m["orden"])] != list(range(len(chunks)))
+            or len({c.chunk_id for c in chunks}) != len(chunks)
+            or any(
+                ident
+                != hashlib.sha256(
+                    f"{workspace_id}:{document_id}:{activo['version']}:{m['chunk_id']}".encode()
+                ).hexdigest()
+                for ident, m in (
+                    (i, Chunk.model_validate_json(meta["chunk"]).model_dump())
+                    for i, meta in zip(datos["ids"], datos["metadatas"], strict=True)
+                )
+            )
+        ):
+            raise IndiceInconsistenteError("El inventario demo no conserva su huella, orden o identidades")
         validar_secciones_heredadas(chunks)
         contexto.chequear()
-        actual = self._activo(self._privada, workspace_id, document_id)
+        actual = self._activo(coleccion, workspace_id, document_id)
         if actual is None or actual["version"] != activo["version"]:
             raise IndiceInconsistenteError("El índice cambió durante la lectura de secciones")
         return chunks
@@ -370,9 +511,10 @@ class VectorStoreChroma:
         contexto: ContextoEjecucion,
         limite: int = 15,
         seccion: str | None = None,
+        tipo_fuente: str | None = None,
     ) -> list[CoincidenciaVectorial]:
         self._autorizar(workspace_id, document_id, contexto)
-        return self._buscar(self._privada, workspace_id, document_id, consulta, contexto, limite, seccion)
+        return self._buscar(self._privada, workspace_id, document_id, consulta, contexto, limite, seccion, tipo_fuente)
 
     def buscar_demo(
         self,
@@ -382,12 +524,17 @@ class VectorStoreChroma:
         contexto: ContextoEjecucion,
         limite: int = 15,
         seccion: str | None = None,
+        tipo_fuente: str | None = None,
     ) -> list[CoincidenciaVectorial]:
         clave_documento(DEMO_WORKSPACE_ID, document_id)
         contexto.chequear()
-        return self._buscar(self._demo, DEMO_WORKSPACE_ID, document_id, consulta, contexto, limite, seccion)
+        return self._buscar(
+            self._demo, DEMO_WORKSPACE_ID, document_id, consulta, contexto, limite, seccion, tipo_fuente
+        )
 
-    def _buscar(self, coleccion, workspace_id, document_id, consulta, contexto, limite, seccion):
+    def _buscar(self, coleccion, workspace_id, document_id, consulta, contexto, limite, seccion, tipo_fuente=None):
+        if tipo_fuente not in (None, "pdf", "md", "txt", "text", "image_description"):
+            raise ValueError("Tipo de fuente no soportado")
         if type(limite) is not int or not 1 <= limite <= 100:
             raise ValueError("limite debe estar entre 1 y 100")
         activo = self._activo(coleccion, workspace_id, document_id)
@@ -407,6 +554,24 @@ class VectorStoreChroma:
                 return []
             filtro["$and"].append({"orden": {"$in": ordenes}})
             cantidad = len(ordenes)
+        if tipo_fuente is not None:
+            coincidencias_tipo = []
+            for metadata in datos_activos["metadatas"]:
+                chunk = Chunk.model_validate_json(metadata["chunk"])
+                if (chunk.source_type or "text") == tipo_fuente and (
+                    seccion is None or seccion_del_chunk(chunk) == seccion
+                ):
+                    coincidencias_tipo.append(metadata)
+            cantidad = len(coincidencias_tipo)
+            if not cantidad:
+                return []
+            if all(m.get("source_type") == tipo_fuente for m in coincidencias_tipo):
+                filtro["$and"].append({"source_type": tipo_fuente})
+            else:
+                # Los índices anteriores al #30 guardan el tipo en el payload,
+                # pero no en metadata. Filtrar sus filas verificadas conserva
+                # ámbito/versión sin consumir nuevas indexaciones o vectores.
+                filtro["$and"].append({"orden": {"$in": [m["orden"] for m in coincidencias_tipo]}})
         vector = self.embeddings.embed_query(consulta, contexto=contexto)
         contexto.chequear()
         datos = coleccion.query(
@@ -420,6 +585,8 @@ class VectorStoreChroma:
             datos["metadatas"][0], datos["distances"][0], datos["embeddings"][0], strict=True
         ):
             chunk = Chunk.model_validate_json(metadata["chunk"])
+            if tipo_fuente is not None and (chunk.source_type or "text") != tipo_fuente:
+                raise IndiceInconsistenteError("El tipo de fuente no corresponde al filtro")
             if (chunk.workspace_id, chunk.document_id) != (workspace_id, document_id) or not math.isfinite(distancia):
                 raise IndiceInconsistenteError("Trazabilidad o distancia inválida")
             resultado.append(CoincidenciaVectorial(chunk, max(0.0, float(distancia)), tuple(map(float, embedding))))
