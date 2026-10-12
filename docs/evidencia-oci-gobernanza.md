@@ -21,3 +21,11 @@ su ruta anterior; la ejecución usó una copia temporal corregida que se elimin�
 El reporte local detallado, sin credenciales, está fuera de Git en
 `.data/issue50-oci-inspection.json`. Este snapshot prueba la configuración leída
 en esa ejecución; el arranque real vuelve a verificar los controles.
+
+También se verificó la API Budgets real, inicialmente sin presupuestos. Se creó
+`nuevamente-cost-governance` para el compartimento del proyecto, período MONTHLY,
+monto de observación 1 (mínimo admitido por OCI), con regla ACTUAL al 80%. Una
+segunda ejecución confirmó su existencia sin crear copias. No se configuraron
+destinatarios ni se enviaron correos. El umbral no autoriza gasto ni lo corta;
+los límites de aplicación siguen siendo la protección de consumo.
+Reporte local: `.data/issue50-budget-rule.json`.

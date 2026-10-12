@@ -61,11 +61,15 @@ presupuesto. La segunda abre `operativo.db` en modo sólo lectura y muestra esta
 `pendiente|datos_purgados|completada`, intentos y códigos de error de limpieza, sin
 tokens ni cuerpos. No exponer esta salida administrativa por API pública.
 
-En una tenancy con permiso para Budgets, crear en la consola OCI una alerta de
-presupuesto del compartimento del proyecto (umbral 80%, destino del responsable).
+En una tenancy con permiso para Budgets, `app.tools.oci_budget_rule.asegurar_regla`
+crea/reutiliza un budget del compartimento y una regla ACTUAL al 80%, sin modificar
+reglas existentes ni IAM. OCI exige un monto mínimo de 1; es un umbral de observación,
+sin autorizar gasto. Si se desean correos, configurar explícitamente el destinatario
+en la consola OCI. La regla no incorpora destinatarios de manera implícita.
 La alerta cubre facturación agregada; no sustituye estos límites ni garantiza
 Always Free. Si faltan permisos, registrar esa limitación en evidencia del despliegue.
-No se crea una regla ni una dirección de notificación de manera implícita.
+La ejecución real autorizada del #50 y sus resultados están en
+[Evidencia OCI](evidencia-oci-gobernanza.md).
 
 Verificación: `pytest backend/tests/test_budgets.py backend/tests/test_budgets_api.py
 frontend/tests/test_budgets_ui.py` y la inspección real anterior.
