@@ -662,6 +662,14 @@ La autorización se revalida después de I/O y la exclusión compartida con la
 retirada documental evita recrear exports tras su limpieza. El borrado y la
 retención existentes abarcan el prefijo de derivados.
 
+### Uso y vencimiento del espacio (#50)
+
+`GET /api/workspaces/current` → `workspace_id`, `expira_en`, `ultima_actividad_en`,
+`uso` (documentos/generaciones y límites 5/20), `almacenamiento` (agregados del
+ledger, límites/margen, alerta 80%, bloqueo y proveedor). Requiere la sesión;
+no devuelve contenido ni nombres de objetos. Es una adición de lectura al contrato.
+Los detalles y el diagnóstico administrativo están en [Gobernanza de costos](gobernanza-costos.md).
+
 ### Salud
 
 `GET /api/health` → `{status, version}`. Sin secretos ni llamadas LLM.

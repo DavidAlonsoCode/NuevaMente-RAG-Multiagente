@@ -59,11 +59,12 @@ from pathlib import Path
 
 from app.schemas.documents import CoberturaDocumento, MetadatosDocumento, ResultadoIngestionDocumental
 from app.schemas.enums import DocumentStatus, JobStatus
+from app.schemas.errors import ErrorAplicacion, ErrorCode
 
 # Versión actual del esquema. Cada cambio de esquema agrega una entrada a
 # MIGRACIONES y sube este número; NUNCA se edita una migración ya aplicada
 # (las bases reales de los usuarios quedaron con la vieja).
-VERSION_ESQUEMA = 10
+VERSION_ESQUEMA = 11
 
 # Cada migración: (versión, SQL). Se aplican en orden ascendente dentro de
 # una transacción cada una. La v1 crea todas las tablas del issue #08.
@@ -305,6 +306,20 @@ MIGRACIONES.append(
     ALTER TABLE jobs ADD COLUMN cache_key TEXT;
     CREATE INDEX idx_jobs_glossary_cache ON jobs(workspace_id, cache_key, creado_en)
         WHERE tipo='glosario';
+""",
+    )
+)
+
+
+MIGRACIONES.append(
+    (
+        11,
+        """
+CREATE TABLE workspace_cleanup (
+    workspace_id TEXT PRIMARY KEY REFERENCES workspaces(workspace_id),
+    estado TEXT NOT NULL DEFAULT 'pendiente', intentos INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT, actualizado_en TEXT
+);
 """,
     )
 )
@@ -572,6 +587,7 @@ class RegistroOperativo:
                 )
                 self.revocar_sesiones_de_workspace(workspace_id)
                 self.agendar_borrado("workspace", workspace_id, workspace_id)
+                self._conn.execute("INSERT OR IGNORE INTO workspace_cleanup(workspace_id) VALUES (?)", (workspace_id,))
                 self._conn.execute("COMMIT")
             except Exception:
                 self._conn.execute("ROLLBACK")
@@ -1020,6 +1036,7 @@ class RegistroOperativo:
                 ).fetchone()
             ):
                 raise EspacioDocumentalOcupado("El espacio ya tiene un trabajo o una admisión en curso")
+            self.comprobar_limite_recursos(workspace_id, "documents", 5)
             self.registrar_documento(
                 document_id,
                 workspace_id,
@@ -2037,6 +2054,104 @@ class RegistroOperativo:
     # ------------------------------------------------------------------
     # Tombstones de borrado (§8.5, §11.5)
     # ------------------------------------------------------------------
+
+    @_sincronizado
+    def comprobar_limite_recursos(self, workspace_id, tabla, limite):
+        if tabla not in ("documents", "generations"):
+            raise ValueError("Recurso inválido")
+        tipo, identificador = ("document", "document_id") if tabla == "documents" else ("generation", "generation_id")
+        usados = self._conn.execute(
+            f"""SELECT COUNT(*) FROM {tabla} r WHERE workspace_id=?
+            AND NOT EXISTS(SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo=? AND p.recurso_id=r.{identificador})
+            AND NOT EXISTS(SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo='document' AND p.recurso_id=r.document_id)""",
+            (workspace_id, tipo),
+        ).fetchone()[0]
+        if usados >= limite:
+            raise ErrorAplicacion(
+                ErrorCode.RATE_LIMITED,
+                "Alcanzaste el límite de recursos conservados. Borrá uno para continuar.",
+                {"motivo": "workspace_resource_limit", "recurso": tabla, "limite": limite, "usados": usados},
+            )
+
+    @_sincronizado
+    def expirar_workspaces(self):
+        for fila in self._conn.execute(
+            "SELECT workspace_id FROM workspaces WHERE borrado_en IS NULL AND expira_en<=?", (_iso(_ahora()),)
+        ).fetchall():
+            self.borrar_workspace(fila[0])
+        # Incluye lápidas reconstruidas desde OCI sin resucitar sus datos.
+        self._conn.execute(
+            "INSERT OR IGNORE INTO workspace_cleanup(workspace_id) SELECT workspace_id FROM workspaces WHERE borrado_en IS NOT NULL"
+        )
+
+    @_sincronizado
+    def limpiezas_espacios(self, pendientes=True):
+        return [
+            dict(f)
+            for f in self._conn.execute(
+                "SELECT c.*,w.borrado_en FROM workspace_cleanup c JOIN workspaces w USING(workspace_id)"
+                + (" WHERE c.estado!='completada'" if pendientes else "")
+                + " ORDER BY c.workspace_id"
+            ).fetchall()
+        ]
+
+    @_sincronizado
+    def resultado_limpieza_espacio(self, ws, estado, error=None):
+        self._conn.execute(
+            "UPDATE workspace_cleanup SET estado=?, intentos=intentos+1, error_code=?, actualizado_en=? WHERE workspace_id=?",
+            (estado, error, _iso(_ahora()), ws),
+        )
+
+    @_sincronizado
+    def recursos_espacio(self, ws):
+        documentos = [
+            r[0] for r in self._conn.execute("SELECT document_id FROM documents WHERE workspace_id=?", (ws,)).fetchall()
+        ]
+        trabajos = [
+            dict(r)
+            for r in self._conn.execute(
+                "SELECT * FROM jobs WHERE workspace_id=? AND status IN ('queued','running')", (ws,)
+            ).fetchall()
+        ]
+        escrituras = (
+            self._conn.execute(
+                "SELECT 1 FROM document_admissions WHERE workspace_id=? AND escritura_en_curso=1", (ws,)
+            ).fetchone()
+            is not None
+        )
+        return documentos, trabajos, escrituras
+
+    @_sincronizado
+    def uso_espacio(self, ws):
+        documentos = sum(
+            self.obtener_documento(r[0]) is not None
+            for r in self._conn.execute("SELECT document_id FROM documents WHERE workspace_id=?", (ws,)).fetchall()
+        )
+        generaciones = sum(
+            self.obtener_generacion(r[0]) is not None
+            for r in self._conn.execute("SELECT generation_id FROM generations WHERE workspace_id=?", (ws,)).fetchall()
+        )
+        return {
+            "documentos": documentos,
+            "limite_documentos": 5,
+            "generaciones": generaciones,
+            "limite_generaciones": 20,
+        }
+
+    def purgar_datos_espacio(self, ws):
+        with self.transaccion():
+            self._conn.execute(
+                "DELETE FROM events WHERE job_id IN (SELECT job_id FROM jobs WHERE workspace_id=?) OR generation_id IN (SELECT generation_id FROM generations WHERE workspace_id=?)",
+                (ws, ws),
+            )
+            for tabla in ("jobs", "idempotency_keys", "workspace_progress", "sessions"):
+                self._conn.execute(f"DELETE FROM {tabla} WHERE workspace_id=?", (ws,))
+            self._conn.execute(
+                "DELETE FROM approved_outputs WHERE generation_id IN (SELECT generation_id FROM generations WHERE workspace_id=?)",
+                (ws,),
+            )
+            for tabla in ("generations", "document_cleanup", "document_admissions", "documents"):
+                self._conn.execute(f"DELETE FROM {tabla} WHERE workspace_id=?", (ws,))
 
     def agendar_borrado(self, recurso_tipo: str, recurso_id: str, workspace_id: str) -> None:
         """Deja una lápida persistente; purga_despues_en indica elegibilidad para limpieza.

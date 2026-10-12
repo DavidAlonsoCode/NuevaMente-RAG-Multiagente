@@ -1,5 +1,9 @@
 # Preparar y verificar OCI Object Storage
 
+La auditoría de presupuestos, vencimiento, limpieza y controles de bucket del #50
+está en [Gobernanza de costos](gobernanza-costos.md). El arranque también comprueba
+que no haya transiciones de clase habilitadas en la política de ciclo de vida.
+
 Esta guía corresponde al proveedor del Issue 14. La prueba verifica almacenamiento
 real de un original y un JSON técnico; no genera contenido educativo ni llama a Gemini.
 El despliegue de la VM y HTTPS pertenecen a los issues 47/48.

@@ -2,6 +2,7 @@ import streamlit as st
 from api_client import APIClient, APIError
 from i18n import CATALOGOS, t
 
+from components.budgets import render_presupuesto
 from components.errors import mostrar_error_ui
 from components.history import render_historial
 from components.session import limpiar_sesion_local
@@ -22,6 +23,7 @@ def render_sidebar(api_client: APIClient, idioma_actual: str):
         # Acciones de Sesión Activa
         if st.session_state.get("session_token"):
             st.divider()
+            render_presupuesto(api_client, idioma_actual)
             _render_acciones_sesion(api_client, idioma_actual)
 
         st.divider()

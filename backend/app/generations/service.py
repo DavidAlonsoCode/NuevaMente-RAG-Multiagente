@@ -274,6 +274,7 @@ class ServicioGeneraciones:
                             )
                         if resultado == "duplicada":
                             return self._propia_db(token, anterior)
+                    self.db.comprobar_limite_recursos(ctx.workspace_id, "generations", 20)
                     self.db.registrar_generacion(generation_id, ctx.workspace_id, solicitud.document_id)
                     self.db.guardar_parametros_generacion(generation_id, solicitud.model_dump(mode="json"))
                 fila = self.db.obtener_generacion(generation_id)

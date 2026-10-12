@@ -9,6 +9,7 @@ import json
 import logging
 import threading
 import uuid
+from contextlib import nullcontext
 from datetime import datetime, timezone
 
 from app.core.rag.rebuild import ManifiestoDocumento
@@ -20,6 +21,7 @@ from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.internal import Chunk
 from app.session.manifests import ManifiestoEspacio, sincronizar_manifiesto
 from app.storage.object_keys import clave_documento, clave_original, clave_output, clave_progress, clave_workspace
+from app.storage.oci_budget import mantenimiento_storage
 from app.storage.provider import StorageNotFound, StorageProvider, StorageUnavailable
 
 logger = logging.getLogger("nuevamente.documents.lifecycle")
@@ -287,7 +289,12 @@ class EfectosDocumentales:
                     if document_id is not None and cursor != document_id:
                         continue
                     try:
-                        self._aplicar(efecto)
+                        retirado = (
+                            self.db.esta_borrado("document", efecto["document_id"])
+                            or self.db.obtener_workspace(efecto["workspace_id"]) is None
+                        )
+                        with mantenimiento_storage() if retirado else nullcontext():
+                            self._aplicar(efecto)
                     except Exception as error:
                         # Sin mensajes del proveedor ni documentos en logs/SQL.
                         codigo = type(error).__name__
