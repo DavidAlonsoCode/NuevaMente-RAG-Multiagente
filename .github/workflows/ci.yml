@@ -141,6 +141,21 @@ jobs:
       - name: Tests (pytest desde la raíz)
         run: pytest
 
+      - name: Integración API con dobles (#52)
+        run: timeout 120s pytest -m integration_mock backend/tests/integration/ --junitxml=.data/integration-mock.xml
+
+      - name: Verificar que la suite detecta fallos sembrados (#52)
+        run: python .github/scripts/verify_integration_faults.py
+
+      - name: Reporte de integración API
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-mock-report
+          path: .data/integration-mock.xml
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Anki Desktop aislado (importación y capturas)
         env:
           QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu
