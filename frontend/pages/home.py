@@ -2,15 +2,13 @@ from typing import Any
 
 import streamlit as st
 from api_client import APIError
+from components.documents import render_documentos_demo, render_lista_documentos
 from components.errors import mostrar_error_ui
 from components.session import limpiar_sesion_local
 from components.sidebar import render_sidebar
 from components.upload import (
     inicializar_estado_documentos,
-    render_documentos_demo,
-    render_lista_documentos,
     render_pegar_texto,
-    render_subida_archivo,
 )
 from i18n import t
 
@@ -132,13 +130,13 @@ def _render_pantalla_onboarding(idioma_actual: str, api_client: Any = None):
     # Renderizar el panel según la opción seleccionada
     vista = st.session_state.get("vista_onboarding", "upload")
     if vista == "upload":
-        render_subida_archivo(idioma_actual, api_client=api_client)
+        st.info(t("upload.ayuda_sidebar", idioma_actual))
     elif vista == "texto":
         render_pegar_texto(idioma_actual, api_client=api_client)
     elif vista == "demo":
-        render_documentos_demo(idioma_actual)
+        render_documentos_demo(idioma_actual, api_client)
 
     st.divider()
 
     # Lista de documentos activos en el espacio
-    render_lista_documentos(idioma_actual, api_client=api_client)
+    render_lista_documentos(api_client, idioma_actual)

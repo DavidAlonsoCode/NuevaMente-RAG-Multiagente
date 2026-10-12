@@ -206,3 +206,53 @@ CATALOGO_EN: dict[str, str] = {
     "errors.INVALID_RESPONSE": "The server returned unexpected data. Try again; if it persists, share the request identifier.",
     "errors.reintentar_en": "You can try again in {segundos} seconds.",
 }
+
+# Flujo documental integrado (#25).
+CATALOGO_EN.update(
+    {
+        "upload.procesar": "Process file",
+        "upload.formato_invalido": "Unsupported format. Use PDF, MD or TXT.",
+        "upload.vacio": "The document must contain text.",
+        "upload.titulo_invalido": "Enter a title between 1 and 300 characters.",
+        "upload.guardado_oci": "Saved in OCI",
+        "upload.cobertura": "Pages processed: {procesadas} of {total}",
+        "upload.vision_pendiente": "Visual interpretation pending on pages: {paginas}. This document cannot be used yet.",
+        "upload.omitidas": "Pages without coverage: {paginas}. Try a clearer source.",
+        "upload.cobertura_pendiente": "Coverage has not been confirmed yet.",
+        "upload.reintentar_fuente": "Upload another file or a corrected version from the sidebar.",
+        "upload.sin_documentos": "Your workspace has no documents yet. Upload a file or paste text to get started.",
+        "upload.borrado_recibido": "The document is no longer available. File cleanup has been scheduled.",
+        "upload.activo": "Selected document",
+        "upload.seleccionar_documento": "Use document",
+        "upload.eliminar": "Delete document",
+        "upload.borrar_confirmacion": "The original, index, generated materials, chat and study progress linked to this document will be removed. Access is blocked immediately; cleanup may continue afterward.",
+        "upload.demo_ayuda": "Choose a ready source. Availability and coverage come from the server.",
+        "upload.demo_no_disponible": "Not available in the library yet",
+        "upload.demo_vcn": "VCN networking in Oracle Cloud Infrastructure",
+        "upload.demo_pagos": "Payment API integration",
+        "upload.demo_salud": "Healthcare data governance",
+        "upload.ayuda_sidebar": "Upload your file from the sidebar. You can also paste text or choose a library source.",
+        "upload.etapa_fuente": "Source verification",
+        "upload.etapa_parser": "Content extraction",
+        "upload.etapa_chunker": "Content chunking",
+        "upload.etapa_vision": "Visual page interpretation",
+        "upload.etapa_indice": "Semantic indexing",
+        "upload.etapa_persistencia": "Storage confirmation",
+        "comun.confirmar": "Confirm",
+    }
+)
+CATALOGO_EN.update(
+    {
+        "upload.cobertura_texto": "Confirmed text coverage: {secciones} sections · {tokens} extracted tokens",
+        "upload.parser_cifrado": "The PDF is encrypted. Upload a version without a password.",
+        "upload.parser_corrupto": "The PDF could not be read. Export it again and upload the new file.",
+        "upload.parser_extraccion_insuficiente": "There is not enough readable content. Use a source with more text or clearer images.",
+        "upload.parser_formato_no_soportado": "The content does not match PDF, Markdown or TXT. Check the file.",
+        "upload.parser_binario": "The text file contains binary data. Save it as UTF-8 text.",
+        "upload.parser_limite_paginas": "The PDF exceeds 100 pages. Split it into shorter documents.",
+        "upload.parser_limite_tokens": "The document exceeds 100,000 extracted tokens. Split it into parts.",
+        "upload.parser_limite_paginas_visuales": "The PDF exceeds the limit of 20 visual pages. Split it into parts.",
+        "upload.parser_timeout_extraccion": "Extraction exceeded the time limit. Try a simpler PDF.",
+        "upload.parser_demasiado_grande": "The file exceeds 20 MiB for PDF or 5 MiB for text.",
+    }
+)

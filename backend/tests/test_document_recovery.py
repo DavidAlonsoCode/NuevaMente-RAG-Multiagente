@@ -175,7 +175,11 @@ def test_restaura_identidad_y_http_sin_fabricar_historia(pila, estado):
         assert e.db._conn.execute("SELECT COUNT(*) FROM idempotency_keys").fetchone()[0] == 0
         jobs = e.db._conn.execute("SELECT * FROM jobs").fetchall()
         assert len(jobs) == 1 and jobs[0]["document_id"] == mf.document_id
-        assert [v["status"] for v in e.db.eventos_desde_job(jobs[0]["job_id"])] == ["queued", "running", "completed"]
+        assert [v["status"] for v in e.db.eventos_desde_job(jobs[0]["job_id"])] == [
+            "queued",
+            *["running"] * 6,
+            "completed",
+        ]
         assert e.cliente.get("/api/documents", headers=e.headers).json()["items"][0]["document_id"] == mf.document_id
         assert e.cliente.get(f"/api/documents/{mf.document_id}", headers=e.headers).json()["status"] == "ready"
         assert e.cliente.get("/api/documents", headers={"Authorization": f"Bearer {pila.ws.token}"}).status_code == 401

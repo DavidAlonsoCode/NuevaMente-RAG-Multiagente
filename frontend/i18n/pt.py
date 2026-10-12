@@ -206,3 +206,53 @@ CATALOGO_PT: dict[str, str] = {
     "errors.INVALID_RESPONSE": "O servidor respondeu com dados inesperados. Tente novamente; se persistir, compartilhe o identificador da solicitação.",
     "errors.reintentar_en": "Você pode tentar novamente em {segundos} segundos.",
 }
+
+# Flujo documental integrado (#25).
+CATALOGO_PT.update(
+    {
+        "upload.procesar": "Processar arquivo",
+        "upload.formato_invalido": "Formato não permitido. Use PDF, MD ou TXT.",
+        "upload.vacio": "O documento deve ter conteúdo.",
+        "upload.titulo_invalido": "Insira um título entre 1 e 300 caracteres.",
+        "upload.guardado_oci": "Salvo no OCI",
+        "upload.cobertura": "Páginas processadas: {procesadas} de {total}",
+        "upload.vision_pendiente": "Interpretação visual pendente nas páginas: {paginas}. Este documento ainda não pode ser usado.",
+        "upload.omitidas": "Páginas sem cobertura: {paginas}. Tente uma fonte mais legível.",
+        "upload.cobertura_pendiente": "A cobertura ainda não foi confirmada.",
+        "upload.reintentar_fuente": "Envie outro arquivo ou uma versão corrigida pelo painel lateral.",
+        "upload.sin_documentos": "Seu espaço ainda não tem documentos. Envie um arquivo ou cole texto para começar.",
+        "upload.borrado_recibido": "O documento deixou de estar disponível. A limpeza dos arquivos foi agendada.",
+        "upload.activo": "Documento selecionado",
+        "upload.seleccionar_documento": "Usar documento",
+        "upload.eliminar": "Excluir documento",
+        "upload.borrar_confirmacion": "Serão removidos o original, índice, materiais gerados, chat e progresso vinculados a este documento. O acesso é bloqueado imediatamente; a limpeza pode continuar depois.",
+        "upload.demo_ayuda": "Escolha uma fonte pronta. A disponibilidade e a cobertura vêm do servidor.",
+        "upload.demo_no_disponible": "Ainda não disponível na biblioteca",
+        "upload.demo_vcn": "Redes VCN no Oracle Cloud Infrastructure",
+        "upload.demo_pagos": "Integração de APIs de pagamentos",
+        "upload.demo_salud": "Governança de dados de saúde",
+        "upload.ayuda_sidebar": "Envie seu arquivo pelo painel lateral. Você também pode colar texto ou escolher uma fonte da biblioteca.",
+        "upload.etapa_fuente": "Verificação da fonte",
+        "upload.etapa_parser": "Extração de conteúdo",
+        "upload.etapa_chunker": "Divisão em fragmentos",
+        "upload.etapa_vision": "Interpretação de páginas visuais",
+        "upload.etapa_indice": "Indexação semântica",
+        "upload.etapa_persistencia": "Confirmação de armazenamento",
+        "comun.confirmar": "Confirmar",
+    }
+)
+CATALOGO_PT.update(
+    {
+        "upload.cobertura_texto": "Cobertura de texto confirmada: {secciones} seções · {tokens} tokens extraídos",
+        "upload.parser_cifrado": "O PDF está criptografado. Envie uma versão sem senha.",
+        "upload.parser_corrupto": "Não foi possível ler o PDF. Exporte novamente e envie o novo arquivo.",
+        "upload.parser_extraccion_insuficiente": "Não há conteúdo legível suficiente. Use uma fonte com mais texto ou imagens nítidas.",
+        "upload.parser_formato_no_soportado": "O conteúdo não corresponde a PDF, Markdown ou TXT. Confira o arquivo.",
+        "upload.parser_binario": "O arquivo de texto contém dados binários. Salve como texto UTF-8.",
+        "upload.parser_limite_paginas": "O PDF ultrapassa 100 páginas. Divida em documentos menores.",
+        "upload.parser_limite_tokens": "O documento ultrapassa 100.000 tokens extraídos. Divida em partes.",
+        "upload.parser_limite_paginas_visuales": "O PDF ultrapassa o limite de 20 páginas visuais. Divida em partes.",
+        "upload.parser_timeout_extraccion": "A extração ultrapassou o tempo permitido. Tente um PDF mais simples.",
+        "upload.parser_demasiado_grande": "O arquivo ultrapassa 20 MiB para PDF ou 5 MiB para texto.",
+    }
+)

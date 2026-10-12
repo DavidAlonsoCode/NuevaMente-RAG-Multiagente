@@ -1,424 +1,137 @@
-"""Componente de carga e ingestión de documentos para NuevaMente.
+"""Carga documental: sólo el servidor publica ready y cobertura."""
 
-Cumple con las decisiones de arquitectura §4.1, §6.3, §6.4 y §8.2:
-- Límites estrictos: 20 MB para PDF, 5 MB para Markdown/TXT.
-- Entrada dual: subida de archivos y texto pegado con título.
-- Selección directa de los 3 documentos demo oficiales.
-- Validación inmediata en el cliente antes de procesar o enviar.
-"""
-
-from __future__ import annotations
-
+import hashlib
 import os
-from typing import Any
+from uuid import uuid4
 
 import streamlit as st
+from api_client import APIError
 from i18n import t
 
-# Límites de tamaño según especificación (§4.1)
-MAX_PDF_BYTES = 20 * 1024 * 1024  # 20 MB
-MAX_TEXT_BYTES = 5 * 1024 * 1024  # 5 MB
-FORMATOS_PERMITIDOS = [".pdf", ".md", ".txt"]
+from components.errors import mostrar_error_ui
 
-# Metadatos de los 3 documentos demo incluidos en /documents (§6.4, Issue 05)
-DOCUMENTOS_DEMO = [
-    {
-        "id": "demo-redes-vcn",
-        "titulo": "Redes Virtuales en la Nube (VCN en OCI)",
-        "archivo": "redes_vcn_oci.pdf",
-        "formato": "PDF",
-        "nicho": "Cloud / Infraestructura",
-        "descripcion": "Arquitectura de red segura, subredes públicas y privadas, tablas de ruteo y gateways en Oracle Cloud.",
-        "tamano_aprox": "24 KB",
-        "paginas_procesadas": 14,
-        "cobertura_porcentaje": 100,
-        "chunks": 24,
-    },
-    {
-        "id": "demo-pagos-fintech",
-        "titulo": "Integración de Webhooks y APIs de Pagos",
-        "archivo": "integracion_apis_pagos.md",
-        "formato": "Markdown",
-        "nicho": "Fintech",
-        "descripcion": "Seguridad HMAC, reintentos idempotentes y manejo de eventos asíncronos en pasarelas de pago.",
-        "tamano_aprox": "9 KB",
-        "paginas_procesadas": 1,
-        "cobertura_porcentaje": 100,
-        "chunks": 18,
-    },
-    {
-        "id": "demo-salud-gobernanza",
-        "titulo": "Gobernanza de Historias Clínicas Electrónicas",
-        "archivo": "gobernanza_datos_salud.md",
-        "formato": "Markdown",
-        "nicho": "Salud / Sanitario",
-        "descripcion": "Estándares FHIR, consentimiento del paciente, pistas de auditoría inmutables y privacidad de datos médicos.",
-        "tamano_aprox": "8 KB",
-        "paginas_procesadas": 1,
-        "cobertura_porcentaje": 100,
-        "chunks": 15,
-    },
-]
+MAX_PDF_BYTES = 20 * 1024 * 1024
+MAX_TEXT_BYTES = 5 * 1024 * 1024
+FORMATOS_PERMITIDOS = (".pdf", ".md", ".txt")
+DOCUMENTOS_DEMO = (
+    {"id": "demo-redes-vcn", "clave": "upload.demo_vcn", "formato": "PDF"},
+    {"id": "demo-pagos-fintech", "clave": "upload.demo_pagos", "formato": "Markdown"},
+    {"id": "demo-salud-gobernanza", "clave": "upload.demo_salud", "formato": "Markdown"},
+)
 
 
-def validar_archivo(nombre_archivo: str, tamano_bytes: int) -> tuple[bool, str | None]:
-    """Valida extensión y tamaño del archivo en el cliente (§4.1).
-
-    Retorna una tupla (es_valido, clave_error_o_mensaje).
-    """
-    _, ext = os.path.splitext(nombre_archivo.lower())
-
-    if ext not in FORMATOS_PERMITIDOS:
-        return False, f"Formato no permitido ({ext}). Formatos aceptados: PDF, MD, TXT."
-
-    if ext == ".pdf" and tamano_bytes > MAX_PDF_BYTES:
-        return False, "errors.DOCUMENT_TOO_LARGE"
-
-    if ext in [".md", ".txt"] and tamano_bytes > MAX_TEXT_BYTES:
-        return False, "errors.DOCUMENT_TOO_LARGE"
-
-    return True, None
+def validar_archivo(nombre_archivo, tamano_bytes):
+    extension = os.path.splitext(nombre_archivo.lower())[1]
+    if extension not in FORMATOS_PERMITIDOS:
+        return False, "upload.formato_invalido"
+    if tamano_bytes <= 0:
+        return False, "upload.vacio"
+    limite = MAX_PDF_BYTES if extension == ".pdf" else MAX_TEXT_BYTES
+    return (False, "errors.DOCUMENT_TOO_LARGE") if tamano_bytes > limite else (True, None)
 
 
-def validar_texto_pegado(titulo: str, contenido: str) -> tuple[bool, str | None]:
-    """Valida título y contenido de texto pegado (§4.1).
-
-    Retorna una tupla (es_valido, clave_error_o_mensaje).
-    """
-    if not titulo or not titulo.strip():
-        return False, "Debes ingresar un título para el documento."
-
-    if not contenido or not contenido.strip():
-        return False, "El contenido del texto no puede estar vacío."
-
-    tamano_bytes = len(contenido.encode("utf-8"))
-    if tamano_bytes > MAX_TEXT_BYTES:
-        return False, "errors.DOCUMENT_TOO_LARGE"
-
-    return True, None
+def validar_texto_pegado(titulo, contenido):
+    if not titulo.strip() or len(titulo.strip()) > 300:
+        return False, "upload.titulo_invalido"
+    if not contenido.strip():
+        return False, "upload.vacio"
+    return (False, "errors.DOCUMENT_TOO_LARGE") if len(contenido.encode("utf-8")) > MAX_TEXT_BYTES else (True, None)
 
 
-def formatear_tamano(tamano_bytes: int) -> str:
-    """Convierte bytes a un formato legible (KB, MB)."""
+def formatear_tamano(tamano_bytes):
     if tamano_bytes < 1024:
         return f"{tamano_bytes} B"
     if tamano_bytes < 1024 * 1024:
-        return f"{tamano_bytes / 1024:.1f} KB"
-    return f"{tamano_bytes / (1024 * 1024):.1f} MB"
+        return f"{tamano_bytes / 1024:.1f} KiB"
+    return f"{tamano_bytes / (1024 * 1024):.1f} MiB"
 
 
 def inicializar_estado_documentos():
-    """Asegura que las colecciones necesarias existan en st.session_state."""
-    if "documentos" not in st.session_state:
-        st.session_state.documentos = []
-    if "documento_activo_id" not in st.session_state:
-        st.session_state.documento_activo_id = None
+    st.session_state.setdefault("documentos", [])
+    st.session_state.setdefault("documento_activo_id", None)
+    st.session_state.setdefault("documento_activo_demo", False)
+    st.session_state.setdefault("trabajos_documentales", {})
 
 
-def registrar_documento_en_sesion(
-    doc_id: str,
-    titulo: str,
-    nombre_archivo: str,
-    tipo: str,
-    tamano_bytes: int,
-    estado: str = "ready",
-    es_demo: bool = False,
-    paginas_procesadas: int = 1,
-    cobertura_porcentaje: int = 100,
-    chunks: int = 1,
-) -> dict[str, Any]:
-    """Registra o actualiza un documento en st.session_state con métricas de cobertura."""
-    inicializar_estado_documentos()
-
-    # Evitar duplicados por id
-    documentos_existentes = [d for d in st.session_state.documentos if d["id"] != doc_id]
-
-    nuevo_doc = {
-        "id": doc_id,
-        "titulo": titulo,
-        "nombre_archivo": nombre_archivo,
-        "tipo": tipo.upper(),
-        "tamano_bytes": tamano_bytes,
-        "tamano_legible": formatear_tamano(tamano_bytes),
-        "estado": estado,
-        "es_demo": es_demo,
-        "paginas_procesadas": paginas_procesadas,
-        "cobertura_porcentaje": cobertura_porcentaje,
-        "chunks": chunks,
-        "origen_almacenamiento": "almacenamiento.local_dev",
-    }
-
-    documentos_existentes.append(nuevo_doc)
-    st.session_state.documentos = documentos_existentes
-    st.session_state.documento_activo_id = doc_id
-    return nuevo_doc
+def clave_envio(flujo, titulo, contenido):
+    """Misma intención tras un 503/transporte incierto; nunca reenviar automáticamente."""
+    huella = hashlib.sha256(titulo.encode("utf-8") + b"\0" + contenido).hexdigest()
+    nombre = "envio_documental_" + flujo
+    previo = st.session_state.get(nombre)
+    if previo is None or previo["huella"] != huella:
+        previo = {"huella": huella, "clave": uuid4().hex}
+        st.session_state[nombre] = previo
+    return previo["clave"]
 
 
-def render_subida_archivo(idioma: str, api_client: Any = None):
-    """Renderiza el bloque de subida de archivos (PDF/MD/TXT) con límites visibles."""
-    st.markdown(f"#### {t('upload.titulo', idioma)}")
-
-    # Límites visibles ANTES de cargar (§4.1, Criterios de Aceptación)
-    st.caption(f"ℹ️ **{t('upload.formatos_soportados', idioma)}** · {t('upload.limite', idioma)}")
-
-    archivo = st.file_uploader(
-        label=t("upload.arrastrar", idioma),
-        type=["pdf", "md", "txt"],
-        help=t("upload.limite", idioma),
-        key="uploader_archivo",
-    )
-
-    confirmacion = st.checkbox(
-        t("upload.confirmar_publico", idioma),
-        key="check_confirmar_publico",
-    )
-
-    col_btn, _ = st.columns([1, 2])
-    with col_btn:
-        btn_procesar = st.button(
-            t("upload.titulo", idioma),
-            type="primary",
-            use_container_width=True,
-            key="btn_procesar_archivo",
-        )
-
-    if btn_procesar:
-        if not archivo:
-            st.warning("Selecciona o arrastra un archivo primero.")
-            return
-
-        if not confirmacion:
-            st.warning(f"Debes marcar: '{t('upload.confirmar_publico', idioma)}'")
-            return
-
-        es_valido, error = validar_archivo(archivo.name, archivo.size)
-        if not es_valido:
-            msg = t(error, idioma) if error and error.startswith("errors.") else error
-            st.error(f"❌ {msg}")
-            return
-
-        # Etapas de ingestión (§6.5, Criterios de Aceptación)
-        with st.status(t("upload.procesando", idioma), expanded=True) as status:
-            st.write("1. Validando formato e integridad del archivo...")
-            st.write("2. Extrayendo contenido y estructura...")
-            st.write("3. Generando fragmentos semánticos...")
-            status.update(label=t("upload.listo", idioma), state="complete", expanded=False)
-
-        ext = os.path.splitext(archivo.name)[1].lower()
-        paginas = max(1, archivo.size // (100 * 1024)) if ext == ".pdf" else 1
-        chunks = max(1, archivo.size // (2 * 1024))
-        doc_id = f"doc-{archivo.name.replace(' ', '_')}"
-
-        token = st.session_state.get("session_token")
-        if api_client and token:
-            media_map = {".pdf": "application/pdf", ".md": "text/markdown", ".txt": "text/plain"}
-            media_type = media_map.get(ext, "application/octet-stream")
-            try:
-                res = api_client.upload_file(
-                    token=token,
-                    filename=archivo.name,
-                    content=archivo.getvalue(),
-                    media_type=media_type,
-                    title=archivo.name,
-                )
-                if isinstance(res, dict) and "document_id" in res:
-                    doc_id = str(res["document_id"])
-            except Exception:
-                pass
-
-        # Registrar en estado de sesión
-        registrar_documento_en_sesion(
-            doc_id=doc_id,
-            titulo=archivo.name,
-            nombre_archivo=archivo.name,
-            tipo=ext.lstrip("."),
-            tamano_bytes=archivo.size,
-            estado="ready",
-            paginas_procesadas=paginas,
-            cobertura_porcentaje=100,
-            chunks=chunks,
-        )
-        st.success(f"✅ {t('upload.listo', idioma)}: **{archivo.name}**")
-        st.rerun()
-
-
-def render_pegar_texto(idioma: str, api_client: Any = None):
-    """Renderiza el formulario para ingresar texto plano directamente."""
-    st.markdown(f"#### {t('upload.enviar_texto', idioma)}")
-    st.caption(f"ℹ️ {t('upload.limite', idioma)}")
-
-    titulo = st.text_input(
-        t("upload.texto_titulo", idioma),
-        placeholder="Ej: Manual de Arquitectura de Microservicios",
-        key="input_texto_titulo",
-    )
-
-    contenido = st.text_area(
-        t("upload.texto_contenido", idioma),
-        placeholder="Pega aquí el contenido técnico para generar material de estudio...",
-        height=220,
-        key="input_texto_contenido",
-    )
-
-    col_btn, _ = st.columns([1, 2])
-    with col_btn:
-        btn_guardar = st.button(
-            t("upload.enviar_texto", idioma),
-            type="primary",
-            use_container_width=True,
-            key="btn_guardar_texto",
-        )
-
-    if btn_guardar:
-        es_valido, error = validar_texto_pegado(titulo, contenido)
-        if not es_valido:
-            msg = t(error, idioma) if error and error.startswith("errors.") else error
-            st.error(f"❌ {msg}")
-            return
-
-        tamano_bytes = len(contenido.encode("utf-8"))
-        chunks = max(1, tamano_bytes // 800)
-        doc_id = f"doc-txt-{titulo.strip().replace(' ', '_').lower()[:20]}"
-
-        token = st.session_state.get("session_token")
-        if api_client and token:
-            try:
-                res = api_client.upload_document(
-                    token=token,
-                    payload={"documento_titulo": titulo.strip(), "contenido_texto": contenido.strip()},
-                )
-                if isinstance(res, dict) and "document_id" in res:
-                    doc_id = str(res["document_id"])
-            except Exception:
-                pass
-
-        registrar_documento_en_sesion(
-            doc_id=doc_id,
-            titulo=titulo.strip(),
-            nombre_archivo=f"{titulo.strip()}.txt",
-            tipo="txt",
-            tamano_bytes=tamano_bytes,
-            estado="ready",
-            paginas_procesadas=1,
-            cobertura_porcentaje=100,
-            chunks=chunks,
-        )
-        st.success(f"✅ {t('upload.listo', idioma)}: **{titulo.strip()}**")
-        st.rerun()
-
-
-def render_documentos_demo(idioma: str):
-    """Renderiza las tarjetas con los 3 documentos demo para selección inmediata."""
-    st.markdown(f"#### {t('onboarding.demo', idioma)}")
-    st.caption("Selecciona uno de los documentos de prueba preparados para evaluar el sistema:")
-
-    for demo in DOCUMENTOS_DEMO:
-        with st.container():
-            st.markdown(
-                f"""
-                <div style="background-color: #0f1011; border: 1px solid #23252a; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                        <h4 style="margin: 0; color: #ffffff;">{demo["titulo"]}</h4>
-                        <span style="background: #1d2035; color: #5e6ad2; border: 1px solid #5e6ad2; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-family: monospace;">
-                            {demo["formato"]} · {demo["nicho"]}
-                        </span>
-                    </div>
-                    <p style="color: #9aa0a6; margin: 8px 0 12px 0; font-size: 14px;">{demo["descripcion"]}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            col1, _ = st.columns([1, 2])
-            with col1:
-                if st.button(
-                    f"Usar '{demo['titulo']}'",
-                    key=f"btn_demo_{demo['id']}",
-                    use_container_width=True,
-                ):
-                    registrar_documento_en_sesion(
-                        doc_id=demo["id"],
-                        titulo=demo["titulo"],
-                        nombre_archivo=demo["archivo"],
-                        tipo=demo["formato"].lower(),
-                        tamano_bytes=1024 * 10,
-                        estado="ready",
-                        es_demo=True,
-                        paginas_procesadas=demo["paginas_procesadas"],
-                        cobertura_porcentaje=demo["cobertura_porcentaje"],
-                        chunks=demo["chunks"],
-                    )
-                    st.success(f"✅ Documento demo activado: **{demo['titulo']}**")
-                    st.rerun()
-
-
-def eliminar_documento(doc_id: str, api_client: Any = None):
-    """Elimina un documento del espacio en sesión y en el backend si aplica."""
-    inicializar_estado_documentos()
+def admitir_documento(api, idioma, *, titulo, contenido, archivo=None, media_type=None):
     token = st.session_state.get("session_token")
-    if api_client and token and not doc_id.startswith("demo-"):
-        try:
-            api_client.delete_document(token=token, document_id=doc_id)
-        except Exception:
-            pass
-
-    st.session_state.documentos = [d for d in st.session_state.documentos if d["id"] != doc_id]
-    if st.session_state.documento_activo_id == doc_id:
-        st.session_state.documento_activo_id = (
-            st.session_state.documentos[0]["id"] if st.session_state.documentos else None
-        )
-
-
-def render_lista_documentos(idioma: str, api_client: Any = None):
-    """Renderiza la lista de documentos cargados en el espacio con estado y borrado."""
+    if not token:
+        return False
     inicializar_estado_documentos()
-    documentos = st.session_state.documentos
-
-    if not documentos:
-        return
-
-    st.markdown(f"### 📚 {t('nav.documentos', idioma)} ({len(documentos)})")
-
-    for doc in documentos:
-        es_activo = st.session_state.documento_activo_id == doc["id"]
-        estado_label = t(f"estados.documento.{doc.get('estado', 'ready')}", idioma)
-        storage_label = t(doc.get("origen_almacenamiento", "almacenamiento.local_dev"), idioma)
-        borde_color = "#5e6ad2" if es_activo else "#23252a"
-
-        with st.container():
-            st.markdown(
-                f"""
-                <div style="background-color: #0f1011; border: 1px solid {borde_color}; border-radius: 8px; padding: 14px; margin-bottom: 10px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <span style="color: #ffffff; font-weight: 600; font-size: 15px;">{doc["titulo"]}</span>
-                            {' <span style="background: #2b1f50; color: #a5b4fc; font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Activo</span>' if es_activo else ""}
-                        </div>
-                        <div style="display: flex; gap: 8px; font-size: 12px;">
-                            <span style="color: #4ade80;">● {estado_label}</span>
-                            <span style="color: #9aa0a6;">· {doc["tipo"]}</span>
-                        </div>
-                    </div>
-                    <div style="color: #9aa0a6; font-size: 13px; margin-top: 6px;">
-                        📊 Cobertura: <strong style="color: #4ade80;">{doc.get("cobertura_porcentaje", 100)}%</strong> ({doc.get("paginas_procesadas", 1)} pág. · {doc.get("chunks", 1)} fragmentos)
-                    </div>
-                    <div style="color: #6b7280; font-size: 12px; margin-top: 4px;">
-                        Archivo: <code>{doc["nombre_archivo"]}</code> ({doc.get("tamano_legible", "")}) · {storage_label}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+    flujo = "archivo" if archivo else "texto"
+    clave = clave_envio(flujo, (archivo or "") + "\0" + titulo, contenido)
+    try:
+        if archivo:
+            recibo = api.upload_file(token, archivo, contenido, media_type, title=titulo, idempotency_key=clave)
+        else:
+            recibo = api.upload_document(
+                token,
+                {"documento_titulo": titulo, "documento_contenido": contenido.decode("utf-8")},
+                idempotency_key=clave,
             )
+    except APIError as error:
+        mostrar_error_ui(error, idioma)
+        return False
+    st.session_state.trabajos_documentales[recibo["document_id"]] = {
+        "job_id": recibo["job_id"],
+        "cursor": 0,
+        "progreso": None,
+        "estado": "queued",
+        "error": None,
+    }
+    st.session_state.pop("envio_documental_" + flujo, None)
+    return True
 
-            col_sel, col_del = st.columns([3, 1])
-            with col_sel:
-                if not es_activo:
-                    if st.button("Seleccionar", key=f"btn_sel_{doc['id']}", use_container_width=True):
-                        st.session_state.documento_activo_id = doc["id"]
-                        st.rerun()
-            with col_del:
-                with st.popover("🗑️ Eliminar", use_container_width=True):
-                    st.warning("⚠️ Esta acción retirará el documento del espacio.")
-                    if st.button("Confirmar", key=f"btn_conf_del_{doc['id']}", type="primary"):
-                        eliminar_documento(doc["id"], api_client=api_client)
-                        st.rerun()
+
+def render_subida_archivo(idioma, api_client):
+    st.markdown("### " + t("upload.titulo", idioma))
+    st.caption(t("upload.formatos_soportados", idioma))
+    st.caption(t("upload.limite", idioma))
+    archivo = st.file_uploader(t("upload.arrastrar", idioma), type=["pdf", "md", "txt"], key="uploader_archivo")
+    valido, error = validar_archivo(archivo.name, archivo.size) if archivo else (False, None)
+    if error:
+        st.error(t(error, idioma))  # Antes de leer bytes o enviar ninguna petición.
+    permiso = st.checkbox(t("upload.confirmar_publico", idioma), key="check_confirmar_publico")
+    if st.button(
+        t("upload.procesar", idioma),
+        type="primary",
+        use_container_width=True,
+        disabled=not (valido and permiso),
+        key="btn_procesar_archivo",
+    ):
+        extension = os.path.splitext(archivo.name.lower())[1]
+        mime = {".pdf": "application/pdf", ".md": "text/markdown", ".txt": "text/plain"}[extension]
+        if admitir_documento(
+            api_client,
+            idioma,
+            titulo=archivo.name[:300],
+            contenido=archivo.getvalue(),
+            archivo=archivo.name,
+            media_type=mime,
+        ):
+            st.rerun()
+
+
+def render_pegar_texto(idioma, api_client):
+    st.subheader(t("upload.enviar_texto", idioma))
+    st.caption(t("upload.limite", idioma))
+    titulo = st.text_input(t("upload.texto_titulo", idioma), max_chars=300, key="input_texto_titulo")
+    contenido = st.text_area(t("upload.texto_contenido", idioma), height=220, key="input_texto_contenido")
+    permiso = st.checkbox(t("upload.confirmar_publico", idioma), key="permiso_texto")
+    if st.button(t("upload.enviar_texto", idioma), type="primary", disabled=not permiso, key="btn_guardar_texto"):
+        valido, error = validar_texto_pegado(titulo, contenido)
+        if not valido:
+            st.error(t(error, idioma))
+        elif admitir_documento(api_client, idioma, titulo=titulo.strip(), contenido=contenido.encode("utf-8")):
+            st.rerun()

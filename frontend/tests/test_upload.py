@@ -70,7 +70,7 @@ def test_rechazo_extension_no_permitida():
     for archivo_invalido in ["doc.docx", "imagen.png", "script.exe", "bundle.zip"]:
         valido, error = validar_archivo(archivo_invalido, 1024)
         assert valido is False
-        assert "Formato no permitido" in error
+        assert error == "upload.formato_invalido"
 
 
 def test_validar_texto_pegado_valido():
@@ -84,11 +84,11 @@ def test_validar_texto_pegado_vacio():
     """Texto o título vacíos son rechazados con mensaje descriptivo."""
     valido_sin_titulo, err_titulo = validar_texto_pegado("", "Contenido técnico.")
     assert valido_sin_titulo is False
-    assert "título" in err_titulo
+    assert err_titulo == "upload.titulo_invalido"
 
     valido_sin_contenido, err_contenido = validar_texto_pegado("Título", "   ")
     assert valido_sin_contenido is False
-    assert "contenido" in err_contenido
+    assert err_contenido == "upload.vacio"
 
 
 def test_validar_texto_pegado_excede_tamano():
@@ -102,8 +102,8 @@ def test_validar_texto_pegado_excede_tamano():
 def test_formatear_tamano():
     """Convierte bytes a formato humano legible."""
     assert formatear_tamano(500) == "500 B"
-    assert formatear_tamano(1024) == "1.0 KB"
-    assert formatear_tamano(2048 * 1024) == "2.0 MB"
+    assert formatear_tamano(1024) == "1.0 KiB"
+    assert formatear_tamano(2048 * 1024) == "2.0 MiB"
 
 
 def test_integridad_documentos_demo():
@@ -113,9 +113,8 @@ def test_integridad_documentos_demo():
     assert ids == {"demo-redes-vcn", "demo-pagos-fintech", "demo-salud-gobernanza"}
 
     for demo in DOCUMENTOS_DEMO:
-        assert demo["titulo"]
-        assert demo["archivo"]
+        assert demo["clave"]
         assert demo["formato"] in ["PDF", "Markdown"]
-        assert demo["paginas_procesadas"] >= 1
-        assert demo["chunks"] >= 1
-        assert demo["cobertura_porcentaje"] == 100
+        assert "paginas_procesadas" not in demo
+        assert "chunks" not in demo
+        assert "cobertura_porcentaje" not in demo
