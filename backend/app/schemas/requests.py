@@ -108,7 +108,7 @@ class QuizAnswerRequest(ModeloContenido):
 
 
 class ProgressEvent(ModeloContenido):
-    """Body de POST /api/progress/events (issue #41): eventos de estudio idempotentes.
+    """Body de POST /api/progress/events (issue #35; consumidor UI #41).
 
     Idempotencia por ``event_id`` estable: reintentar el mismo evento (p. ej.
     tras una reconexión) NO duplica el progreso (criterio 11 de §12.2).

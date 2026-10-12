@@ -365,3 +365,20 @@ def test_cache_sqlite_no_retrocede_version_ni_acepta_secretos(estudio):
     assert e.db.obtener_progreso_restaurado("ws_estudio") == {"version": 4}
     with pytest.raises(ValueError):
         e.db.confirmar_progreso("ws_estudio", {"version": 5, "token": "no guardar"})
+
+
+def test_progreso_confirmado_desaparecido_no_se_reporta_como_cero(estudio):
+    e = estudio
+    respuesta(e)
+    e.storage.delete(clave_progress("ws_estudio"))
+    with pytest.raises(StorageUnavailable):
+        e.servicio.consultar(e.token)
+    with pytest.raises(StorageUnavailable):
+        respuesta(e)
+
+
+@pytest.mark.parametrize("clave", ["", " ", "a" * 129, " " + "a" * 128])
+def test_header_idempotente_limites(estudio, clave):
+    with pytest.raises(ErrorAplicacion) as error:
+        respuesta(estudio, idempotency_key=clave)
+    assert error.value.error.code == ErrorCode.INVALID_REQUEST

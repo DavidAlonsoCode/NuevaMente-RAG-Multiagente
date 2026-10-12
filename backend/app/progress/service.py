@@ -89,6 +89,8 @@ class ServicioProgreso:
         pagina = self.storage.list(clave, limit=1)
         objeto = next((o for o in pagina.items if o.object_name == clave), None)
         if objeto is None:
+            if self.db.obtener_progreso_restaurado(ws) is not None:
+                raise StorageUnavailable("El progreso confirmado dejó de estar disponible")
             return EstadoProgreso(workspace_id=ws, version=0), None
         try:
             estado = EstadoProgreso.model_validate_json(self.storage.get(clave, if_match=objeto.etag))
@@ -131,7 +133,7 @@ class ServicioProgreso:
         return estado
 
     def _registrar(self, token, datos, cuerpo, revalidar, idempotency_key):
-        if idempotency_key is not None and not 1 <= len(idempotency_key.strip()) <= 128:
+        if idempotency_key is not None and (not idempotency_key.strip() or not 1 <= len(idempotency_key) <= 128):
             raise ErrorAplicacion(ErrorCode.INVALID_REQUEST, "Idempotency-Key debe tener entre 1 y 128 caracteres.")
         solicitud_hash = hashlib.sha256(
             json.dumps(cuerpo, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
@@ -308,7 +310,7 @@ class ServicioProgreso:
                 pendientes = sum((gid, c.id) not in cartas for c in contenido.items)
                 total = len(contenido.items)
             else:
-                conceptos_paquete = set(paquete.metadatos.conceptos_clave)
+                conceptos_paquete = {c.strip() for c in paquete.metadatos.conceptos_clave}
                 pendientes = sum(
                     (doc, gid, c) not in conceptos and (doc, None, c) not in conceptos for c in conceptos_paquete
                 )
