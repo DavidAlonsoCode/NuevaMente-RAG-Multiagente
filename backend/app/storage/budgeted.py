@@ -8,6 +8,7 @@ from app.storage.provider import StorageConflict, StorageInvalidName, StorageNot
 class StoragePresupuestado(StorageProvider):
     def __init__(self, proveedor, presupuesto):
         self.proveedor, self.presupuesto = proveedor, presupuesto
+        self.base_dir = proveedor.base_dir  # Ubicación del mock conservada para sus consumidores.
         # Inventario local: no consume solicitudes OCI reales.
         cursor = None
         while True:
