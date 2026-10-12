@@ -3,6 +3,7 @@
 import threading
 from dataclasses import dataclass
 
+from app.exports.anki import exportar_apkg, exportar_texto
 from app.exports.markdown import renderizar_markdown
 from app.schemas.enums import PedagogicalFormat
 from app.schemas.errors import ErrorAplicacion, ErrorCode
@@ -18,7 +19,25 @@ COMPATIBILIDAD = {
     "tsv": frozenset({"flashcards"}),
     "apkg": frozenset({"flashcards"}),
 }
-TIPOS_IMPLEMENTADOS = {"json": "application/json", "md": "text/markdown; charset=utf-8"}
+TIPOS_IMPLEMENTADOS = {
+    "json": "application/json",
+    "md": "text/markdown; charset=utf-8",
+    "csv": "text/csv; charset=utf-8",
+    "tsv": "text/tab-separated-values; charset=utf-8",
+    "apkg": "application/octet-stream",
+}
+
+
+def renderizar(paquete, canonico, formato):
+    if formato == "json":
+        return canonico
+    if formato == "md":
+        return renderizar_markdown(paquete)
+    if formato in ("csv", "tsv"):
+        return exportar_texto(paquete, formato)
+    if formato == "apkg":
+        return exportar_apkg(paquete)
+    raise ValueError("Exportador no implementado")
 
 
 def validar_formato(tipo, formato):
@@ -27,7 +46,7 @@ def validar_formato(tipo, formato):
     if formato not in TIPOS_IMPLEMENTADOS:
         raise ErrorAplicacion(
             ErrorCode.EXPORT_INCOMPATIBLE,
-            "Esta versión ofrece JSON y Markdown; los otros exportadores aún no están disponibles.",
+            "El exportador pedido aún no está disponible en esta versión.",
             details={"formatos_disponibles": list(TIPOS_IMPLEMENTADOS)},
         )
 
@@ -64,19 +83,21 @@ class ServicioExportaciones:
         return almacenado
 
     def preparar(self, ws, paquete, canonico, chequear):
-        """Antes de completed, confirma ambas vistas sin repetir generación."""
+        """Antes de completed, confirma las vistas compatibles sin repetir IA."""
         with self._lock:
             chequear()
-            markdown = renderizar_markdown(paquete)
-            for formato, datos in (("json", canonico), ("md", markdown)):
-                self._cache(ws, paquete.generation_id, formato, datos, chequear)
+            for formato in TIPOS_IMPLEMENTADOS:
+                if paquete.contenido_adaptado.tipo in COMPATIBILIDAD[formato]:
+                    chequear()
+                    datos = renderizar(paquete, canonico, formato)
+                    self._cache(ws, paquete.generation_id, formato, datos, chequear)
 
     def descargar(self, token, generation_id, formato="json"):
         with self._lock:
             paquete, canonico = self.catalogo.cargar(token, generation_id)
             validar_formato(paquete.contenido_adaptado.tipo, formato)
             fila, _ = self.catalogo.fuente(token, generation_id)
-            esperado = canonico if formato == "json" else renderizar_markdown(paquete)
+            esperado = renderizar(paquete, canonico, formato)
             datos = self._cache(
                 fila["workspace_id"],
                 generation_id,

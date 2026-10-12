@@ -38,3 +38,5 @@ oci==2.187.2
 
 # Índice vectorial persistente local; wheels Windows y Linux ARM64 verificados (#17).
 chromadb==1.5.9
+# Exportación APKG de flashcards (#45), sin media ni ejecución de código.
+genanki==0.13.1
