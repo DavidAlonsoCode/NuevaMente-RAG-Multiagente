@@ -131,7 +131,11 @@ def test_pipeline_textual_conserva_chunks_fuente_metadata_y_cobertura(pila):
     assert all(c.linea_inicio and c.linea_fin and c.seccion_id and c.tokenizer for c in guardados)
     assert json.loads(fila["resultado"])["cantidad_chunks"] == len(guardados)
     assert pila[3].llamadas_embeddings == len(guardados)
-    assert [e["status"] for e in pila[0].eventos_desde_job(recibo.job_id)] == ["queued", "running", "completed"]
+    assert [e["status"] for e in pila[0].eventos_desde_job(recibo.job_id)] == [
+        "queued",
+        *["running"] * 6,
+        "completed",
+    ]
 
 
 def test_reutiliza_embeddings_compatibles_entre_ids_distintos_sin_cruzar_workspace(pila):

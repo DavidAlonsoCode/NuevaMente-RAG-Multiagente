@@ -150,6 +150,7 @@ class ProcesadorIngestionDocumental:
         etapa = "FUENTE"
         try:
             contexto.chequear()
+            contexto.registrar_paso("fuente", 1)
             clave = clave_documento(admision.workspace_id, admision.document_id)
             objeto, manifest = self._leer_manifest(clave)
             if manifest != admision or manifest.metadatos is None:
@@ -161,11 +162,13 @@ class ProcesadorIngestionDocumental:
                 raise ValueError("El SHA-256 del original cambió")
             self._vigente(contexto, manifest, etag)
             etapa = "PARSER"
+            contexto.registrar_paso("parser", 1)
             parseo = parsear_archivo(original, manifest.source_name, manifest.parser)
             self._vigente(contexto, manifest, etag)
             if parseo.hash_sha256 != manifest.hash_sha256:
                 raise ValueError("El parser no conservó el hash del original")
             etapa = "CHUNKER"
+            contexto.registrar_paso("chunker", 1)
             chunks = [
                 c.como_chunk_interno()
                 for c in trocear(
@@ -213,6 +216,7 @@ class ProcesadorIngestionDocumental:
                     manifest.workspace_id, manifest.document_id, metadatos=metadatos, cobertura=cobertura
                 )
                 etapa = "VISION"
+                contexto.registrar_paso("vision", 1)
                 interpretaciones = self.vision.interpretar(
                     original,
                     manifest,
@@ -273,6 +277,7 @@ class ProcesadorIngestionDocumental:
                     "Hay páginas visuales ilegibles o incompletas; consultar cobertura y volver a cargar una fuente legible.",
                 )
             etapa = "INDICE"
+            contexto.registrar_paso("indice", 1)
             documento = self.db.obtener_documento(manifest.document_id)
             if documento is not None and documento.get("recuperacion_evidencia") is not None:
                 previo = None
@@ -321,6 +326,7 @@ class ProcesadorIngestionDocumental:
                 cobertura=cobertura,
             )
             etapa = "PERSISTENCIA"
+            contexto.registrar_paso("persistencia", 1)
             manifest = manifest.model_copy(update={"estado": resultado.estado, "detalle_error": None})
             etag = self._persistir(manifest, etag)
             self._fuente_vigente(contexto, manifest, etag)

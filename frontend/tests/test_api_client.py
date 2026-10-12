@@ -226,7 +226,14 @@ def test_redirect_no_reenvia_credenciales(client):
 
 def test_upload_multipart_y_clave_idempotente(client):
     response = MagicMock(ok=True, status_code=202, headers={})
-    response.json.return_value = {"document_id": "doc", "status": "processing"}
+    response.json.return_value = {
+        "document_id": "doc",
+        "status": "processing",
+        "job_id": "job",
+        "status_url": "/api/jobs/job",
+        "events_url": "/api/jobs/job/events",
+        "cancel_url": "/api/jobs/job/cancel",
+    }
     with patch("requests.request", return_value=response) as request:
         client.upload_file("token", "redes.pdf", b"%PDF", "application/pdf", title="Redes", idempotency_key="subida-1")
     args = request.call_args.kwargs
@@ -238,7 +245,14 @@ def test_upload_multipart_y_clave_idempotente(client):
 
 def test_upload_texto_y_generacion_preservan_idempotencia(client):
     response = MagicMock(ok=True, status_code=202, headers={})
-    response.json.return_value = {"status": "queued"}
+    response.json.return_value = {
+        "document_id": "doc",
+        "status": "processing",
+        "job_id": "job",
+        "status_url": "/api/jobs/job",
+        "events_url": "/api/jobs/job/events",
+        "cancel_url": "/api/jobs/job/cancel",
+    }
     texto = {"documento_titulo": "Texto", "documento_contenido": "Una VCN es una red."}
     with patch("requests.request", return_value=response) as request:
         client.upload_document("token", texto, idempotency_key="texto-1")
