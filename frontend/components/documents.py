@@ -183,6 +183,11 @@ def render_documentos_demo(idioma, api_client):
         return
     st.caption(t("upload.demo_ayuda", idioma))
     por_id = {d["document_id"]: d for d in documentos}
+    if st.session_state.documento_activo_demo:
+        elegido = por_id.get(st.session_state.documento_activo_id)
+        if elegido is None or elegido["status"] != "ready":
+            st.session_state.documento_activo_id = None
+            st.session_state.documento_activo_demo = False
     for demo in DOCUMENTOS_DEMO:
         documento = por_id.get(demo["id"])
         with st.container(border=True):

@@ -157,6 +157,37 @@ render_documentos_demo("es", API())
     assert app.session_state.documento_activo_demo
 
 
+@pytest.mark.parametrize("retirada", [False, True])
+def test_demo_seleccionada_se_invalida_si_deja_de_estar_ready(retirada):
+    fuente = """
+import json
+import streamlit as st
+from components.upload import inicializar_estado_documentos
+from components.documents import render_documentos_demo
+st.session_state.setdefault("session_token", "token")
+inicializar_estado_documentos()
+class API:
+    def get_demo_documents(self, *a):
+        items = [json.loads(DATOS)]
+        if st.session_state.get("cambio_catalogo"):
+            if RETIRADA: items = []
+            else: items[0]["status"] = "processing"
+        return {"items": items, "next_cursor": None}
+    def get_demo_document(self, *a): return json.loads(DATOS)
+render_documentos_demo("es", API())
+""".replace("DATOS", repr(json.dumps({**DOCUMENTO, "document_id": "demo-pagos-fintech"}))).replace(
+        "RETIRADA", repr(retirada)
+    )
+    app = AppTest.from_string(fuente).run()
+    app.button(key="demo_demo-pagos-fintech").click().run()
+    assert app.session_state.documento_activo_id == "demo-pagos-fintech"
+    app.session_state.cambio_catalogo = True
+    app.run()
+    assert not app.exception
+    assert app.session_state.documento_activo_id is None
+    assert not app.session_state.documento_activo_demo
+
+
 def test_sse_cursor_heartbeat_orden_y_cierre(monkeypatch):
     res = Mock(status_code=200, headers={"Content-Type": "text/event-stream"})
     res.iter_lines.return_value = [
