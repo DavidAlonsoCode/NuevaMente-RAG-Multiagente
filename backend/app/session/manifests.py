@@ -8,6 +8,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.jobs.store import RegistroOperativo
 from app.storage.object_keys import clave_workspace
+from app.storage.oci_budget import mantenimiento_storage
 from app.storage.provider import StorageConflict, StorageError, StorageProvider
 
 logger = logging.getLogger("nuevamente.session")
@@ -119,7 +120,8 @@ class SincronizadorManifiestos:
                 logger.warning("Sincronización pendiente; tipo=%s", type(error).__name__)
             if self.efectos_documentales is not None:
                 try:
-                    self.efectos_documentales()
+                    with mantenimiento_storage():
+                        self.efectos_documentales()
                 except Exception as error:
                     logger.warning("Efectos documentales pendientes; tipo=%s", type(error).__name__)
 

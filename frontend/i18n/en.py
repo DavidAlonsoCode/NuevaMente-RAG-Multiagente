@@ -5,6 +5,11 @@ Spanish MUST exist here and in Portuguese, and vice versa.
 """
 
 CATALOGO_EN: dict[str, str] = {
+    "presupuesto.vencimiento": "Your space expires due to inactivity on {fecha}. Activity renews the retention period.",
+    "presupuesto.recursos": "Documents: {documentos}/{limite_documentos} · Generations: {generaciones}/{limite_generaciones}",
+    "presupuesto.alerta": "Storage usage reached 80% of the budget. Download material you want to keep and delete what you no longer use.",
+    "presupuesto.bloqueado": "The storage budget reached its limit. New writes are blocked; you can delete material to free capacity. The monthly request quota resets next month.",
+    "presupuesto.limite_recursos": "You reached the limit of five retained documents or twenty generations. Delete a resource to continue.",
     # ------------------------- common -------------------------
     "comun.app_nombre": "NuevaMente",
     "comun.cargando": "Loading…",

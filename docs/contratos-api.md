@@ -669,6 +669,14 @@ Anki es una exportación opcional; estudiar tarjetas dentro de NuevaMente corres
 a la interfaz del #34. La importación, identidad estable y neutralización de fórmulas,
 HTML y directivas de media se documentan en [Importación Anki](importacion-anki.md).
 
+### Uso y vencimiento del espacio (#50)
+
+`GET /api/workspaces/current` → `workspace_id`, `expira_en`, `ultima_actividad_en`,
+`uso` (documentos/generaciones y límites 5/20), `almacenamiento` (agregados del
+ledger, límites/margen, alerta 80%, bloqueo y proveedor). Requiere la sesión;
+no devuelve contenido ni nombres de objetos. Es una adición de lectura al contrato.
+Los detalles y el diagnóstico administrativo están en [Gobernanza de costos](gobernanza-costos.md).
+
 ### Salud
 
 `GET /api/health` → `{status, version}`. Sin secretos ni llamadas LLM.

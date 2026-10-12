@@ -56,7 +56,7 @@ from app.schemas.errors import ErrorAplicacion, ErrorBody, ErrorCode, ErrorRespo
 from app.session.manifests import SincronizadorManifiestos, sincronizar_pendientes
 from app.session.recovery import restaurar_registro
 from app.storage.oci_storage import get_storage_provider
-from app.storage.provider import StorageUnavailable
+from app.storage.provider import StorageBudgetExceeded, StorageUnavailable
 
 if TYPE_CHECKING:
     from app.core.agents.critic_contracts import VerificadorSync
@@ -265,8 +265,18 @@ def crear_app(
                 guardia=efectos._lock,
             )
             efectos.reconciliar()
+            from app.session.lifecycle import CicloVidaEspacios
+
+            ciclo = CicloVidaEspacios(app.state.db, app.state.storage_provider, efectos, gestor)
+            app.state.workspace_lifecycle = ciclo
+            ciclo.reconciliar()
+
+            def mantenimiento():
+                ciclo.reconciliar()
+                return efectos.reconciliar()
+
             sincronizador = SincronizadorManifiestos(
-                app.state.db, app.state.storage_provider, efectos_documentales=efectos.reconciliar
+                app.state.db, app.state.storage_provider, efectos_documentales=mantenimiento
             )
             sincronizador.iniciar()
             yield
@@ -377,6 +387,7 @@ def crear_app(
                 ErrorCode.STORAGE_UNAVAILABLE,
                 "El almacenamiento no está disponible; revisar OCI y su presupuesto.",
                 request_id,
+                detalles={"motivo": "storage_budget"} if isinstance(exc, StorageBudgetExceeded) else None,
                 request=request,
             ),
             headers={CABECERA_REQUEST_ID: request_id},
