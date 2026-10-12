@@ -48,7 +48,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
-from app.api.routes import chat, demo_documents, documents, generations, glossary, jobs, progress, workspaces
+from app.api.routes import chat, demo_documents, documents, exports, generations, glossary, jobs, progress, workspaces
 from app.config import Configuracion, config
 from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos
 from app.jobs.store import RegistroOperativo
@@ -232,6 +232,7 @@ def crear_app(
             app.state.chat = ServicioChat(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
             from app.documents.demo import ServicioCatalogoDemo
             from app.documents.lifecycle import EfectosDocumentales
+            from app.exports.router import ServicioExportaciones
             from app.generations.catalog import CatalogoGeneraciones
             from app.glossary.service import ServicioGlosario
             from app.progress.service import ServicioProgreso
@@ -252,6 +253,7 @@ def crear_app(
             )
             efectos.gestor = gestor
             app.state.documents_effects = efectos
+            app.state.generations.exports = ServicioExportaciones(app.state.generations.catalogo, guardia=efectos._lock)
             # La limpieza espera a las escrituras de estudio antes de purgar
             # progreso: un PUT en vuelo no puede recrear referencias retiradas.
             app.state.progress = ServicioProgreso(
@@ -479,6 +481,7 @@ def crear_app(
     app.include_router(documents.router)
     app.include_router(demo_documents.router)
     app.include_router(generations.router)
+    app.include_router(exports.router)
     app.include_router(chat.router)
     app.include_router(progress.router)
     app.include_router(glossary.router)

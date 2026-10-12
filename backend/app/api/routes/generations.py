@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.api.deps import get_sesion_actual, get_session_manager
@@ -142,18 +142,4 @@ def eventos(
         _stream(request, gestor, manager, sesion, job["job_id"], ultimo_id, lector=leer, generation_id=generation_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-@router.get("/exports/{generation_id}")
-def exportar(
-    generation_id: str, format: str = "json", sesion=Depends(get_sesion_actual), servicio=Depends(get_generaciones)
-):
-    if format != "json":
-        raise ErrorAplicacion(ErrorCode.EXPORT_INCOMPATIBLE, "Este endpoint ofrece el canónico JSON.")
-    paquete = _operar(servicio.canonico, sesion["token"], generation_id)
-    return Response(
-        paquete.model_dump_json(),
-        media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{paquete.generation_id}.json"'},
     )

@@ -14,6 +14,7 @@ from app.core.agents.writer import DependenciasWriter
 from app.core.rag.rebuild import _workspace_vigente
 from app.core.rag.retriever import RetrieverMMR
 from app.documents.cursor import CursorDocumental
+from app.exports.router import ServicioExportaciones
 from app.generations.catalog import CatalogoGeneraciones
 from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
 from app.schemas.enums import JobStatus
@@ -33,6 +34,7 @@ class ServicioGeneraciones:
         )
         self.cursor = CursorDocumental(db.ruta_db.parent / "generation-cursor.key")
         self.catalogo = CatalogoGeneraciones(db, storage, consulta, configuracion.oci_bucket_name)
+        self.exports = ServicioExportaciones(self.catalogo)
         self.db.purgar_aprobados_expirados()
 
     def _sesion(self, token):
@@ -187,6 +189,12 @@ class ServicioGeneraciones:
                 raise StorageUnavailable("El objeto no corresponde al aprobado retenido") from None
         if self.storage.get(clave) != texto.encode():
             raise StorageUnavailable("La escritura no pudo confirmarse")
+        self.exports.preparar(
+            contexto.workspace_id,
+            paquete,
+            texto.encode(),
+            lambda: self._vigente(contexto, paquete.generation_id, paquete.documento_fuente.document_id, paquete),
+        )
         self._vigente(contexto, paquete.generation_id, paquete.documento_fuente.document_id, paquete)
         return PersistenciaInfo(status_upload="completado", provider="mock" if self.cfg.mock_oci else "oci")
 
