@@ -623,10 +623,10 @@ Verificación: `pytest backend/tests/test_glossary.py backend/tests/test_glossar
 - `csv|tsv|apkg` solo para `formato_salida=flashcards` (si no → **422** `EXPORT_INCOMPATIBLE`).
 - Descarga pasa por la API con verificación de ownership; sin secretos en el contenido exportado.
 
-**Implementado por #43:** `json` (predeterminado) y `md`, para los cinco formatos
-pedagógicos. PDF corresponde a #44 y CSV/TSV/APKG a #45; mientras esos exportadores
-no estén implementados, su solicitud devuelve 422 `EXPORT_INCOMPATIBLE` con
-`details.formatos_disponibles=["json","md"]` si la combinación es compatible.
+**Implementado:** `json` (predeterminado) y `md` para los cinco formatos (#43),
+y `csv|tsv|apkg` para flashcards (#45). PDF corresponde a #44; mientras no esté
+implementado devuelve 422 `EXPORT_INCOMPATIBLE` con
+`details.formatos_disponibles=["json","md","csv","tsv","apkg"]`.
 Un nombre desconocido o una combinación incompatible también devuelve 422.
 El espacio y el estado se autorizan antes de acceder a derivados: recurso ajeno
 o retirado → 404; generación propia no `completed` → 409.
@@ -635,8 +635,11 @@ o retirado → 404; generación propia no `completed` → 409.
 |---|---|---|
 | `json` | `application/json` | Bytes exactos del objeto `outputs/{ws}/{gen}/content.json`; sin reserializar ni añadir estado de transporte |
 | `md` | `text/markdown; charset=utf-8` | Plantilla determinista del canónico tipado, con etiquetas en su `idioma_salida` |
+| `csv` | `text/csv; charset=utf-8` | Flashcards con cabeceras Anki y columnas Front/Back/Tags/GUID/Deck |
+| `tsv` | `text/tab-separated-values; charset=utf-8` | Las mismas columnas separadas por tabuladores |
+| `apkg` | `application/octet-stream` | Colección genanki con modelo/mazo estables, sin media |
 
-Ambas usan `Content-Disposition: attachment; filename="{generation_id}.{format}"`,
+Todas usan `Content-Disposition: attachment; filename="{generation_id}.{format}"`,
 `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` y `X-Request-ID`.
 El nombre del archivo usa el ID generado; los títulos no se interpolan en headers.
 No se redirige a URLs públicas ni se incrustan tokens/códigos de recuperación.
@@ -649,7 +652,7 @@ fragmento/página/sección. El código del tutorial es un bloque literal con fen
 seguro; el resto del texto se escapa para impedir HTML o markup activo inyectado.
 Ninguna exportación vuelve a llamar al LLM ni transforma un tutorial en flashcards.
 
-Al persistir una generación aprobada se confirman JSON y MD en
+Al persistir una generación aprobada se confirman todos los formatos compatibles en
 `exports/{workspace_id}/{generation_id}/{format}` usando el `StorageProvider`
 existente, incluidas sus reservas de capacidad/cuota en OCI real. Un fallo de
 derivados deja el trabajo `failed/STORAGE_UNAVAILABLE`; el aprobado se conserva
@@ -661,6 +664,10 @@ Las lecturas siguen disponibles sin configurar proveedores LLM ni Chroma.
 La autorización se revalida después de I/O y la exclusión compartida con la
 retirada documental evita recrear exports tras su limpieza. El borrado y la
 retención existentes abarcan el prefijo de derivados.
+
+Anki es una exportación opcional; estudiar tarjetas dentro de NuevaMente corresponde
+a la interfaz del #34. La importación, identidad estable y neutralización de fórmulas,
+HTML y directivas de media se documentan en [Importación Anki](importacion-anki.md).
 
 ### Salud
 

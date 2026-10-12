@@ -35,6 +35,8 @@ httpx==0.28.1
 pypdf==6.19.0
 # - chromadb: prueba de indexacion de los embeddings del doble (ephemeral, sin red).
 chromadb==1.5.9
+# Importación real de CSV/TSV/APKG en colecciones temporales (#45); sin UI/red.
+anki==26.9.3
 
 # Plugins de pytest (cobertura, etc.): se anadiran con version exacta
 # en el momento en que los tests de cada issue los necesiten — no antes.
