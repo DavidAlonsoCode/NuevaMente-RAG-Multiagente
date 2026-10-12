@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from app.exports.anki import exportar_apkg, exportar_texto
 from app.exports.markdown import renderizar_markdown
+from app.exports.pdf import renderizar_pdf
 from app.schemas.enums import PedagogicalFormat
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.storage.object_keys import clave_export
@@ -22,6 +23,7 @@ COMPATIBILIDAD = {
 TIPOS_IMPLEMENTADOS = {
     "json": "application/json",
     "md": "text/markdown; charset=utf-8",
+    "pdf": "application/pdf",
     "csv": "text/csv; charset=utf-8",
     "tsv": "text/tab-separated-values; charset=utf-8",
     "apkg": "application/octet-stream",
@@ -33,6 +35,8 @@ def renderizar(paquete, canonico, formato):
         return canonico
     if formato == "md":
         return renderizar_markdown(paquete)
+    if formato == "pdf":
+        return renderizar_pdf(paquete)
     if formato in ("csv", "tsv"):
         return exportar_texto(paquete, formato)
     if formato == "apkg":

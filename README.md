@@ -110,7 +110,7 @@ El modo se elige al arrancar, no ante un error de OCI. En desarrollo, `completed
 | Parámetro | Opciones Soportadas | Enfoque Pedagógico |
 |---|---|---|
 | **Perfil del Destinatario** | 1. `Principiante / Transición de Carrera`<br/>2. `Desarrollador Junior / Semi Senior`<br/>3. `Líder Técnico / Arquitecto`<br/>4. `Gestor / Ejecutivo (No Técnico)` | Desde analogías didácticas y sin asunciones previas hasta análisis de trade-offs, SLAs, código funcional y valor de negocio. |
-| **Formato de Salida** | 1. `Guía Práctica Paso a Paso (Tutorial)`<br/>2. `Flashcards de Memorización`<br/>3. `Quiz Interactivo con Justificaciones`<br/>4. `Resumen Ejecutivo (TL;DR)`<br/>5. `Guion de Clase / Video` | Contratos tipados con Pydantic v2 y descargas JSON/Markdown (#43). Flashcards exportables también a CSV/TSV/APKG (#45). PDF (#44) e interfaz de estudio de flashcards (#34) pendientes. |
+| **Formato de Salida** | 1. `Guía Práctica Paso a Paso (Tutorial)`<br/>2. `Flashcards de Memorización`<br/>3. `Quiz Interactivo con Justificaciones`<br/>4. `Resumen Ejecutivo (TL;DR)`<br/>5. `Guion de Clase / Video` | Contratos tipados con Pydantic v2 y descargas JSON/Markdown (#43) y [PDF didáctico](docs/exportacion-pdf.md) (#44). Flashcards exportables también a CSV/TSV/APKG (#45). Interfaz de estudio (#34) y botones de descarga (#46) pendientes. |
 | **Nicho de Aplicación** | 1. `Fintech`<br/>2. `Salud`<br/>3. `E-commerce`<br/>4. `General` | Terminología situada, ejemplos contextuales y casos de uso realistas por industria. |
 | **Nivel de Detalle** | 1. `Didáctico / Conceptual`<br/>2. `Práctico / Orientado a Código`<br/>3. `Técnico Profundo / Arquitectura` | Graduación de profundidad técnica según el objetivo formativo. |
 

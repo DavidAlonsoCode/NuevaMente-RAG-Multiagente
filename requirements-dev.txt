@@ -21,7 +21,7 @@ ruff==0.16.8
 pytest==9.1.1
 
 # Generador del documento demo PDF (documents/generar_pdf_vcn.py, issue #05).
-# Es herramienta de documentacion, no dependencia de los servicios en runtime.
+# También exportador PDF del backend (#44); mantener ambas versiones alineadas.
 reportlab==5.0.1
 
 # Infraestructura de tests (issue #10):
