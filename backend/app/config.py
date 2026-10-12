@@ -90,6 +90,12 @@ class Configuracion(BaseSettings):
     vision_quota_rpm: int | None = Field(default=None, gt=0)
     vision_quota_tpm: int | None = Field(default=None, gt=0)
     vision_quota_rpd: int | None = Field(default=None, gt=0)
+    generation_quota_rpm: int | None = Field(default=None, gt=0)
+    generation_quota_tpm: int | None = Field(default=None, gt=0)
+    generation_quota_rpd: int | None = Field(default=None, gt=0)
+    verification_quota_rpm: int | None = Field(default=None, gt=0)
+    verification_quota_tpm: int | None = Field(default=None, gt=0)
+    verification_quota_rpd: int | None = Field(default=None, gt=0)
     generation_max_output_tokens: int = Field(default=8192, gt=0)
     generation_thinking_level: Literal["low", "medium", "high"] | None = None
     retrieval_k: int = Field(default=5, ge=1, le=100)
@@ -161,6 +167,10 @@ class Configuracion(BaseSettings):
         vision = (self.vision_quota_rpm, self.vision_quota_tpm, self.vision_quota_rpd)
         if any(c is not None for c in vision) and not all(c is not None for c in vision):
             raise ValueError("Configurar juntas VISION_QUOTA_RPM, VISION_QUOTA_TPM y VISION_QUOTA_RPD")
+        for nombre in ("generation", "verification"):
+            grupo = [getattr(self, nombre + "_quota_" + ventana) for ventana in ("rpm", "tpm", "rpd")]
+            if any(c is not None for c in grupo) and not all(c is not None for c in grupo):
+                raise ValueError(f"Configurar juntas {nombre.upper()}_QUOTA_RPM/TPM/RPD")
         if self.app_env == "production":
             if self.mock_oci or self.mock_gemini:
                 raise ValueError(
