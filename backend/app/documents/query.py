@@ -197,7 +197,7 @@ class ServicioConsultaDocumental:
             siguiente = self.cursor.codificar(ws, ultimo["creado_en"], ultimo["document_id"])
         return PaginaDocumental(actuales[:limit], siguiente)
 
-    def _listo(self, token: str, document_id: str) -> dict:
+    def _listo(self, token: str, document_id: str, *, con_manifiesto=False):
         doc = self._propio(token, document_id)
         if doc["estado"] != DocumentStatus.READY.value:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "El documento todavía no está listo para consultar fuentes.")
@@ -245,7 +245,7 @@ class ServicioConsultaDocumental:
             for c in (cobertura, manifest.cobertura)
         ):
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La publicación documental no está confirmada.")
-        return doc
+        return (doc, manifest) if con_manifiesto else doc
 
     def chunks(self, token: str, document_id: str) -> list[Chunk]:
         doc = self._listo(token, document_id)
@@ -311,6 +311,15 @@ class ServicioConsultaDocumental:
     def loader_critic(self, contexto: ContextoEjecucion):
         """#29 enlaza este callback a DependenciasCritic del mismo trabajo."""
         return self.visuales.loader_critic(contexto)
+
+    def fuente_aprobada(self, token: str, document_id: str):
+        """Identidad READY confirmada para leer aprobados sin embeddings ni Gemini."""
+        from app.schemas.responses import DocumentoFuente
+
+        doc, manifest = self._listo(token, document_id, con_manifiesto=True)
+        return DocumentoFuente(
+            document_id=document_id, titulo=doc["titulo"], hash=doc["hash"], version=f"v{manifest.version}"
+        )
 
     def documento_grafo(self, contexto: ContextoEjecucion, document_id: str):
         """Vista interna ligada al trabajo: no retiene ni recupera tokens de sesión."""

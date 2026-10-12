@@ -388,6 +388,48 @@ Listado paginado con filtros: `documento`, `perfil`, `formato`, `idioma`, `desde
 | `POST /api/progress/events` | Eventos idempotentes (`event_id` estable): `concepto_revisado`, `flashcard_vista`, el evento respuesta_quiz es interno y lo crea el endpoint de respuestas; primer_intento y acierto los calcula exclusivamente el backend. |
 | `GET /api/progress` | Agregados del espacio: conceptos, flashcards, aciertos de primer intento, tiempo restante estimado. |
 
+Precisiones de implementación del Issue 35 (revisión `contract-change`):
+
+- Los tres endpoints requieren Bearer y autorizan el espacio, documento y
+  generación. Un quiz/flashcard ajeno o retirado devuelve **404**; un paquete
+  no completado devuelve **409**, un formato/opción incompatible **422**.
+  El feedback contiene exclusivamente los cuatro campos de la tabla, para la
+  pregunta respondida. No crea un trabajo ni requiere un proveedor Gemini.
+- `event_id` es global dentro del espacio y admite hasta 128 caracteres.
+  `question_id`/`flashcard_id`/`option_id` admiten hasta 64; `concepto`, hasta
+  500. El cliente emite `flashcard_vista` después de consultar **frente y dorso**.
+  Los campos de puntaje, `primer_intento` y el tipo `respuesta_quiz` se rechazan
+  en el endpoint genérico. No se aceptan campos de otro tipo de evento.
+- `POST /api/progress/events` responde **200** con `{event_id, version}`;
+  `version` identifica el registro original y se conserva al repetirlo.
+  Los dos POST aceptan `Idempotency-Key` (1–128 caracteres). Reutilizar el
+  mismo evento o header con otro cuerpo devuelve **409 IDEMPOTENCY_CONFLICT**.
+  El header se guarda únicamente como hash, sin tokens de sesión.
+- `GET /api/progress` responde **200** con `version`, `conceptos_revisados`,
+  `flashcards_vistas`, `quiz_intentos`, `quiz_aciertos_primer_intento`,
+  `quiz_total_primer_intento`, `quiz_aciertos_posteriores` y
+  `tiempo_estimado_restante_minutos`. Sin eventos, versión y contadores son 0.
+  Conceptos se cuentan por documento, generación opcional y nombre; tarjetas
+  por generación e ID. Primer intento se calcula por generación y pregunta,
+  según el orden confirmado en storage. Otros intentos no cambian ese resultado.
+- El tiempo es una orientación: para cada generación aprobada cuya fuente
+  está READY, se reparte su estimación entre preguntas, tarjetas o conceptos
+  (otros formatos), y se suma la proporción pendiente, redondeada a dos decimales.
+  Una pregunta deja de estar pendiente con cualquier respuesta; una tarjeta,
+  con su evento frente/dorso; un concepto marcado a nivel documento aplica a
+  sus adaptaciones. No implica dominio ni certificación. Material retirado
+  o todavía en reconstrucción no participa de la estimación.
+- `progress/{workspace_id}/state.json` guarda versión, eventos mínimos y
+  hashes de claves; no incluye claves de respuesta, justificaciones ni tokens.
+  Escrituras usan creación condicional/ETag y confirmación de lectura; conflictos
+  de versión permiten hasta tres combinaciones. Un fallo OCI devuelve **503**
+  sin prometer un registro local; repetir el mismo ID recupera un PUT confirmado
+  cuya respuesta se perdió. SQLite replica el estado confirmado y OCI permite
+  recuperarlo aun perdiendo el disco. La purga documental retira eventos y claves.
+  El límite es 10.000 eventos y 10.000 claves por espacio (**429** al alcanzarlo).
+
+Verificación: `pytest backend/tests/test_quiz_progress.py backend/tests/test_api_quiz_progress.py`.
+
 ### Contrato de ejecución de proveedores (issues 13 y 20)
 
 - Las llamadas a Gemini usan adaptadores **síncronos** dentro del worker dedicado. Los endpoints HTTP pueden devolver 202 y procesar en segundo plano; esto no exige usar `async` en el SDK. El stream SSE sí espera sin bloquear la API.

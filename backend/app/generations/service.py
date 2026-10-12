@@ -6,8 +6,6 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from pydantic import ValidationError
-
 from app.core.agents.critic import DependenciasCritic
 from app.core.agents.graph import DependenciasOrquestacion, ejecutar_en_worker
 from app.core.agents.graph_state import DependenciasGrafo, EstadoGrafo
@@ -16,13 +14,14 @@ from app.core.agents.writer import DependenciasWriter
 from app.core.rag.rebuild import _workspace_vigente
 from app.core.rag.retriever import RetrieverMMR
 from app.documents.cursor import CursorDocumental
+from app.generations.catalog import CatalogoGeneraciones
 from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
 from app.schemas.enums import JobStatus
 from app.schemas.errors import ErrorAplicacion, ErrorBody, ErrorCode
 from app.schemas.requests import GenerateRequest
 from app.schemas.responses import GenerationJobResponse, PedagogicalOutput, PersistenciaInfo
 from app.storage.object_keys import clave_output
-from app.storage.provider import StorageConflict, StorageNotFound, StorageUnavailable
+from app.storage.provider import StorageConflict, StorageUnavailable
 
 
 class ServicioGeneraciones:
@@ -33,6 +32,7 @@ class ServicioGeneraciones:
         self.cfg, self.generador, self.verificador = configuracion, generador, verificador
         self.retriever = RetrieverMMR(consulta.indice, configuracion=configuracion)
         self.cursor = CursorDocumental(db.ruta_db.parent / "generation-cursor.key")
+        self.catalogo = CatalogoGeneraciones(db, storage, consulta, configuracion.oci_bucket_name)
         self.db.purgar_aprobados_expirados()
 
     def _sesion(self, token):
@@ -73,27 +73,7 @@ class ServicioGeneraciones:
         return self._propia_db(token, generation_id)
 
     def canonico(self, token, generation_id):
-        fila = self._propia(token, generation_id)
-        if fila["status"] != "completed":
-            raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La generación no está completada.")
-        documento = self.consulta.documento_grafo(self._lectura(token), fila["document_id"])
-        clave = clave_output(fila["workspace_id"], generation_id)
-        try:
-            paquete = PedagogicalOutput.model_validate_json(self.storage.get(clave))
-        except (ValidationError, StorageNotFound):
-            raise StorageUnavailable("El paquete publicado no es verificable") from None
-        if (
-            paquete.generation_id != generation_id
-            or paquete.documento_fuente != documento.fuente
-            or paquete.almacenamiento_oci.objeto_id != clave
-            or paquete.almacenamiento_oci.bucket != self.cfg.oci_bucket_name
-        ):
-            raise StorageUnavailable("El paquete no corresponde a la fuente vigente")
-        self._propia(token, generation_id)
-        actual = self.consulta.documento_grafo(self._lectura(token), fila["document_id"])
-        if actual.fuente != documento.fuente:
-            raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente cambió durante la consulta.")
-        return paquete
+        return self.catalogo.canonico(token, generation_id)
 
     def estado(self, token, generation_id):
         fila = self._propia(token, generation_id)

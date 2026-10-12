@@ -48,7 +48,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
-from app.api.routes import chat, demo_documents, documents, generations, jobs, workspaces
+from app.api.routes import chat, demo_documents, documents, generations, jobs, progress, workspaces
 from app.config import Configuracion, config
 from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos
 from app.jobs.store import RegistroOperativo
@@ -232,6 +232,8 @@ def crear_app(
                 app.state.chat = ServicioChat(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
             from app.documents.demo import ServicioCatalogoDemo
             from app.documents.lifecycle import EfectosDocumentales
+            from app.generations.catalog import CatalogoGeneraciones
+            from app.progress.service import ServicioProgreso
 
             app.state.demo_documents_query = ServicioCatalogoDemo(
                 app.state.db,
@@ -247,6 +249,16 @@ def crear_app(
             )
             efectos.gestor = gestor
             app.state.documents_effects = efectos
+            # La limpieza espera a las escrituras de estudio antes de purgar
+            # progreso: un PUT en vuelo no puede recrear referencias retiradas.
+            app.state.progress = ServicioProgreso(
+                app.state.db,
+                app.state.storage_provider,
+                CatalogoGeneraciones(
+                    app.state.db, app.state.storage_provider, app.state.documents_query, ajustes.oci_bucket_name
+                ),
+                guardia=efectos._lock,
+            )
             efectos.reconciliar()
             sincronizador = SincronizadorManifiestos(
                 app.state.db, app.state.storage_provider, efectos_documentales=efectos.reconciliar
@@ -278,6 +290,7 @@ def crear_app(
                 app.state.documents_query = None
                 app.state.generations = None
                 app.state.chat = None
+                app.state.progress = None
                 app.state.demo_documents_query = None
                 app.state.documents_effects = None
                 app.state.vectorstore = None
@@ -454,6 +467,7 @@ def crear_app(
     app.state.vectorstore = None
     app.state.generations = None
     app.state.chat = None
+    app.state.progress = None
 
     app.include_router(workspaces.router)
     app.include_router(jobs.router)
@@ -461,6 +475,7 @@ def crear_app(
     app.include_router(demo_documents.router)
     app.include_router(generations.router)
     app.include_router(chat.router)
+    app.include_router(progress.router)
 
     return app
 
