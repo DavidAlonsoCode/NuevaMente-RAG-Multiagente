@@ -1,9 +1,11 @@
 # Inspección de gobernanza OCI — 2026-10-12
 
 Se ejecutó el proveedor real `oci==2.187.2`, con autenticación API Key local,
-contra `nuevamente-contenidos-educativos`, región `sa-vinhedo-1`. No se subieron
-documentos ni se modificaron recursos cloud. La configuración original conserva
-su ruta anterior; la ejecución usó una copia temporal corregida que se eliminó.
+contra `nuevamente-contenidos-educativos`, región `sa-vinhedo-1`. La inspección del
+bucket usó sólo lecturas, sin subir documentos ni modificar su configuración.
+La creación posterior del presupuesto OCI se detalla debajo. La configuración local
+original conserva su ruta anterior; la ejecución usó una copia temporal corregida
+que se eliminó.
 
 | Control leído del SDK | Resultado |
 |---|---|
