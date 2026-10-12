@@ -9,7 +9,20 @@ from app.api.routes.generations import _operar
 router = APIRouter(prefix="/api/exports", tags=["Exportaciones"])
 
 
-@router.get("/{generation_id}", responses={200: {"content": {"application/json": {}, "text/markdown": {}}}})
+@router.get(
+    "/{generation_id}",
+    responses={
+        200: {
+            "content": {
+                "application/json": {},
+                "text/markdown": {},
+                "text/csv": {},
+                "text/tab-separated-values": {},
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
+            }
+        }
+    },
+)
 def descargar(
     generation_id: str,
     request: Request,
