@@ -58,6 +58,8 @@ def transporte(monkeypatch):
             dato = [{"regionName": "us-ashburn-1", "isHomeRegion": True, "status": "READY", "regionKey": "IAD"}]
         elif path.rstrip("/") == "/n":
             dato = "namespace-sdk"
+        elif path.endswith("/l"):
+            dato = {"items": []}
         elif path.endswith("/o"):
             dato = {
                 "objects": [

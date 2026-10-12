@@ -430,6 +430,16 @@ def test_visual_adjunta_original_y_reserva_tokens(entorno):
     assert deps.grafo.ejecucion.cuotas._tokens["juez-test"][-1][1] > imagen.tokens_estimados
 
 
+def test_interpretacion_ambigua_bloquea_aunque_fidelidad_textual_sea_alta(entorno):
+    estado, deps, imagen = preparar_visual(entorno)
+    imagen.interpretacion_ambigua = True
+    juez(deps.proveedor)
+    nuevo = aplicar(estado, critic(estado, deps))
+    assert nuevo.evaluacion_pedagogica.anclaje_fuente_score == 1
+    assert nuevo.evaluacion_pedagogica.verificacion_visual == "insuficiente"
+    assert nuevo.destino_revision != "finalizer" and deps.proveedor.llamadas_verificacion == 3
+
+
 @pytest.mark.parametrize("chunks", [True, False])
 def test_visual_pendiente_no_aprueba_por_descripcion_o_resultado_anterior(entorno, chunks):
     estado, deps, _ = preparar_visual(entorno, loader=False)
@@ -564,18 +574,32 @@ def test_adaptadores_async_o_mock_incorrecto_se_rechazan(entorno):
         DependenciasCritic(entorno[1].grafo, entorno[1].proveedor, cfg)
 
 
-def test_sdk_visual_recibe_bytes_y_no_agrega_retries():
+@pytest.mark.parametrize(
+    "modelo,nivel,nivel_enviado",
+    [
+        ("juez-test", None, None),
+        ("gemini-3.8-flash", "low", types.ThinkingLevel.LOW),
+        ("gemini-2.5-flash", "low", None),
+    ],
+)
+def test_sdk_visual_recibe_bytes_y_no_agrega_retries(modelo, nivel, nivel_enviado):
     sdk = Mock()
     sdk.models.generate_content.return_value = SimpleNamespace(
         text='{"ok":true}', candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)]
     )
-    cfg = Configuracion(app_env="test", mock_oci=True, mock_gemini=False, google_api_key="clave-de-prueba")
+    cfg = Configuracion(
+        app_env="test",
+        mock_oci=True,
+        mock_gemini=False,
+        google_api_key="clave-de-prueba",
+        generation_thinking_level=nivel,
+    )
     cliente = ClienteGeminiGeneracion(cfg, cliente=sdk)
     cliente.verificar_visual_sync(
         "revisar",
         imagen_original=PNG,
         mime_type="image/png",
-        modelo="juez-test",
+        modelo=modelo,
         system_instruction="Solo evidencia original",
         response_json_schema={"type": "object"},
         timeout=1.25,
@@ -584,7 +608,9 @@ def test_sdk_visual_recibe_bytes_y_no_agrega_retries():
     llamada = sdk.models.generate_content.call_args.kwargs
     assert llamada["contents"][1].inline_data.data == PNG
     assert llamada["contents"][1].inline_data.mime_type == "image/png"
-    assert llamada["model"] == "juez-test"
+    assert llamada["model"] == modelo
+    pensamiento = llamada["config"].thinking_config
+    assert (pensamiento.thinking_level if pensamiento else None) == nivel_enviado
     assert llamada["config"].http_options.timeout == 1250
     assert llamada["config"].http_options.retry_options.attempts == 1
     assert llamada["config"].automatic_function_calling.disable

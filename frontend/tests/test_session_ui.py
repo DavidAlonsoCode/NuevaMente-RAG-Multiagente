@@ -31,11 +31,16 @@ def backend_http(tmp_path, monkeypatch):
         GOOGLE_API_KEY="placeholder",
         DATA_DIR=str(tmp_path / "backend"),
         PYTHONDONTWRITEBYTECODE="1",
-        PYTHONPATH=str(ROOT / "backend"),
+        PYTHONPATH=os.pathsep.join((str(ROOT / "backend"), str(ROOT / "backend/tests"))),
+        EMBEDDING_QUOTA_RPM="1000",
+        EMBEDDING_QUOTA_TPM="1000000",
+        EMBEDDING_QUOTA_RPD="1000",
+        EMBEDDING_DIMENSIONS="16",
     )
     command = (
         "import sys; from app.config import Configuracion; Configuracion.model_config['env_file']=None; "
-        "import uvicorn; uvicorn.run('app.main:app',host='127.0.0.1',port=int(sys.argv[1]),"
+        "from app.main import crear_app; from doubles.gemini import DobleGemini; "
+        "import uvicorn; uvicorn.run(crear_app(proveedor_embeddings=DobleGemini(16)),host='127.0.0.1',port=int(sys.argv[1]),"
         "log_level='error',access_log=False)"
     )
     process = subprocess.Popen(
@@ -155,6 +160,16 @@ def test_error_inicial_desconocido_es_amigable(monkeypatch, lang):
 
 @pytest.fixture
 def workspace_ui(monkeypatch):
+    monkeypatch.setattr(APIClient, "get_documents", lambda *_: {"items": [], "next_cursor": None})
+    monkeypatch.setattr(
+        APIClient,
+        "workspace_status",
+        lambda *_: {
+            "expira_en": "2026-11-12T12:00:00Z",
+            "uso": {"documentos": 0, "limite_documentos": 5, "generaciones": 0, "limite_generaciones": 20},
+            "almacenamiento": {"alerta": False, "escrituras_bloqueadas": False},
+        },
+    )
     monkeypatch.setattr(
         APIClient,
         "create_workspace",

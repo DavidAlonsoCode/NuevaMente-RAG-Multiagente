@@ -1,6 +1,8 @@
+import json
 import logging
 import os
 import re
+import time
 from typing import Any, BinaryIO, Literal, Optional, TypedDict, cast
 from urllib.parse import quote
 
@@ -34,6 +36,10 @@ class TextDocumentRequest(TypedDict):
 class UploadResponse(TypedDict):
     document_id: str
     status: Literal["processing"]
+    job_id: str
+    status_url: str
+    events_url: str
+    cancel_url: str
 
 
 ExportFormat = Literal["json", "md", "pdf", "csv", "tsv", "apkg"]
@@ -69,12 +75,25 @@ class APIError(Exception):
 class APIClient:
     """Cliente HTTP dedicado para consumir la API de FastAPI (contratos v1)."""
 
-    def __init__(self, base_url: str | None = None, timeout: tuple[float, float] = DEFAULT_TIMEOUT):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        timeout: tuple[float, float] = DEFAULT_TIMEOUT,
+        *,
+        idioma_ui: str = "es",
+        origen_headers: dict[str, str] | None = None,
+    ):
         self.base_url = (base_url or os.getenv("API_URL", API_URL)).rstrip("/")
         self.timeout = timeout
+        self.idioma_ui = idioma_ui if idioma_ui in ("es", "en", "pt") else "es"
+        self.origen_headers = {
+            k: v
+            for k, v in (origen_headers or {}).items()
+            if k in ("X-NuevaMente-Client-IP", "X-NuevaMente-Origin-Key")
+        }
 
     def _headers(self, token: Optional[str] = None) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "Accept-Language": self.idioma_ui, **self.origen_headers}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return headers
@@ -199,8 +218,8 @@ class APIClient:
         self, token: str, payload: TextDocumentRequest, *, idempotency_key: str | None = None
     ) -> UploadResponse:
         """POST /api/documents/upload"""
-        return self._solicitar(
-            "POST", "/api/documents/upload", json=payload, token=token, idempotency_key=idempotency_key
+        return self._recibo_upload(
+            self._solicitar("POST", "/api/documents/upload", json=payload, token=token, idempotency_key=idempotency_key)
         )
 
     def upload_file(
@@ -214,14 +233,83 @@ class APIClient:
         idempotency_key: str | None = None,
     ) -> UploadResponse:
         """Sube PDF/MD/TXT por multipart sin alterar el archivo original."""
-        return self._solicitar(
-            "POST",
-            "/api/documents/upload",
-            token=token,
-            files={"file": (filename, content, media_type)},
-            fields={"documento_titulo": title} if title is not None else None,
-            idempotency_key=idempotency_key,
+        return self._recibo_upload(
+            self._solicitar(
+                "POST",
+                "/api/documents/upload",
+                token=token,
+                files={"file": (filename, content, media_type)},
+                fields={"titulo": title} if title is not None else None,
+                idempotency_key=idempotency_key,
+            )
         )
+
+    @staticmethod
+    def _recibo_upload(data):
+        campos = ("document_id", "job_id", "status_url", "events_url", "cancel_url")
+        if data.get("status") != "processing" or any(not isinstance(data.get(c), str) or not data[c] for c in campos):
+            raise APIError("INVALID_RESPONSE", "Admisión incompleta", 502)
+        return data
+
+    def get_job(self, token, job_id):
+        return self._solicitar("GET", f"/api/jobs/{quote(job_id, safe='')}", token=token)
+
+    def get_demo_documents(self, token, params=None):
+        return self._solicitar("GET", "/api/demo/documents", token=token, params=params)
+
+    def get_demo_document(self, token, document_id):
+        return self._solicitar("GET", f"/api/demo/documents/{quote(document_id, safe='')}", token=token)
+
+    def read_job_progress(self, token, job_id, cursor=0):
+        """Muestra acotada de SSE: cerrar siempre, preservar cursor y no bloquear la UI."""
+        headers = {**self._headers(token), "Last-Event-ID": str(cursor)}
+        try:
+            respuesta = requests.request(
+                "GET",
+                f"{self.base_url}/api/jobs/{quote(job_id, safe='')}/events",
+                headers=headers,
+                timeout=(self.timeout[0], 0.5),
+                stream=True,
+                allow_redirects=False,
+            )
+        except requests.RequestException:
+            raise APIError("SERVICE_UNAVAILABLE", "Progreso no disponible", 503) from None
+        ultimo, campos, total = None, {}, 0
+        inicio = time.monotonic()
+        try:
+            if respuesta.status_code != 200:
+                codigo = "SESSION_INVALID" if respuesta.status_code == 401 else "SERVICE_UNAVAILABLE"
+                raise APIError(codigo, "Progreso no disponible", respuesta.status_code)
+            if not respuesta.headers.get("Content-Type", "").startswith("text/event-stream"):
+                raise APIError("INVALID_RESPONSE", "Progreso inválido", 502)
+            try:
+                for linea in respuesta.iter_lines(chunk_size=1):
+                    if time.monotonic() - inicio >= 1:
+                        break
+                    total += len(linea)
+                    if total > 64_000:
+                        raise APIError("INVALID_RESPONSE", "Progreso excedido", 502)
+                    if not linea:
+                        if campos.get("event") == "error":
+                            raise APIError("SERVICE_UNAVAILABLE", "Progreso interrumpido", 503)
+                        if campos.get("event") == "progress":
+                            datos = json.loads(campos.get("data", "{}"))
+                            numero = int(campos.get("id", "0"))
+                            if numero > cursor and datos.get("job_id") == job_id and isinstance(datos.get("step"), str):
+                                ultimo = {"id": numero, "data": datos}
+                                cursor = numero
+                        campos = {}
+                    elif not linea.startswith(b":"):
+                        clave, _, valor = linea.decode("utf-8").partition(":")
+                        campos[clave] = valor.lstrip()
+            except requests.RequestException:
+                # Una conexión activa sin novedades vence el timeout de lectura.
+                pass
+            except (ValueError, TypeError, AttributeError):
+                raise APIError("INVALID_RESPONSE", "Evento inválido", 502) from None
+        finally:
+            respuesta.close()
+        return ultimo
 
     def get_documents(self, token: str, params: dict[str, object] | None = None) -> dict[str, object]:
         """GET /api/documents"""
@@ -268,3 +356,6 @@ class APIClient:
             params={"format": fmt},
             binary=True,
         )
+
+    def workspace_status(self, token: str) -> dict[str, Any]:
+        return self._solicitar("GET", "/api/workspaces/current", token=token)

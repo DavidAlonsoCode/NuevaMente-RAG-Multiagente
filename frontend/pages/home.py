@@ -1,22 +1,32 @@
+from typing import Any
+
 import streamlit as st
 from api_client import APIError
+from components.documents import render_documentos_demo, render_lista_documentos
 from components.errors import mostrar_error_ui
 from components.session import limpiar_sesion_local
 from components.sidebar import render_sidebar
+from components.upload import (
+    inicializar_estado_documentos,
+    render_pegar_texto,
+)
 from i18n import t
 
 
 def render(api_client, idioma_actual: str):
+    inicializar_estado_documentos()
+
     # Renderizar panel lateral con controles
     render_sidebar(api_client, idioma_actual)
     if aviso := st.session_state.pop("aviso_sesion", None):
         st.success(t(aviso, idioma_actual))
+
     # --- Banner del código de recuperación
     _render_banner_recuperacion(idioma_actual)
     if st.session_state.get("mostrando_recuperacion"):
         _render_pantalla_recuperacion(api_client, idioma_actual)
     else:
-        _render_pantalla_onboarding(idioma_actual)
+        _render_pantalla_onboarding(idioma_actual, api_client=api_client)
 
 
 def _render_banner_recuperacion(idioma_actual: str):
@@ -50,8 +60,6 @@ def _render_banner_recuperacion(idioma_actual: str):
 
 def _render_pantalla_recuperacion(api_client, idioma_actual: str):
     """Renderiza el formulario para ingresar el código de recuperación."""
-
-    # Mostrar advertencia amigable si el usuario fue redirigido por token revocado/expirado
     if st.session_state.error_sesion_invalida:
         st.warning(f"⚠️ {t('errors.SESSION_INVALID', idioma_actual)}")
 
@@ -86,23 +94,49 @@ def _render_pantalla_recuperacion(api_client, idioma_actual: str):
         st.rerun()
 
 
-def _render_pantalla_onboarding(idioma_actual: str):
-    """Renderiza las 4 acciones principales de la pantalla de bienvenida."""
+def _render_pantalla_onboarding(idioma_actual: str, api_client: Any = None):
+    """Renderiza las 4 acciones principales de la pantalla de bienvenida y el flujo de documentos."""
     st.header(t("onboarding.bienvenida_titulo", idioma_actual))
-    st.write(t("onboarding.bienvenida_descripcion", idioma_actual))
+    st.markdown(
+        f"<p style='color: #9aa0a6; font-size: 16px; margin-top: -10px;'>"
+        f"{t('onboarding.bienvenida_descripcion', idioma_actual)}</p>",
+        unsafe_allow_html=True,
+    )
+
+    if "vista_onboarding" not in st.session_state:
+        st.session_state.vista_onboarding = "upload"
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         if st.button(t("upload.titulo", idioma_actual), use_container_width=True):
-            pass
+            st.session_state.vista_onboarding = "upload"
+            st.rerun()
     with col2:
         if st.button(t("upload.enviar_texto", idioma_actual), use_container_width=True):
-            pass
+            st.session_state.vista_onboarding = "texto"
+            st.rerun()
     with col3:
         if st.button(t("onboarding.demo", idioma_actual), use_container_width=True):
-            pass
+            st.session_state.vista_onboarding = "demo"
+            st.rerun()
     with col4:
         if st.button(t("onboarding.recuperar_titulo", idioma_actual), use_container_width=True):
             st.session_state.mostrando_recuperacion = True
             st.rerun()
+
+    st.divider()
+
+    # Renderizar el panel según la opción seleccionada
+    vista = st.session_state.get("vista_onboarding", "upload")
+    if vista == "upload":
+        st.info(t("upload.ayuda_sidebar", idioma_actual))
+    elif vista == "texto":
+        render_pegar_texto(idioma_actual, api_client=api_client)
+    elif vista == "demo":
+        render_documentos_demo(idioma_actual, api_client)
+
+    st.divider()
+
+    # Lista de documentos activos en el espacio
+    render_lista_documentos(api_client, idioma_actual)

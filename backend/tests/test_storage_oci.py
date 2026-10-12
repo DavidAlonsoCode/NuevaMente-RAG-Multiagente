@@ -105,6 +105,10 @@ class SDK:
         )
         return NS(data=self.bucket)
 
+    def get_object_lifecycle_policy(self, ns, bucket, **kw):
+        self._call("lifecycle", (ns, bucket), kw)
+        return NS(data=NS(items=[]))
+
     def put_object(self, ns, bucket, nombre, cuerpo, **kw):
         self._call("put", (ns, bucket, nombre, cuerpo), kw)
         anterior = self.objetos.get(nombre)
@@ -191,7 +195,7 @@ def entorno(tmp_path, monkeypatch):
 def test_contrato_completo_y_factory_sin_fallback(entorno, monkeypatch):
     cfg, sdk, crear, _ = entorno
     real = crear()
-    assert real.presupuesto.resumen()["solicitudes"] == len(sdk.calls) == 4
+    assert real.presupuesto.resumen()["solicitudes"] == len(sdk.calls) == 5
     nombre = clave_workspace("ws_1")
     objeto = real.upload(nombre, "á", content_type="application/json", crear_solo=True)
     assert objeto.proveedor == "oci" and objeto.uri == f"oci://{BUCKET_PRODUCCION}/{nombre}"
@@ -313,7 +317,8 @@ def test_retry_after_se_conserva_y_no_repite_pipeline(entorno):
     with pytest.raises(StorageNotFound):
         proveedor.get("demo/prueba")
     llamadas = [c for c in sdk.calls if c[0] == "get"]
-    assert len(llamadas) == 3 and reloj[0] - inicio == 4
+    assert len(llamadas) == 3
+    assert reloj[0] - inicio == pytest.approx(4)
     assert len({c[2]["opc_client_request_id"] for c in llamadas}) == 1
 
 
@@ -365,11 +370,11 @@ def test_paginacion_exclusiva_sin_duplicados(entorno):
 
 def test_presupuesto_bloquea_solicitud_antes_del_sdk(entorno):
     cfg, sdk, crear, _ = entorno
-    cfg.oci_max_requests_per_month = 4
+    cfg.oci_max_requests_per_month = 5
     proveedor = crear()
     with pytest.raises(StorageBudgetExceeded):
         proveedor.get("demo/prueba")
-    assert len(sdk.calls) == 4
+    assert len(sdk.calls) == 5
 
 
 def test_capacidad_se_reserva_y_error_ambiguo_no_la_libera(entorno):
@@ -500,16 +505,16 @@ def test_original_remoto_se_incorpora_antes_de_reservar_upload(entorno):
     proveedor = crear()
     with pytest.raises(StorageBudgetExceeded):
         proveedor.upload("demo/nuevo", b"1")
-    assert [c[0] for c in sdk.calls] == ["regiones", "namespace", "bucket", "list"]
+    assert [c[0] for c in sdk.calls] == ["regiones", "namespace", "bucket", "lifecycle", "list"]
 
 
 def test_presupuesto_agotado_durante_confirmacion_no_duplica_put(entorno):
     cfg, sdk, crear, _ = entorno
-    cfg.oci_max_requests_per_month = 5
+    cfg.oci_max_requests_per_month = 6
     proveedor = crear()
     with pytest.raises(StorageBudgetExceeded):
         proveedor.upload("demo/a", b"x")
-    assert len(sdk.calls) == 5 and len([c for c in sdk.calls if c[0] == "put"]) == 1
+    assert len(sdk.calls) == 6 and len([c for c in sdk.calls if c[0] == "put"]) == 1
     assert proveedor.presupuesto.resumen()["reservas_inciertas"] == 1
 
 

@@ -1,0 +1,2 @@
+# Sólo para la evidencia visual en el runner efímero; fuera de las imágenes.
+aqt[qt610]==26.9.3

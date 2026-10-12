@@ -84,7 +84,24 @@ class Configuracion(BaseSettings):
     gemini_verification_model: str = "gemini-2.5-flash"
     gemini_embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = Field(default=768, gt=0)
+    embedding_quota_rpm: int | None = Field(default=None, gt=0)
+    embedding_quota_tpm: int | None = Field(default=None, gt=0)
+    embedding_quota_rpd: int | None = Field(default=None, gt=0)
+    vision_quota_rpm: int | None = Field(default=None, gt=0)
+    vision_quota_tpm: int | None = Field(default=None, gt=0)
+    vision_quota_rpd: int | None = Field(default=None, gt=0)
+    generation_quota_rpm: int | None = Field(default=None, gt=0)
+    generation_quota_tpm: int | None = Field(default=None, gt=0)
+    generation_quota_rpd: int | None = Field(default=None, gt=0)
+    verification_quota_rpm: int | None = Field(default=None, gt=0)
+    verification_quota_tpm: int | None = Field(default=None, gt=0)
+    verification_quota_rpd: int | None = Field(default=None, gt=0)
     generation_max_output_tokens: int = Field(default=8192, gt=0)
+    generation_thinking_level: Literal["low", "medium", "high"] | None = None
+    retrieval_k: int = Field(default=5, ge=1, le=100)
+    retrieval_fetch_k: int = Field(default=15, ge=1, le=100)
+    retrieval_lambda_mult: float = Field(default=0.7, ge=0, le=1)
+    retrieval_max_tokens: int = Field(default=12000, gt=0, le=12000)
 
     # ------------------------------------------------------------------
     # OCI Object Storage (proveedor real; el issue #14 lo consume).
@@ -104,13 +121,15 @@ class Configuracion(BaseSettings):
     # Estado local y decisiones operativas (Apéndice A).
     # ------------------------------------------------------------------
     data_dir: str = ".data"
-    workspace_retention_days: int = Field(default=30, gt=0)
+    workspace_retention_days: int = Field(default=30, gt=0, le=30)
     session_max_hours: int = Field(default=24, gt=0, le=24)
     max_generation_attempts: int = Field(default=3, ge=1, le=3)
     generation_deadline_seconds: int = Field(default=300, gt=0)
     global_heavy_job_concurrency: int = Field(default=1, ge=1, le=1)
     max_queued_jobs: int = Field(default=5, gt=0)
     default_output_language: Literal["es", "en", "pt"] = "es"
+    chat_history_turns: int = Field(default=8, ge=0, le=50)
+    chat_history_max_tokens: int = Field(default=2000, ge=0, le=8000)
 
     # ------------------------------------------------------------------
     # CORS (§11.2: "los orígenes CORS, si se habilitan, se restringen a los
@@ -122,6 +141,7 @@ class Configuracion(BaseSettings):
     # obtiene con la propiedad `origenes_cors`.
     # ------------------------------------------------------------------
     cors_origins: str = ""
+    trusted_origin_secret: str = Field(default="", repr=False)
 
     @property
     def origenes_cors(self) -> list[str]:
@@ -141,6 +161,18 @@ class Configuracion(BaseSettings):
         sigue sería mentira (persistencia "completada" que no tocó OCI),
         así que se rechaza en el arranque con mensaje accionable.
         """
+        if self.retrieval_fetch_k < self.retrieval_k:
+            raise ValueError("RETRIEVAL_FETCH_K debe ser mayor o igual que RETRIEVAL_K")
+        cuotas = (self.embedding_quota_rpm, self.embedding_quota_tpm, self.embedding_quota_rpd)
+        if any(c is not None for c in cuotas) and not all(c is not None for c in cuotas):
+            raise ValueError("Configurar juntas EMBEDDING_QUOTA_RPM, EMBEDDING_QUOTA_TPM y EMBEDDING_QUOTA_RPD")
+        vision = (self.vision_quota_rpm, self.vision_quota_tpm, self.vision_quota_rpd)
+        if any(c is not None for c in vision) and not all(c is not None for c in vision):
+            raise ValueError("Configurar juntas VISION_QUOTA_RPM, VISION_QUOTA_TPM y VISION_QUOTA_RPD")
+        for nombre in ("generation", "verification"):
+            grupo = [getattr(self, nombre + "_quota_" + ventana) for ventana in ("rpm", "tpm", "rpd")]
+            if any(c is not None for c in grupo) and not all(c is not None for c in grupo):
+                raise ValueError(f"Configurar juntas {nombre.upper()}_QUOTA_RPM/TPM/RPD")
         if self.app_env == "production":
             if self.mock_oci or self.mock_gemini:
                 raise ValueError(
@@ -175,6 +207,10 @@ class Configuracion(BaseSettings):
             # para entrega real.
             return
 
+        if len(self.trusted_origin_secret) < 32 or self.trusted_origin_secret == "placeholder":
+            problemas.append(
+                "TRUSTED_ORIGIN_SECRET requiere un secreto aleatorio de al menos 32 caracteres para el proxy"
+            )
         if self.google_api_key.strip() in ("", "placeholder"):
             problemas.append("GOOGLE_API_KEY no esta configurada (queda 'placeholder')")
         if not self.oci_always_free_confirmed:

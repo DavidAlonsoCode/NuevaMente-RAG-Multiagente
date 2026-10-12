@@ -267,7 +267,18 @@ def get_storage_provider(base_dir: Path | str | None = None, *, configuracion=No
             "Configuración inválida: production no admite mocks; revisar APP_ENV y credenciales OCI"
         ) from error
     if ajustes.mock_oci:
-        return LocalMockStorageProvider(
+        from app.storage.budgeted import StoragePresupuestado
+        from app.storage.oci_budget import PresupuestoOCI
+
+        local = LocalMockStorageProvider(
             base_dir=base_dir if base_dir is not None else Path(ajustes.data_dir) / "oci_mock_storage"
+        )
+        return StoragePresupuestado(
+            local,
+            PresupuestoOCI(
+                local.base_dir.parent / "oci_budget.sqlite3",
+                solicitudes=ajustes.oci_max_requests_per_month,
+                bytes_maximos=ajustes.oci_max_storage_bytes,
+            ),
         )
     return OCIObjectStorageProvider(ajustes)

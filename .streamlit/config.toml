@@ -1,0 +1,11 @@
+# Arranque documentado desde la raíz: streamlit run frontend/app.py.
+# Docker frontend/ conserva la misma configuración en .streamlit/.
+[theme]
+primaryColor = "#5e6ad2"
+backgroundColor = "#010102"
+secondaryBackgroundColor = "#0f1011"
+textColor = "#f7f8f8"
+font = "sans serif"
+
+[server]
+maxUploadSize = 20

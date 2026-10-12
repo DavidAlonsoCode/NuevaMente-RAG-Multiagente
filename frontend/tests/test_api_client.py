@@ -37,7 +37,7 @@ def test_create_workspace_exito(client):
             url="http://test-backend:8000/api/workspaces",
             json=None,
             params=None,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "Accept-Language": "es"},
             timeout=(5.0, 30.0),
             allow_redirects=False,
         )
@@ -63,7 +63,7 @@ def test_recover_session_exito(client):
             url="http://test-backend:8000/api/sessions/recover",
             json={"recovery_code": "code_abc"},
             params=None,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "Accept-Language": "es"},
             timeout=(5.0, 30.0),
             allow_redirects=False,
         )
@@ -86,6 +86,7 @@ def test_close_session_header_authorization(client):
             params=None,
             headers={
                 "Content-Type": "application/json",
+                "Accept-Language": "es",
                 "Authorization": "Bearer token_activo_123",
             },
             timeout=(5.0, 30.0),
@@ -225,19 +226,33 @@ def test_redirect_no_reenvia_credenciales(client):
 
 def test_upload_multipart_y_clave_idempotente(client):
     response = MagicMock(ok=True, status_code=202, headers={})
-    response.json.return_value = {"document_id": "doc", "status": "processing"}
+    response.json.return_value = {
+        "document_id": "doc",
+        "status": "processing",
+        "job_id": "job",
+        "status_url": "/api/jobs/job",
+        "events_url": "/api/jobs/job/events",
+        "cancel_url": "/api/jobs/job/cancel",
+    }
     with patch("requests.request", return_value=response) as request:
         client.upload_file("token", "redes.pdf", b"%PDF", "application/pdf", title="Redes", idempotency_key="subida-1")
     args = request.call_args.kwargs
     assert args["files"] == {"file": ("redes.pdf", b"%PDF", "application/pdf")}
-    assert args["data"] == {"documento_titulo": "Redes"}
-    assert args["headers"] == {"Authorization": "Bearer token", "Idempotency-Key": "subida-1"}
+    assert args["data"] == {"titulo": "Redes"}
+    assert args["headers"] == {"Authorization": "Bearer token", "Idempotency-Key": "subida-1", "Accept-Language": "es"}
     assert args["json"] is None
 
 
 def test_upload_texto_y_generacion_preservan_idempotencia(client):
     response = MagicMock(ok=True, status_code=202, headers={})
-    response.json.return_value = {"status": "queued"}
+    response.json.return_value = {
+        "document_id": "doc",
+        "status": "processing",
+        "job_id": "job",
+        "status_url": "/api/jobs/job",
+        "events_url": "/api/jobs/job/events",
+        "cancel_url": "/api/jobs/job/cancel",
+    }
     texto = {"documento_titulo": "Texto", "documento_contenido": "Una VCN es una red."}
     with patch("requests.request", return_value=response) as request:
         client.upload_document("token", texto, idempotency_key="texto-1")
@@ -272,3 +287,21 @@ def test_export_se_descarga_con_auth_sin_token_en_url(client):
 def test_api_url_se_lee_del_entorno(monkeypatch):
     monkeypatch.setenv("API_URL", "http://backend:8000/")
     assert APIClient().base_url == "http://backend:8000"
+
+
+def test_headers_usan_idioma_y_solo_origen_de_ingreso():
+    client = APIClient(
+        idioma_ui="pt",
+        origen_headers={
+            "X-NuevaMente-Client-IP": "192.0.2.1",
+            "X-NuevaMente-Origin-Key": "clave",
+            "X-Forwarded-For": "falsificado",
+            "Authorization": "ajeno",
+        },
+    )
+    headers = client._headers("token")
+    assert headers["Accept-Language"] == "pt"
+    assert headers["X-NuevaMente-Client-IP"] == "192.0.2.1"
+    assert headers["X-NuevaMente-Origin-Key"] == "clave"
+    assert headers["Authorization"] == "Bearer token"
+    assert "X-Forwarded-For" not in headers

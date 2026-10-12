@@ -58,9 +58,9 @@ jobs:
     # en ARM64, la arquitectura de la VM Oracle del despliegue (issue #47).
     runs-on: ubuntu-latest
 
-    # Techo de duración: si algo se cuelga, el job muere a los 10 minutos
-    # en vez de quemar minutos de CI. El objetivo del issue es < 5 min.
-    timeout-minutes: 10
+    # Techo de duración: suficiente para la suite completa de tests más las
+    # validaciones de integración y exportaciones añadidas (#44, #45, #52).
+    timeout-minutes: 15
 
     # "matrix" = ejecutar la MISMA receta una vez por combinación de valores.
     # Hoy una sola: Python 3.11, el target del proyecto (§12.3). Mañana,
@@ -145,3 +145,53 @@ jobs:
 
       - name: Tests (pytest desde la raíz)
         run: pytest
+
+      - name: Integración API con dobles (#52)
+        run: timeout 120s pytest -m integration_mock backend/tests/integration/ --junitxml=.data/integration-mock.xml
+
+      - name: Verificar que la suite detecta fallos sembrados (#52)
+        run: python .github/scripts/verify_integration_faults.py
+
+      - name: Reporte de integración API
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-mock-report
+          path: .data/integration-mock.xml
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: PDF didáctico en dos motores (#44)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y poppler-utils
+          timeout 90s python .github/scripts/verify_pdf_exports.py
+
+      - name: Evidencia de exportaciones PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-export-evidence
+          path: .data/pdf-evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Anki Desktop aislado (importación y capturas)
+        env:
+          QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu
+          PYTHONUNBUFFERED: "1"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libxcb-cursor0 libegl1 libopengl0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libxkbcommon-x11-0 libnss3 libasound2t64
+          python -m pip install -r .github/requirements-anki-ui.txt
+          python -c "import pathlib, subprocess, PyQt6; subprocess.run(['ldd', str(pathlib.Path(PyQt6.__file__).parent / 'Qt6/plugins/platforms/libqxcb.so')], check=True)"
+          timeout 90s xvfb-run -a python .github/scripts/verify_anki_desktop.py
+
+      - name: Evidencia de Anki Desktop
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anki-desktop-evidence
+          path: .data/anki-desktop-evidence/
+          if-no-files-found: error
+          retention-days: 14

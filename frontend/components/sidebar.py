@@ -2,13 +2,19 @@ import streamlit as st
 from api_client import APIClient, APIError
 from i18n import CATALOGOS, t
 
+from components.budgets import render_presupuesto
 from components.errors import mostrar_error_ui
 from components.history import render_historial
 from components.session import limpiar_sesion_local
+from components.upload import render_subida_archivo
 
 
 def render_sidebar(api_client: APIClient, idioma_actual: str):
     """Renderiza el panel lateral con controles de idioma, sesión e historial."""
+    # Las acciones que cambian de espacio se procesan antes de crear widgets
+    # de carga, para no invalidar su estado durante la misma ejecución.
+    if st.session_state.get("accion_confirmar"):
+        _procesar_modal_pendiente(api_client, idioma_actual)
     with st.sidebar:
         st.title(t("comun.app_nombre", idioma_actual))
 
@@ -17,20 +23,23 @@ def render_sidebar(api_client: APIClient, idioma_actual: str):
         st.divider()
 
         st.markdown(f"### {t('sidebar.titulo', idioma_actual)}")
-        st.markdown(f"### {t('upload.titulo', idioma_actual)}")
 
         # Acciones de Sesión Activa
         if st.session_state.get("session_token"):
             st.divider()
+            render_presupuesto(api_client, idioma_actual)
             _render_acciones_sesion(api_client, idioma_actual)
+
+        bloque_carga = st.empty()
+        if st.session_state.get("session_token") and not st.session_state.get("mostrando_recuperacion"):
+            with bloque_carga.container():
+                render_subida_archivo(idioma_actual, api_client)
+        else:
+            bloque_carga.empty()
 
         st.divider()
         # Componente de Historial
         render_historial(idioma_actual)
-
-    # Evaluar si se debe desplegar el modal de confirmación
-    if st.session_state.get("accion_confirmar"):
-        _procesar_modal_pendiente(api_client, idioma_actual)
 
 
 def _render_selector_idioma(idioma_actual: str):
