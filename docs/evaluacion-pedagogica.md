@@ -4,6 +4,9 @@ El conjunto está definido en `docs/evidencia/issue-60/casos.json`: doce casos,
 cuatro perfiles por idioma (es/en/pt), al menos tres formatos por idioma y los
 tres documentos demo. Cada fuente queda fijada por SHA-256. Los cinco formatos
 aparecen en el conjunto. El tamaño no permite afirmar calidad general del modelo.
+Los Markdown demo usan LF y los PDF se preservan como binarios en `.gitattributes`:
+sus bytes y hashes son iguales en Windows/Linux. El hash del artefacto usa su representación JSON canónica,
+independiente del orden de claves o los espacios del archivo de trabajo.
 
 ## Estado y separación de responsabilidades
 
