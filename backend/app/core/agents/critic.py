@@ -43,6 +43,7 @@ class DependenciasCritic:
     proveedor: VerificadorSync = field(repr=False)
     configuracion: Configuracion = field(repr=False)
     obtener_imagen: ObtenerImagen | None = field(default=None, repr=False)
+    exigir_afirmacion_por_tarjeta: bool = False
 
     def __post_init__(self):
         self.configuracion.validar_critico()
@@ -231,6 +232,12 @@ class _SesionRevision:
                 self.citas[identificador] = self.segmentos[dato.ubicacion]["referencias"]
                 self.ubicaciones[identificador] = dato.ubicacion
                 afirmaciones.append(Afirmacion(identificador, dato.texto))
+            if self.dependencias.exigir_afirmacion_por_tarjeta:
+                requeridas = {
+                    f"/contenido_adaptado/items/{i}/dorso" for i in range(len(self.borrador.contenido_adaptado.items))
+                }
+                if requeridas - {a.ubicacion for a in respuesta.afirmaciones}:
+                    raise EvaluadorInvalidoError("El extractor omitió una definición del glosario")
             return afirmaciones
         except Exception as error:
             self.error_factual = error

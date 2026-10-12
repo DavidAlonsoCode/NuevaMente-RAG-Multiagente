@@ -25,12 +25,12 @@ from app.storage.provider import StorageConflict, StorageUnavailable
 
 
 class ServicioGeneraciones:
-    def __init__(self, db, storage, consulta, gestor, configuracion, generador, verificador):
-        if consulta.indice is None:
-            raise ValueError("La generación requiere un índice configurado")
+    def __init__(self, db, storage, consulta, gestor, configuracion, generador=None, verificador=None):
         self.db, self.storage, self.consulta, self.gestor = db, storage, consulta, gestor
         self.cfg, self.generador, self.verificador = configuracion, generador, verificador
-        self.retriever = RetrieverMMR(consulta.indice, configuracion=configuracion)
+        self.retriever = (
+            RetrieverMMR(consulta.indice, configuracion=configuracion) if consulta.indice is not None else None
+        )
         self.cursor = CursorDocumental(db.ruta_db.parent / "generation-cursor.key")
         self.catalogo = CatalogoGeneraciones(db, storage, consulta, configuracion.oci_bucket_name)
         self.db.purgar_aprobados_expirados()
@@ -234,13 +234,24 @@ class ServicioGeneraciones:
     def generar(self, token, solicitud: GenerateRequest, clave=None):
         clave = self._clave(clave)
         self.consulta._listo(token, solicitud.document_id)
+        cuerpo = json.dumps(solicitud.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+        if clave is not None:
+            with self.gestor.admision_serializada():
+                previo = self.db.idempotencia_consultar(self._sesion(token)["workspace_id"], "generate", clave, cuerpo)
+            if previo is not None:
+                if previo[0] == "conflicto":
+                    raise ErrorAplicacion(ErrorCode.IDEMPOTENCY_CONFLICT, "La clave ya corresponde a otro cuerpo.")
+                return self._propia(token, previo[1])
+        if self.generador is None or self.verificador is None or self.retriever is None:
+            raise ErrorAplicacion(
+                ErrorCode.PROVIDER_UNAVAILABLE, "Generación requiere proveedores y cuotas explícitos."
+            )
         ctx = self._lectura(token)
         documento = self.consulta.documento_grafo(ctx, solicitud.document_id)
         if documento is None:
             raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Documento no encontrado.")
         if solicitud.alcance.tipo == "seccion" and solicitud.alcance.seccion_id not in documento.secciones:
             raise ErrorAplicacion(ErrorCode.VALIDATION_ERROR, "La sección no pertenece al documento.")
-        cuerpo = json.dumps(solicitud.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
         generation_id = "gen_" + uuid.uuid4().hex
         with self.gestor.admision_serializada():
             try:

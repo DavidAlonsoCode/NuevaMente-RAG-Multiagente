@@ -15,6 +15,7 @@ from app.core.agents.supervisor import supervisor
 from app.core.agents.writer import DependenciasWriter
 from app.core.rag.retriever import RetrieverMMR
 from app.core.rag.tokenizer import TokenizadorBPE
+from app.jobs.admission import admitir_trabajo
 from app.jobs.manager import ContextoEjecucion, FalloTrabajoError, RechazoCalidadError, TrabajoCanceladoError
 from app.schemas.chat import BorradorChat, ChatAnswer
 from app.schemas.enums import JobStatus
@@ -130,27 +131,46 @@ class _AdaptadorPreguntaRespuesta:
 
 
 class ServicioChat:
-    def __init__(self, db, consulta, gestor, cfg, generador, verificador):
+    def __init__(self, db, consulta, gestor, cfg, generador=None, verificador=None):
         self.db, self.consulta, self.gestor, self.cfg = db, consulta, gestor, cfg
         self.generador, self.verificador = generador, verificador
-        self.retriever = RetrieverMMR(consulta.indice, configuracion=cfg)
+        self.retriever = RetrieverMMR(consulta.indice, configuracion=cfg) if consulta.indice is not None else None
 
     def autorizar_resultado(self, workspace_id, resultado, token=None):
         respuesta = ChatAnswer.model_validate(resultado)
-        ctx = ContextoEjecucion("consulta_chat", workspace_id, "consulta", time.monotonic() + 30)
-        doc = self.consulta.documento_grafo(ctx, respuesta.document_id)
-        if doc is None or doc.fuente.hash != respuesta.document_hash:
-            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible.")
         if token is not None:
-            self.consulta._listo(token, respuesta.document_id)
+            if self.consulta._sesion(token)["workspace_id"] != workspace_id:
+                raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.")
+            fuente = self.consulta.fuente_aprobada(token, respuesta.document_id)
+        else:
+            ctx = ContextoEjecucion("consulta_chat", workspace_id, "consulta", time.monotonic() + 30)
+            doc = self.consulta.documento_grafo(ctx, respuesta.document_id)
+            fuente = doc.fuente if doc is not None else None
+        if fuente is None or fuente.hash != respuesta.document_hash:
+            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible.")
         return respuesta
 
-    def encolar(self, token, solicitud):
+    def encolar(self, token, solicitud, clave=None):
         doc = self.consulta._listo(token, solicitud.document_id)
-        job = self.gestor.enqueue(
-            doc["workspace_id"], "chat", lambda ctx: self.ejecutar(solicitud, ctx), document_id=solicitud.document_id
+
+        def preparar():
+            self.consulta._sesion(token)
+            if self.generador is None or self.verificador is None or self.retriever is None:
+                raise ErrorAplicacion(
+                    ErrorCode.PROVIDER_UNAVAILABLE, "El tutor requiere proveedores y cuotas explícitos."
+                )
+
+        job = admitir_trabajo(
+            self.gestor,
+            doc["workspace_id"],
+            solicitud.document_id,
+            "chat",
+            solicitud.model_dump(mode="json"),
+            lambda ctx: self.ejecutar(solicitud, ctx),
+            clave=clave,
+            preparar=preparar,
         )
-        return job
+        return job["job_id"]
 
     def ejecutar(self, solicitud, ctx):
         doc = self.consulta.documento_grafo(ctx, solicitud.document_id)

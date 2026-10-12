@@ -2,7 +2,7 @@ name: Contenedores
 
 on:
   pull_request:
-    branches: [develop, main, "feat/**"]
+    branches: [develop, main]
     paths:
       - "backend/**"
       - "frontend/**"

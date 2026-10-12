@@ -182,6 +182,30 @@ def generar(e, clave=None, **parametros):
     )
 
 
+def test_lecturas_aprobadas_y_reintento_idempotente_sin_proveedores(entorno):
+    from app.generations.service import ServicioGeneraciones
+
+    e = entorno
+    recibo = generar(e, "generacion-aprobada").json()
+    salida = esperar(e, recibo)
+    indice = e.app.state.documents_query.indice
+    e.app.state.documents_query.indice = None
+    e.app.state.generations = ServicioGeneraciones(
+        e.db, e.storage, e.app.state.documents_query, e.gestor, e.app.state.config
+    )
+    try:
+        assert e.cliente.get(recibo["status_url"], headers=e.headers).json()["contenido"] == salida["contenido"]
+        assert (
+            e.cliente.get("/api/generations", headers=e.headers).json()["items"][0]["generation_id"]
+            == recibo["generation_id"]
+        )
+        assert e.cliente.get("/api/exports/" + recibo["generation_id"], headers=e.headers).status_code == 200
+        assert generar(e, "generacion-aprobada").json()["generation_id"] == recibo["generation_id"]
+        assert generar(e, "nueva-generacion").status_code == 503
+    finally:
+        e.app.state.documents_query.indice = indice
+
+
 def test_feliz_sse_reconexion_y_ajeno(entorno):
     e = entorno
     respuesta = generar(e, "una-intencion")

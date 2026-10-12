@@ -554,8 +554,66 @@ completed del mismo workspace/documento/hash, acotados por
 El resultado usa SQLite común, sin crear artefactos/exportaciones en `outputs/`.
 Su fuente se revalida al entregar el resultado y su retirada purga el historial.
 Detalles de revisión y adaptador interno: [issue-37-document-chat.md](issue-37-document-chat.md).
+
+Corrección de consistencia junto a #39: chat acepta `Idempotency-Key` (1–128
+caracteres); repetir una intención conserva el trabajo y no repite llamadas.
+Mismo header con otra pregunta/parámetros devuelve **409**. Consultar respuestas
+aprobadas y repetir su intención funcionan sin proveedores LLM configurados;
+una intención nueva sin proveedores devuelve **503**. Historial, consulta y
+exportación JSON de generaciones aprobadas también son lecturas independientes
+de los proveedores. Las fuentes conservan sus comprobaciones READY y de acceso.
+
+| Método y ruta | Descripción |
+|---|---|
 | `POST /api/glossaries` | `{document_id, perfil_destinatario, idioma_salida}` → 202 con glossary_id y URLs del trabajo, o 200 con resultado de caché verificado. |
 | `GET /api/glossaries/{id}` | Glosario generado con definiciones citadas. |
+
+Precisión #39 (`contract-change`):
+
+- La ingesta detecta candidatos y sus ubicaciones sin generar definiciones ni
+  llamar a Gemini para esta detección. Guarda `terminos_candidatos`,
+  `detector_terminos_version` y `candidatos_omitidos` en el manifiesto privado.
+  La extracción es heurística: siglas, identificadores, productos con proveedor,
+  títulos, texto destacado y expresiones de definición. Selecciona hasta 64
+  términos y hasta 8 ubicaciones por término; los candidatos restantes se cuentan
+  explícitamente. Documentos anteriores se detectan desde sus chunks autorizados.
+- `POST /api/glossaries` recibe `GlossaryRequest`, con documento READY autorizado,
+  perfil e idioma. `Idempotency-Key` (1–128 caracteres) conserva la intención;
+  mismo header con otro cuerpo devuelve **409 IDEMPOTENCY_CONFLICT**. Un trabajo
+  activo de la misma combinación devuelve el mismo recibo. Un nuevo glosario
+  devuelve **202 GlossaryJobResponse**: campos de `TrabajoComunResponse` y
+  `glossary_id` (el mismo ID que el trabajo común). Una caché verificada devuelve
+  **200** con el mismo recibo y `result`, sin crear trabajos ni llamadas.
+- `GET /api/glossaries/{glossary_id}` devuelve **200 GlossaryOutput**:
+  `schema_version`, `glossary_id`, `documento_fuente`, `perfil_destinatario`,
+  `idioma_salida`, `estado`, `terminos`, `candidatos_omitidos`,
+  `evaluacion_calidad`, `trazabilidad`, `prompt_version` y `created_at`.
+  Una consulta antes de completarse devuelve **409**; un recurso ajeno/retirado,
+  **404**. `/api/jobs/{id}` entrega el mismo resultado autorizado; SSE y cancelación
+  conservan el contrato común.
+- Cada término contiene `id`, `termino_original`, `es_identificador`,
+  `traduccion`, `estado`, `definicion`, `referencias` y `limitacion`. El estado
+  `definido` requiere definición citada y revisión completa aprobada. Productos,
+  comandos y APIs conservan su nombre original sin traducción. Definición y
+  traducción pasan juntas por el Critic; el extractor factual debe cubrir cada
+  definición. No se publican borradores rechazados ni incompletos.
+- Un término sin respaldo usa `estado=sin_definicion_suficiente`, definición y
+  traducción nulas y una limitación fija en el idioma solicitado. Sus citas las
+  asigna el backend para mostrar dónde aparece el término; no prueban una definición.
+  Si no hay definiciones, el glosario declara `sin_definiciones` con evaluación
+  nula; sin candidatos declara `sin_terminos`. Estas limitaciones no reciben
+  un score ficticio. El estado `verificado` requiere definiciones y calidad aprobada.
+- La clave de caché incluye espacio, documento/hash/versión, configuración del
+  parser, modelos de generación/verificación/embeddings, perfil, idioma, versiones
+  del prompt de glosario/base y detector. SQLite conserva trabajos y resultados
+  verificados; fallos y cancelaciones no son caché reutilizable. Un reinicio
+  normal conserva esa caché; tras perder el disco se puede volver a generar el
+  glosario sobre la fuente recuperada. El borrado documental purga sus resultados.
+- Generación, juez y embeddings usan adaptadores síncronos, cuotas compartidas,
+  deadline/cancelación y hasta tres redacciones de la política existente.
+  La consulta y caché de un resultado verificado funcionan sin proveedores LLM.
+
+Verificación: `pytest backend/tests/test_glossary.py backend/tests/test_glossary_models.py`.
 
 ### Exportaciones (issues `Issue 43`–`Issue 45`, `Issue 46`)
 

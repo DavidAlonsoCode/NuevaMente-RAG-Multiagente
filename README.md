@@ -236,7 +236,7 @@ tokenizador. Pruebas: `pytest backend/tests/test_chunker.py`.
 
 ## 🤖 Catálogo de Skills para Agentes de IA
 
-El repositorio cuenta con 13 skills especializadas y armonizadas en `.agents/skills/`, gobernadas por el orquestador maestro [`AGENTS.md`](./AGENTS.md) y registradas en [`.agents/skills.json`](./.agents/skills.json):
+El repositorio cuenta con 13 skills especializadas en `.agents/skills/`, registradas en [`.agents/skills.json`](./.agents/skills.json). Sus ejemplos son orientativos: los contratos de `backend/app/schemas/`, [las decisiones del proyecto](decisiones_proyecto.md) y [la guía de trabajo](docs/guia-trabajo-equipo.md) prevalecen al implementar y revisar cambios.
 
 1. [`spec-driven-development`](.agents/skills/spec-driven-development/SKILL.md): Especificación previa estructurada y mapa de capacidades.
 2. [`domain-modeling`](.agents/skills/domain-modeling/SKILL.md): Lenguaje ubicuo en `CONTEXT.md` y registro de ADRs en `docs/adr/`.

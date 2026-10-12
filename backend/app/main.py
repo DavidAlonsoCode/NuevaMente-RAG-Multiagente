@@ -48,7 +48,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
-from app.api.routes import chat, demo_documents, documents, generations, jobs, progress, workspaces
+from app.api.routes import chat, demo_documents, documents, generations, glossary, jobs, progress, workspaces
 from app.config import Configuracion, config
 from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos
 from app.jobs.store import RegistroOperativo
@@ -221,19 +221,22 @@ def crear_app(
 
                 gen = ver = ClienteGeminiGeneracion(ajustes)
             if gen is not None:
-                from app.generations.service import ServicioGeneraciones
-
                 proveedores_texto = list({id(p): p for p in (gen, ver)}.values())
-                app.state.generations = ServicioGeneraciones(
-                    app.state.db, app.state.storage_provider, app.state.documents_query, gestor, ajustes, gen, ver
-                )
-                from app.chat.service import ServicioChat
+            from app.chat.service import ServicioChat
+            from app.generations.service import ServicioGeneraciones
 
-                app.state.chat = ServicioChat(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
+            # Las lecturas de material ya aprobado no dependen del runtime LLM.
+            app.state.generations = ServicioGeneraciones(
+                app.state.db, app.state.storage_provider, app.state.documents_query, gestor, ajustes, gen, ver
+            )
+            app.state.chat = ServicioChat(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
             from app.documents.demo import ServicioCatalogoDemo
             from app.documents.lifecycle import EfectosDocumentales
             from app.generations.catalog import CatalogoGeneraciones
+            from app.glossary.service import ServicioGlosario
             from app.progress.service import ServicioProgreso
+
+            app.state.glossary = ServicioGlosario(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
 
             app.state.demo_documents_query = ServicioCatalogoDemo(
                 app.state.db,
@@ -291,6 +294,7 @@ def crear_app(
                 app.state.generations = None
                 app.state.chat = None
                 app.state.progress = None
+                app.state.glossary = None
                 app.state.demo_documents_query = None
                 app.state.documents_effects = None
                 app.state.vectorstore = None
@@ -468,6 +472,7 @@ def crear_app(
     app.state.generations = None
     app.state.chat = None
     app.state.progress = None
+    app.state.glossary = None
 
     app.include_router(workspaces.router)
     app.include_router(jobs.router)
@@ -476,6 +481,7 @@ def crear_app(
     app.include_router(generations.router)
     app.include_router(chat.router)
     app.include_router(progress.router)
+    app.include_router(glossary.router)
 
     return app
 

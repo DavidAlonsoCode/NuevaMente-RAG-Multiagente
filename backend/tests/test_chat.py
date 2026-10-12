@@ -242,6 +242,54 @@ def test_deadline_del_worker_y_fuente_conservada(entorno):
     assert e.db.obtener_documento(e.doc)["estado"] == "ready"
 
 
+def test_chat_idempotente_reutiliza_intencion_y_rechaza_otro_cuerpo(entorno):
+    e = entorno
+    headers = {**e.headers, "Idempotency-Key": "misma-pregunta"}
+    primera = e.cliente.post("/api/chat", json=e.solicitud_chat, headers=headers)
+    assert primera.status_code == 202, primera.text
+    resultado = esperar(e, primera.json())["result"]
+    llamadas = (e.doble.llamadas_generacion, e.doble.llamadas_verificacion, e.doble.llamadas_embeddings)
+    repetida = e.cliente.post("/api/chat", json=e.solicitud_chat, headers=headers)
+    assert repetida.status_code == 202 and repetida.json()["job_id"] == primera.json()["job_id"]
+    assert repetida.json()["result"] == resultado
+    assert llamadas == (e.doble.llamadas_generacion, e.doble.llamadas_verificacion, e.doble.llamadas_embeddings)
+    assert (
+        e.cliente.post("/api/chat", json={**e.solicitud_chat, "pregunta": "Otra pregunta"}, headers=headers).status_code
+        == 409
+    )
+
+
+def test_respuesta_aprobada_disponible_sin_proveedores_de_ia(entorno):
+    from app.chat.service import ServicioChat
+
+    e = entorno
+    headers = {**e.headers, "Idempotency-Key": "intencion-aprobada"}
+    recibo = e.cliente.post("/api/chat", json=e.solicitud_chat, headers=headers).json()
+    resultado = esperar(e, recibo)["result"]
+    indice = e.app.state.documents_query.indice
+    e.app.state.documents_query.indice = None
+    e.app.state.chat = ServicioChat(e.db, e.app.state.documents_query, e.gestor, e.app.state.config)
+    try:
+        assert e.cliente.get(recibo["status_url"], headers=e.headers).json()["result"] == resultado
+        assert e.cliente.get(recibo["events_url"], headers=e.headers).status_code == 200
+        assert e.cliente.post("/api/chat", json=e.solicitud_chat, headers=headers).json()["job_id"] == recibo["job_id"]
+        nueva = e.cliente.post(
+            "/api/chat", json=e.solicitud_chat, headers={**e.headers, "Idempotency-Key": "intencion-nueva"}
+        )
+        assert nueva.status_code == 503
+        assert (
+            e.db.idempotencia_consultar(
+                e.ws["workspace_id"],
+                "chat",
+                "intencion-nueva",
+                json.dumps(e.solicitud_chat, sort_keys=True, ensure_ascii=False),
+            )
+            is None
+        )
+    finally:
+        e.app.state.documents_query.indice = indice
+
+
 def test_sse_perdida_de_storage_tras_headers_emite_error_seguro(entorno, monkeypatch):
     e = entorno
     recibo = chat(e).json()
