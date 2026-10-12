@@ -25,6 +25,7 @@ marca `unit` indica que no hay red ni servicios externos: SQLite es un
 archivo local.
 """
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,25 @@ from app.jobs.store import RegistroOperativo
 from app.schemas.enums import DocumentStatus, JobStatus
 
 pytestmark = pytest.mark.unit
+
+
+def test_persist_admite_otro_job_terminal_conservando_una_generacion(store):
+    store.crear_workspace("ws_persist", "codigo", dias_validez=30)
+    store.registrar_documento("doc_persist", "ws_persist", "Fuente", DocumentStatus.READY, "a" * 64)
+    store.registrar_generacion("gen_persist", "ws_persist", "doc_persist")
+    store.encolar_job("job_redaccion", "ws_persist", "generation", "gen_persist", "doc_persist")
+    store.iniciar_job("job_redaccion")
+    store.finalizar_job("job_redaccion", JobStatus.FAILED, error_code="STORAGE_UNAVAILABLE")
+    assert store.obtener_documento("doc_persist")["estado"] == "ready"
+    store.actualizar_generacion("gen_persist", JobStatus.QUEUED)
+    store.encolar_job("job_subida", "ws_persist", "persist", "gen_persist", "doc_persist")
+    assert store.job_generacion("gen_persist")["job_id"] == "job_subida"
+    with pytest.raises(sqlite3.IntegrityError):
+        store.encolar_job("job_duplicado", "ws_persist", "persist", "gen_persist", "doc_persist")
+    assert store.obtener_job("job_duplicado") is None
+    store.iniciar_job("job_subida")
+    store.finalizar_job("job_subida", JobStatus.COMPLETED)
+    assert store.obtener_generacion("gen_persist")["status"] == "completed"
 
 
 @pytest.fixture

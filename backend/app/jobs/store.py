@@ -63,7 +63,7 @@ from app.schemas.enums import DocumentStatus, JobStatus
 # Versión actual del esquema. Cada cambio de esquema agrega una entrada a
 # MIGRACIONES y sube este número; NUNCA se edita una migración ya aplicada
 # (las bases reales de los usuarios quedaron con la vieja).
-VERSION_ESQUEMA = 8
+VERSION_ESQUEMA = 9
 
 # Cada migración: (versión, SQL). Se aplican en orden ascendente dentro de
 # una transacción cada una. La v1 crea todas las tablas del issue #08.
@@ -276,6 +276,26 @@ MIGRACIONES: list[tuple[int, str]] = [
         """,
     ),
 ]
+
+
+MIGRACIONES.append(
+    (
+        9,
+        """
+        ALTER TABLE generations ADD COLUMN parametros_json TEXT;
+        DROP INDEX idx_jobs_generation;
+        CREATE INDEX idx_jobs_generation ON jobs(generation_id);
+        CREATE UNIQUE INDEX idx_jobs_generation_active ON jobs(generation_id)
+            WHERE generation_id IS NOT NULL AND status IN ('queued', 'running');
+        CREATE TABLE approved_outputs (
+            generation_id TEXT PRIMARY KEY REFERENCES generations(generation_id) ON DELETE CASCADE,
+            paquete_json TEXT NOT NULL,
+            expira_en TEXT NOT NULL
+        );
+        CREATE INDEX idx_generations_page ON generations(workspace_id, creado_en, generation_id);
+        """,
+    )
+)
 
 
 def retirar_referencias(valor, document_id: str, generaciones: set[str]):
@@ -1273,6 +1293,8 @@ class RegistroOperativo:
                     "DELETE FROM events WHERE job_id=? AND workspace_id=?", (trabajo["job_id"], workspace_id)
                 )
             for generacion in generaciones:
+                self._conn.execute("DELETE FROM approved_outputs WHERE generation_id=?", (generacion,))
+                self._conn.execute("UPDATE generations SET parametros_json=NULL WHERE generation_id=?", (generacion,))
                 self._conn.execute("UPDATE generations SET error_message=NULL WHERE generation_id=?", (generacion,))
                 self._conn.execute(
                     "DELETE FROM events WHERE generation_id=? AND workspace_id=?", (generacion, workspace_id)
@@ -1414,6 +1436,123 @@ class RegistroOperativo:
     # Trabajos comunes (issue #20): ingestion, chat y glosario
     # ------------------------------------------------------------------
 
+    @_sincronizado
+    def guardar_parametros_generacion(self, generation_id: str, parametros: dict, *, creado_en: str | None = None):
+        fila = self.obtener_generacion(generation_id)
+        if fila is None or parametros["document_id"] != fila["document_id"]:
+            raise ValueError("Los parámetros no corresponden a la generación")
+        self._conn.execute(
+            "UPDATE generations SET parametros_json=?, creado_en=COALESCE(?, creado_en) WHERE generation_id=?",
+            (json.dumps(parametros, sort_keys=True, ensure_ascii=False), creado_en, generation_id),
+        )
+
+    @_sincronizado
+    def job_generacion(self, generation_id: str) -> dict | None:
+        fila = self._conn.execute(
+            "SELECT * FROM jobs WHERE generation_id=? ORDER BY rowid DESC LIMIT 1", (generation_id,)
+        ).fetchone()
+        return dict(fila) if fila else None
+
+    @_sincronizado
+    def guardar_aprobado(self, generation_id: str, paquete_json: str, expira_en: str):
+        from app.schemas.responses import PedagogicalOutput
+
+        paquete = PedagogicalOutput.model_validate_json(paquete_json)
+        vencimiento = datetime.fromisoformat(expira_en)
+        if vencimiento.tzinfo is None or not _ahora() < vencimiento <= _ahora() + timedelta(hours=24):
+            raise ValueError("La retención debe vencer dentro de 24 horas")
+        fila = self.obtener_generacion(generation_id)
+        if (
+            fila is None
+            or len(paquete_json.encode()) > 2_000_000
+            or (paquete.generation_id, paquete.documento_fuente.document_id) != (generation_id, fila["document_id"])
+            or paquete.almacenamiento_oci.objeto_id != f"outputs/{fila['workspace_id']}/{generation_id}/content.json"
+        ):
+            raise ValueError("El aprobado no corresponde a su generación")
+        self._conn.execute(
+            "INSERT OR IGNORE INTO approved_outputs VALUES (?, ?, ?)", (generation_id, paquete_json, expira_en)
+        )
+        if (
+            self._conn.execute(
+                "SELECT paquete_json FROM approved_outputs WHERE generation_id=?", (generation_id,)
+            ).fetchone()[0]
+            != paquete_json
+        ):
+            raise ValueError("El aprobado retenido no puede sustituirse")
+
+    @_sincronizado
+    def aprobado_retenido(self, generation_id: str) -> str | None:
+        self.purgar_aprobados_expirados()
+        if self.obtener_generacion(generation_id) is None:
+            return None
+        fila = self._conn.execute(
+            "SELECT paquete_json FROM approved_outputs WHERE generation_id=? AND expira_en>?",
+            (generation_id, _iso(_ahora())),
+        ).fetchone()
+        return fila[0] if fila else None
+
+    @_sincronizado
+    def descartar_aprobado(self, generation_id: str):
+        self._conn.execute("DELETE FROM approved_outputs WHERE generation_id=?", (generation_id,))
+
+    @_sincronizado
+    def purgar_aprobados_expirados(self):
+        self._conn.execute("DELETE FROM approved_outputs WHERE expira_en<=?", (_iso(_ahora()),))
+
+    @_sincronizado
+    def abandonar_reserva_generacion(self, workspace_id, generation_id, operacion, clave, *, eliminar=False):
+        if clave is not None:
+            self._conn.execute(
+                """DELETE FROM idempotency_keys WHERE workspace_id=? AND operacion=? AND clave=? AND recurso_id=?
+                   AND (? != 'generate' OR NOT EXISTS (SELECT 1 FROM jobs WHERE generation_id=?))""",
+                (workspace_id, operacion, clave, generation_id, operacion, generation_id),
+            )
+        if eliminar:
+            self._conn.execute(
+                """DELETE FROM generations WHERE workspace_id=? AND generation_id=?
+                   AND NOT EXISTS (SELECT 1 FROM jobs WHERE generation_id=generations.generation_id)""",
+                (workspace_id, generation_id),
+            )
+
+    @_sincronizado
+    def pagina_generaciones(self, workspace_id, *, despues=None, limit=20, **filtros):
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise ValueError("Límite de página inválido")
+        condiciones = [
+            "g.workspace_id=?",
+            "w.borrado_en IS NULL",
+            "w.expira_en>?",
+            "NOT EXISTS (SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo='generation' AND p.recurso_id=g.generation_id)",
+            "NOT EXISTS (SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo='document' AND p.recurso_id=g.document_id)",
+        ]
+        valores = [workspace_id, _iso(_ahora())]
+        if despues is not None:
+            condiciones.append("(g.creado_en, g.generation_id)<(?, ?)")
+            valores.extend(despues)
+        columnas = {
+            "documento": "g.document_id",
+            "perfil": "json_extract(g.parametros_json, '$.perfil_destinatario')",
+            "formato": "json_extract(g.parametros_json, '$.formato_salida')",
+            "idioma": "json_extract(g.parametros_json, '$.idioma_salida')",
+        }
+        for nombre, valor in filtros.items():
+            if valor is None:
+                continue
+            if nombre in columnas:
+                condiciones.append(columnas[nombre] + "=?")
+            elif nombre in ("desde", "hasta"):
+                condiciones.append("g.creado_en" + (">=?" if nombre == "desde" else "<=?"))
+            else:
+                raise ValueError("Filtro no permitido")
+            valores.append(valor)
+        filas = self._conn.execute(
+            "SELECT g.* FROM generations g JOIN workspaces w ON w.workspace_id=g.workspace_id WHERE "
+            + " AND ".join(condiciones)
+            + " ORDER BY g.creado_en DESC, g.generation_id DESC LIMIT ?",
+            [*valores, limit],
+        ).fetchall()
+        return [dict(fila) for fila in filas]
+
     def registrar_job(self, job_id: str, workspace_id: str, tipo: str, status: JobStatus = JobStatus.QUEUED) -> None:
         """Registra un trabajo común en la cola (el gestor de #20 lo consume)."""
         ahora = _iso(_ahora())
@@ -1446,11 +1585,18 @@ class RegistroOperativo:
                     raise ValueError("La generación no está disponible para encolar")
             if document_id is not None:
                 documento = self.obtener_documento(document_id)
-                if generation_id or tipo != "ingestion" or not documento or documento["workspace_id"] != workspace_id:
-                    raise ValueError("El documento no está disponible para ingestión")
-                if documento["estado"] != DocumentStatus.PROCESSING.value:
+                if not documento or documento["workspace_id"] != workspace_id:
+                    raise ValueError("El documento no está disponible para el trabajo")
+                if generation_id and generacion["document_id"] != document_id:
+                    raise ValueError("La generación corresponde a otro documento")
+                if tipo == "ingestion" and (generation_id or documento["estado"] != DocumentStatus.PROCESSING.value):
                     raise ValueError("El documento no está en procesamiento")
-                if documento["recuperacion_evidencia"] is not None:
+                if tipo != "ingestion" and (
+                    documento["estado"] != DocumentStatus.READY.value
+                    or (not generation_id and tipo not in ("chat", "glosario"))
+                ):
+                    raise ValueError("El documento no está listo para el trabajo")
+                if tipo == "ingestion" and documento["recuperacion_evidencia"] is not None:
                     if documento["recuperacion_estado"] != "reservada" or documento["recuperacion_job_id"] != job_id:
                         raise ValueError("La reconstrucción no corresponde al intento reservado")
                     self._conn.execute(
@@ -1629,10 +1775,15 @@ class RegistroOperativo:
                     self.actualizar_generacion(
                         fila["generation_id"], status, datos.get("error_code"), datos.get("error_message")
                     )
-                if fila["document_id"] and status in (
-                    JobStatus.FAILED,
-                    JobStatus.CANCELLED,
-                    JobStatus.REJECTED_QUALITY,
+                if (
+                    fila["tipo"] == "ingestion"
+                    and fila["document_id"]
+                    and status
+                    in (
+                        JobStatus.FAILED,
+                        JobStatus.CANCELLED,
+                        JobStatus.REJECTED_QUALITY,
+                    )
                 ):
                     self.actualizar_documento(
                         fila["document_id"],
@@ -1665,6 +1816,13 @@ class RegistroOperativo:
         """
         with self._lock:
             pendientes = self._conn.execute("SELECT job_id FROM jobs WHERE status IN ('queued', 'running')").fetchall()
+            self._conn.execute(
+                """UPDATE generations SET status='failed', error_code='INTERRUPTED',
+                   error_message='La admisión se interrumpió antes de encolar.', actualizado_en=?
+                   WHERE status='queued' AND parametros_json IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM jobs WHERE generation_id=generations.generation_id)""",
+                (_iso(_ahora()),),
+            )
             for fila in pendientes:
                 self.finalizar_job(
                     fila["job_id"],

@@ -64,6 +64,7 @@ import threading
 import time
 import uuid
 from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -398,6 +399,16 @@ class GestorTrabajos:
     # ------------------------------------------------------------------
     # API del gestor (la usan los endpoints de #19/#31)
     # ------------------------------------------------------------------
+
+    @contextmanager
+    def admision_serializada(self):
+        """Serializa reserva/idempotencia y enqueue, con orden gestor → registro.
+
+        Los consumidores realizan el I/O de autorización antes de entrar.
+        No mantener una transacción SQLite abierta al llamar a enqueue.
+        """
+        with self._lock:
+            yield
 
     def enqueue(
         self,
