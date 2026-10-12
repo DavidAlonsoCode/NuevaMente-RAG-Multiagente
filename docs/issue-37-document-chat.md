@@ -48,6 +48,7 @@ rúbrica/cita o una contradicción con score 0.90, cancelación en espera y borr
 Los casos manuales con VCN y Gemini reales quedan pendientes y no se sustituyen
 por la CI simulada. Windows bloquea una dependencia nativa de Chroma por política.
 
-Este PR se apila sobre #31 para reutilizar arranque de proveedores, quotas,
-consulta documental preparada y relación documento/trabajo. Después de integrar
-#29 y #31 se puede cambiar la base a develop.
+Este PR apunta directamente a `develop`. Reutiliza el arranque de proveedores,
+cuotas, consulta documental y relación documento/trabajo del #31, que debe estar
+integrado en `develop` antes de incorporar el chat. Todos los PR de issues se
+dirigen a `develop`, con ramas descriptivas `feat/`, `fix/` o `docs/`.
