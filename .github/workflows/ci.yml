@@ -147,7 +147,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y xvfb libxcb-cursor0 libegl1 libopengl0
+          sudo apt-get install -y xvfb libxcb-cursor0 libegl1 libopengl0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libnss3 libasound2t64
           python -m pip install -r .github/requirements-anki-ui.txt
           timeout 90s xvfb-run -a python .github/scripts/verify_anki_desktop.py
 
