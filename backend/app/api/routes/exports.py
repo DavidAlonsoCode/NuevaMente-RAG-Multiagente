@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/exports", tags=["Exportaciones"])
             "content": {
                 "application/json": {},
                 "text/markdown": {},
+                "application/pdf": {"schema": {"type": "string", "format": "binary"}},
                 "text/csv": {},
                 "text/tab-separated-values": {},
                 "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
