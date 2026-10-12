@@ -122,7 +122,7 @@ def test_anki_no_convierte_implicitamente_otros_formatos(tipo, formato):
     assert error.value.error.code == ErrorCode.EXPORT_INCOMPATIBLE
 
 
-@pytest.mark.parametrize("formato", ["exe", "../md", "JSON", "pdf", "csv", "tsv", "apkg"])
+@pytest.mark.parametrize("formato", ["exe", "../md", "JSON", "csv", "tsv", "apkg"])
 def test_exportadores_pendientes_y_nombres_no_admitidos_no_escriben(espacio_exportaciones, formato):
     e = espacio_exportaciones
     with pytest.raises(ErrorAplicacion) as error:

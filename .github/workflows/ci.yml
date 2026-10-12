@@ -156,6 +156,21 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: PDF didáctico en dos motores (#44)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y poppler-utils
+          timeout 90s python .github/scripts/verify_pdf_exports.py
+
+      - name: Evidencia de exportaciones PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-export-evidence
+          path: .data/pdf-evidence/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Anki Desktop aislado (importación y capturas)
         env:
           QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu

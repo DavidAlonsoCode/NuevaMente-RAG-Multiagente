@@ -623,10 +623,8 @@ Verificación: `pytest backend/tests/test_glossary.py backend/tests/test_glossar
 - `csv|tsv|apkg` solo para `formato_salida=flashcards` (si no → **422** `EXPORT_INCOMPATIBLE`).
 - Descarga pasa por la API con verificación de ownership; sin secretos en el contenido exportado.
 
-**Implementado:** `json` (predeterminado) y `md` para los cinco formatos (#43),
-y `csv|tsv|apkg` para flashcards (#45). PDF corresponde a #44; mientras no esté
-implementado devuelve 422 `EXPORT_INCOMPATIBLE` con
-`details.formatos_disponibles=["json","md","csv","tsv","apkg"]`.
+**Implementado:** `json` (predeterminado), `md` (#43) y `pdf` (#44) para los cinco
+formatos; `csv|tsv|apkg` para flashcards (#45).
 Un nombre desconocido o una combinación incompatible también devuelve 422.
 El espacio y el estado se autorizan antes de acceder a derivados: recurso ajeno
 o retirado → 404; generación propia no `completed` → 409.
@@ -635,6 +633,7 @@ o retirado → 404; generación propia no `completed` → 409.
 |---|---|---|
 | `json` | `application/json` | Bytes exactos del objeto `outputs/{ws}/{gen}/content.json`; sin reserializar ni añadir estado de transporte |
 | `md` | `text/markdown; charset=utf-8` | Plantilla determinista del canónico tipado, con etiquetas en su `idioma_salida` |
+| `pdf` | `application/pdf` | A4 con fuentes Unicode locales embebidas, código paginado, tarjetas imprimibles y soluciones de quiz separadas al final |
 | `csv` | `text/csv; charset=utf-8` | Flashcards con cabeceras Anki y columnas Front/Back/Tags/GUID/Deck |
 | `tsv` | `text/tab-separated-values; charset=utf-8` | Las mismas columnas separadas por tabuladores |
 | `apkg` | `application/octet-stream` | Colección genanki con modelo/mazo estables, sin media |
@@ -668,6 +667,10 @@ retención existentes abarcan el prefijo de derivados.
 Anki es una exportación opcional; estudiar tarjetas dentro de NuevaMente corresponde
 a la interfaz del #34. La importación, identidad estable y neutralización de fórmulas,
 HTML y directivas de media se documentan en [Importación Anki](importacion-anki.md).
+
+PDF no interpreta HTML/imágenes/enlaces de la fuente ni ejecuta código. Se
+documentan presentación, fuentes, determinismo y evidencia en
+[Exportación PDF](exportacion-pdf.md). Los botones de descarga de la UI son #46.
 
 ### Uso y vencimiento del espacio (#50)
 

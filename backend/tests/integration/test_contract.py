@@ -52,7 +52,7 @@ def test_upload_ready_generacion_exportacion_y_sse(entorno, formato):
     recibo = generar(e, formato_salida=formato).json()
     resultado = esperar(e, recibo)
     assert resultado["contenido"] and resultado["persistencia"]["status_upload"] == "completado"
-    formatos = ("json", "md", "csv", "tsv", "apkg") if formato == "flashcards" else ("json", "md")
+    formatos = ("json", "md", "pdf", "csv", "tsv", "apkg") if formato == "flashcards" else ("json", "md", "pdf")
     llamadas = (e.doble.llamadas_generacion, e.doble.llamadas_verificacion, e.doble.llamadas_embeddings)
     for extension in formatos:
         res = e.cliente.get("/api/exports/" + recibo["generation_id"], params={"format": extension}, headers=e.headers)
