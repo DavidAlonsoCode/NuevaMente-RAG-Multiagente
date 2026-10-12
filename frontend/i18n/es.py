@@ -90,6 +90,9 @@ CATALOGO_ES: dict[str, str] = {
     "sidebar.generando": "Generando…",
     "sidebar.idioma_ui": "Idioma de la interfaz",
     "sidebar.cerrar_sesion": "Cerrar sesión",
+    "sidebar.sin_documentos": "Todavía no tenés documentos listos. Cargá uno o esperá a que termine de procesarse.",
+    "sidebar.sin_secciones": "Este documento no tiene secciones identificadas: se adapta completo.",
+    "sidebar.seccion_lineas": "{titulo} (líneas {inicio}–{fin})",
     # ------------------------- upload -------------------------
     "upload.titulo": "Cargar un documento",
     "upload.arrastrar": "Arrastrá acá un PDF, Markdown o TXT",
@@ -114,6 +117,11 @@ CATALOGO_ES: dict[str, str] = {
     "generar.rechazado_detalle": "Motivo: {motivo}. Podés volver a intentarlo con otra combinación de parámetros.",
     "generar.cancelar": "Cancelar generación",
     "generar.reintentar": "Volver a generar",
+    "generar.resumen_titulo": "Revisá la selección antes de generar",
+    "generar.confirmar": "Confirmar y generar",
+    "generar.cabecera_titulo": "Material solicitado con estos parámetros",
+    "generar.enviada": "La generación quedó registrada. El material se muestra acá recién cuando esté revisado y guardado.",
+    "generar.id_generacion": "Generación: {generation_id}",
     # ------------------------- estados (etiquetas humanas) -------------------------
     "estados.trabajo.queued": "En cola",
     "estados.trabajo.running": "Procesando",
