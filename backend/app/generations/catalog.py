@@ -1,5 +1,6 @@
 """Lectura autorizada del aprobado, independiente de proveedores LLM o de la cola."""
 
+import json
 from datetime import datetime, timezone
 
 from pydantic import ValidationError
@@ -9,6 +10,19 @@ from app.schemas.responses import PedagogicalOutput
 from app.session.manifests import ManifiestoEspacio
 from app.storage.object_keys import clave_output, clave_workspace
 from app.storage.provider import StorageNotFound, StorageUnavailable
+
+
+def _pares_unicos(pares):
+    datos = {}
+    for clave, valor in pares:
+        if clave in datos:
+            raise ValueError("El canónico contiene claves duplicadas")
+        datos[clave] = valor
+    return datos
+
+
+def _constante_invalida(valor):
+    raise ValueError("El canónico contiene una constante ajena a JSON")
 
 
 class CatalogoGeneraciones:
@@ -35,11 +49,18 @@ class CatalogoGeneraciones:
         return ws, manifest
 
     def canonico(self, token, generation_id):
+        return self.cargar(token, generation_id)[0]
+
+    def cargar(self, token, generation_id):
+        """Modelo validado y bytes exactos del objeto, sin normalizar su JSON."""
         fila, fuente = self.fuente(token, generation_id)
         clave = clave_output(fila["workspace_id"], generation_id)
         try:
-            paquete = PedagogicalOutput.model_validate_json(self.storage.get(clave))
-        except (ValidationError, StorageNotFound):
+            datos = self.storage.get(clave)
+            # Un JSON ambiguo no puede ser fuente común de dos exportaciones.
+            json.loads(datos, object_pairs_hook=_pares_unicos, parse_constant=_constante_invalida)
+            paquete = PedagogicalOutput.model_validate_json(datos)
+        except (ValueError, RecursionError, StorageNotFound):
             raise StorageUnavailable("El paquete publicado no es verificable") from None
         if (
             paquete.generation_id != generation_id
@@ -49,7 +70,7 @@ class CatalogoGeneraciones:
         ):
             raise StorageUnavailable("El paquete no corresponde a la fuente vigente")
         self.validar_fuente(token, paquete)
-        return paquete
+        return paquete, datos
 
     def fuente(self, token, generation_id):
         sesion = self.db.obtener_sesion(token)
