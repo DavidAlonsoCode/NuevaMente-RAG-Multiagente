@@ -25,11 +25,19 @@ backend/tests/conftest.py, junto a los tests que los consumen.
 from __future__ import annotations
 
 import os
+import sys
 
 # --- 1) Entorno de test: ANTES de cualquier import de aplicación. ----------
 # El orden importa: estos valores deben estar fijados cuando app.config o
 # app.storage se importen por primera vez, porque leen el entorno al cargar.
 import pytest
+
+# Los conftest de backend importan configuración al cargarse, antes de
+# pytest_configure. Proteger también ese primer import de un .env personal.
+_argumentos = " ".join(sys.argv[1:]) + " " + os.environ.get("PYTEST_ADDOPTS", "")
+if "integration_real" not in _argumentos or "not integration_real" in _argumentos:
+    os.environ.update(MOCK_OCI="1", MOCK_GEMINI="1")
+    os.environ["APP_ENV"] = "ci" if os.environ.get("APP_ENV") == "ci" else "test"
 
 
 def pytest_configure(config):
