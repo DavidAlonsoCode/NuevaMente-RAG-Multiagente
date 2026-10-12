@@ -48,7 +48,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
-from app.api.routes import demo_documents, documents, generations, jobs, workspaces
+from app.api.routes import chat, demo_documents, documents, generations, jobs, workspaces
 from app.config import Configuracion, config
 from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos
 from app.jobs.store import RegistroOperativo
@@ -227,6 +227,9 @@ def crear_app(
                 app.state.generations = ServicioGeneraciones(
                     app.state.db, app.state.storage_provider, app.state.documents_query, gestor, ajustes, gen, ver
                 )
+                from app.chat.service import ServicioChat
+
+                app.state.chat = ServicioChat(app.state.db, app.state.documents_query, gestor, ajustes, gen, ver)
             from app.documents.demo import ServicioCatalogoDemo
             from app.documents.lifecycle import EfectosDocumentales
 
@@ -274,6 +277,7 @@ def crear_app(
                 app.state.documents_admission = None
                 app.state.documents_query = None
                 app.state.generations = None
+                app.state.chat = None
                 app.state.demo_documents_query = None
                 app.state.documents_effects = None
                 app.state.vectorstore = None
@@ -449,12 +453,14 @@ def crear_app(
     app.state.documents_effects = None
     app.state.vectorstore = None
     app.state.generations = None
+    app.state.chat = None
 
     app.include_router(workspaces.router)
     app.include_router(jobs.router)
     app.include_router(documents.router)
     app.include_router(demo_documents.router)
     app.include_router(generations.router)
+    app.include_router(chat.router)
 
     return app
 

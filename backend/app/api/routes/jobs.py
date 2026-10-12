@@ -12,11 +12,12 @@ from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_sesion_actual, get_session_manager
-from app.jobs.manager import GestorTrabajos
+from app.jobs.manager import DeadlineExcedidoError, GestorTrabajos, TrabajoCanceladoError
 from app.schemas.enums import JobStatus
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.internal import TrabajoComunResponse
 from app.session.manager import SessionManager
+from app.storage.provider import StorageUnavailable
 
 router = APIRouter(prefix="/api/jobs", tags=["Trabajos"])
 INTERVALO_SONDEO = 0.25
@@ -66,13 +67,33 @@ def _respuesta(trabajo: dict) -> TrabajoComunResponse:
     )
 
 
+def _autorizar_chat(request, trabajo, token=None):
+    if (
+        trabajo["tipo"] == "chat"
+        and trabajo.get("document_id")
+        and trabajo["status"] == "completed"
+        and trabajo["resultado"] is not None
+    ):
+        servicio = request.app.state.chat
+        if servicio is None:
+            raise ErrorAplicacion(ErrorCode.PROVIDER_UNAVAILABLE, "El tutor no está disponible.")
+        try:
+            servicio.autorizar_resultado(trabajo["workspace_id"], json.loads(trabajo["resultado"]), token)
+        except (TrabajoCanceladoError, DeadlineExcedidoError):
+            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.") from None
+    return trabajo
+
+
 @router.get("/{job_id}", response_model=TrabajoComunResponse, summary="Consultar trabajo")
 def consultar(
     job_id: str,
+    request: Request,
     sesion: dict = Depends(get_sesion_actual),
     gestor: GestorTrabajos = Depends(get_gestor),
 ) -> TrabajoComunResponse:
-    return _respuesta(_trabajo_propio(gestor, job_id, sesion["workspace_id"]))
+    return _respuesta(
+        _autorizar_chat(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]), sesion["token"])
+    )
 
 
 @router.post("/{job_id}/cancel", response_model=TrabajoComunResponse, summary="Cancelar trabajo")
@@ -114,7 +135,9 @@ async def _stream(
             trabajo, eventos = await run_in_threadpool(
                 lector or _leer_stream, gestor, manager, sesion, job_id, ultimo_id
             )
-        except ErrorAplicacion as error:
+        except (ErrorAplicacion, StorageUnavailable) as error:
+            if isinstance(error, StorageUnavailable):
+                error = ErrorAplicacion(ErrorCode.STORAGE_UNAVAILABLE, "No se pudo verificar el acceso a las fuentes.")
             # Headers ya enviados: informar el error y cerrar, sin revelar resultados.
             datos_error = {
                 "error": error.error.model_dump(),
@@ -151,9 +174,16 @@ def eventos(
     gestor: GestorTrabajos = Depends(get_gestor),
     manager: SessionManager = Depends(get_session_manager),
 ) -> StreamingResponse:
-    _trabajo_propio(gestor, job_id, sesion["workspace_id"])
+    _autorizar_chat(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]), sesion["token"])
+
+    def leer(gestor, manager, sesion, job_id, ultimo_id):
+        trabajo, eventos = _leer_stream(gestor, manager, sesion, job_id, ultimo_id)
+        if eventos or trabajo["status"] not in ACTIVOS:
+            _autorizar_chat(request, trabajo, sesion["token"])
+        return trabajo, eventos
+
     return StreamingResponse(
-        _stream(request, gestor, manager, sesion, job_id, ultimo_id),
+        _stream(request, gestor, manager, sesion, job_id, ultimo_id, lector=leer),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

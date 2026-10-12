@@ -128,6 +128,8 @@ class Configuracion(BaseSettings):
     global_heavy_job_concurrency: int = Field(default=1, ge=1, le=1)
     max_queued_jobs: int = Field(default=5, gt=0)
     default_output_language: Literal["es", "en", "pt"] = "es"
+    chat_history_turns: int = Field(default=8, ge=0, le=50)
+    chat_history_max_tokens: int = Field(default=2000, ge=0, le=8000)
 
     # ------------------------------------------------------------------
     # CORS (§11.2: "los orígenes CORS, si se habilitan, se restringen a los
