@@ -187,7 +187,7 @@ def eventos(
     gestor: GestorTrabajos = Depends(get_gestor),
     manager: SessionManager = Depends(get_session_manager),
 ) -> StreamingResponse:
-    _autorizar_chat(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]), sesion["token"])
+    _autorizar_resultado(request, _trabajo_propio(gestor, job_id, sesion["workspace_id"]), sesion["token"])
 
     def leer(gestor, manager, sesion, job_id, ultimo_id):
         trabajo, eventos = _leer_stream(gestor, manager, sesion, job_id, ultimo_id)

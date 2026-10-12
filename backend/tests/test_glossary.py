@@ -136,6 +136,8 @@ def test_glosario_verificado_con_citas_y_cache_sin_llamadas(entorno, idioma):
     chunks = {c.chunk_id for c in e.app.state.documents_query.chunks(e.ws["token"], e.doc)}
     assert all(r["chunk_id"] in chunks for t in salida["terminos"] for r in t["referencias"])
     assert e.cliente.get("/api/glossaries/" + recibo["glossary_id"], headers=e.headers).json() == salida
+    eventos = e.cliente.get(recibo["events_url"], headers=e.headers)
+    assert eventos.status_code == 200 and "event: progress" in eventos.text
     llamadas = (e.doble.llamadas_generacion, e.doble.llamadas_verificacion, e.doble.llamadas_embeddings)
     for clave in (None, "intencion", "nueva-intencion"):
         cache = glosario(e, clave, idioma_salida=idioma)
@@ -247,6 +249,7 @@ def test_borrado_remoto_y_local_no_entregan_cache(entorno):
     e.storage.upload(clave_workspace(e.ws["workspace_id"]), json.dumps(manifest))
     assert glosario(e).status_code == 404
     assert e.cliente.get(recibo["status_url"], headers=e.headers).status_code == 404
+    assert e.cliente.get(recibo["events_url"], headers=e.headers).status_code == 404
     assert e.cliente.get("/api/glossaries/" + recibo["glossary_id"], headers=e.headers).status_code == 404
     e.cliente.delete("/api/documents/" + e.doc, headers=e.headers)
     assert e.db.obtener_job(recibo["job_id"])["resultado"] is None
