@@ -190,3 +190,20 @@ def test_bucket_rechaza_transiciones_habilitadas(entorno_oci):
     sdk.get_object_lifecycle_policy = lambda *a, **k: NS(data=NS(items=[NS(is_enabled=True, action="ARCHIVE")]))
     with pytest.raises(StorageConfigError, match="transiciones"):
         crear()
+
+
+def test_reinicio_al_limite_ordinario_conserva_capacidad_de_limpieza(entorno_oci):
+    cfg, sdk, crear, _ = entorno_oci
+    cfg.oci_max_requests_per_month = 100
+    proveedor = crear()
+    while proveedor.presupuesto.resumen()["solicitudes"] < 90:
+        proveedor.presupuesto.reservar_solicitud("prueba")
+    reiniciado = crear()
+    assert reiniciado.presupuesto.resumen()["solicitudes"] == 95
+    with pytest.raises(StorageBudgetExceeded):
+        reiniciado.get("demo/inexistente")
+    from app.storage.provider import StorageNotFound
+
+    with mantenimiento_storage(), pytest.raises(StorageNotFound):
+        reiniciado.delete("demo/inexistente")
+    assert reiniciado.presupuesto.resumen()["solicitudes"] == 96

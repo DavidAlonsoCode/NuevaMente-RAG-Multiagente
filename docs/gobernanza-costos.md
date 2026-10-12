@@ -19,6 +19,9 @@ para revocación y limpieza (redondeados hacia abajo en presupuestos pequeños).
 La actividad ordinaria se bloquea antes de consumir ese margen. Mantenimiento
 puede usarlo hasta el límite total; al agotarlo quedan obligaciones pendientes
 que se reintentan tras renovar cuota. Una alerta OCI de facturación no corta gasto.
+Las lecturas de control del arranque pueden usar ese margen para que un reinicio
+al techo ordinario permita iniciar la limpieza; ninguna nueva escritura de usuario
+obtiene ese privilegio.
 
 ## Información al usuario
 
