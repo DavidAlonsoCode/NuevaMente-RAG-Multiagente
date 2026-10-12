@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import time
-from typing import Any, BinaryIO, Literal, Optional, TypedDict, cast
+from typing import Any, BinaryIO, Literal, NotRequired, Optional, TypedDict, cast, get_args
 from urllib.parse import quote
 
 import requests
@@ -43,6 +43,67 @@ class UploadResponse(TypedDict):
 
 
 ExportFormat = Literal["json", "md", "pdf", "csv", "tsv", "apkg"]
+
+# Valores de máquina del contrato v1 (docs/contratos-api.md, app/schemas/enums.py).
+RecipientProfile = Literal["principiante", "junior_ssr", "lider_tecnico", "ejecutivo"]
+PedagogicalFormat = Literal["tutorial", "flashcards", "quiz", "resumen_ejecutivo", "guion_clase"]
+IndustryNiche = Literal["fintech", "salud", "ecommerce", "general"]
+DetailLevel = Literal["didactico", "practico", "tecnico_profundo"]
+OutputLanguage = Literal["es", "en", "pt"]
+JobStatus = Literal["queued", "running", "completed", "rejected_quality", "failed", "cancelled"]
+DocumentStatus = Literal["processing", "ready", "failed"]
+TipoAlcance = Literal["documento_completo", "seccion"]
+
+PERFILES: tuple[RecipientProfile, ...] = get_args(RecipientProfile)
+FORMATOS: tuple[PedagogicalFormat, ...] = get_args(PedagogicalFormat)
+NICHOS: tuple[IndustryNiche, ...] = get_args(IndustryNiche)
+NIVELES_DETALLE: tuple[DetailLevel, ...] = get_args(DetailLevel)
+IDIOMAS_SALIDA: tuple[OutputLanguage, ...] = get_args(OutputLanguage)
+
+
+class AlcanceSolicitud(TypedDict):
+    tipo: TipoAlcance
+    seccion_id: NotRequired[str]
+
+
+class GenerateRequest(TypedDict):
+    document_id: str
+    perfil_destinatario: RecipientProfile
+    formato_salida: PedagogicalFormat
+    nicho_sector: IndustryNiche
+    nivel_detalle: DetailLevel
+    idioma_salida: OutputLanguage
+    alcance: AlcanceSolicitud
+
+
+class SeccionDocumental(TypedDict):
+    seccion_id: str
+    titulo: str
+    linea_inicio: int
+    linea_fin: int
+
+
+class CoberturaDocumento(TypedDict):
+    paginas_procesadas: list[int]
+    paginas_omitidas: list[int]
+    paginas_visuales_pendientes: list[int]
+    secciones_procesadas: list[SeccionDocumental]
+    secciones_omitidas: list[SeccionDocumental] | None
+    secciones_visuales_pendientes: list[SeccionDocumental] | None
+
+
+class DocumentoResponse(TypedDict):
+    document_id: str
+    titulo: str
+    status: DocumentStatus
+    metadata: dict[str, Any] | None
+    cobertura: CoberturaDocumento | None
+    error: dict[str, Any] | None
+
+
+class DocumentosResponse(TypedDict):
+    items: list[DocumentoResponse]
+    next_cursor: str | None
 
 
 def _identificador_seguro(value: object) -> str | None:
