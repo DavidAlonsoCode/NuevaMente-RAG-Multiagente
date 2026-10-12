@@ -2196,6 +2196,23 @@ class RegistroOperativo:
         return json.loads(fila[0]) if fila else None
 
     @_sincronizado
+    def confirmar_progreso(self, workspace_id: str, state: dict) -> None:
+        """Replica un estado confirmado en OCI; nunca retrocede una versión local."""
+        _validar_respuesta_cacheada(state)
+        version = state.get("version")
+        if type(version) is not int or version < 1:
+            raise ValueError("Progreso sin versión válida")
+        if self.obtener_workspace(workspace_id) is None:
+            return
+        self._conn.execute(
+            """INSERT INTO workspace_progress VALUES (?, ?, ?, ?)
+               ON CONFLICT(workspace_id) DO UPDATE SET
+               version=excluded.version, state_json=excluded.state_json, actualizado_en=excluded.actualizado_en
+               WHERE excluded.version >= workspace_progress.version""",
+            (workspace_id, version, json.dumps(state, ensure_ascii=False, allow_nan=False), _iso(_ahora())),
+        )
+
+    @_sincronizado
     def esta_borrado(self, recurso_tipo: str, recurso_id: str) -> bool:
         """True mientras exista la lápida; el plazo nunca restaura acceso."""
         fila = self._conn.execute(

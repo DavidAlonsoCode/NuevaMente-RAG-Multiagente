@@ -102,13 +102,13 @@ class QuizAnswerRequest(ModeloContenido):
 
     model_config = ConfigDict(extra="forbid")
 
-    question_id: str = Field(min_length=1)
-    option_id: str = Field(min_length=1)
-    event_id: str = Field(min_length=1, description="Identificador de evento idempotente.")
+    question_id: str = Field(min_length=1, max_length=64)
+    option_id: str = Field(min_length=1, max_length=64)
+    event_id: str = Field(min_length=1, max_length=128, description="Identificador de evento idempotente.")
 
 
 class ProgressEvent(ModeloContenido):
-    """Body de POST /api/progress/events (issue #41): eventos de estudio idempotentes.
+    """Body de POST /api/progress/events (issue #35; consumidor UI #41).
 
     Idempotencia por ``event_id`` estable: reintentar el mismo evento (p. ej.
     tras una reconexión) NO duplica el progreso (criterio 11 de §12.2).
@@ -126,12 +126,14 @@ class ProgressEvent(ModeloContenido):
 
     model_config = ConfigDict(extra="forbid")
 
-    event_id: str = Field(min_length=1, description="Clave de idempotencia estable por intención de evento.")
+    event_id: str = Field(
+        min_length=1, max_length=128, description="Clave de idempotencia estable por intención de evento."
+    )
     tipo: Literal["concepto_revisado", "flashcard_vista"]
-    document_id: str | None = None
-    generation_id: str | None = None
-    flashcard_id: str | None = Field(default=None, min_length=1)
-    concepto: str | None = Field(default=None, description="Nombre del concepto para concepto_revisado.")
+    document_id: str | None = Field(default=None, min_length=1, max_length=128)
+    generation_id: str | None = Field(default=None, min_length=1, max_length=128)
+    flashcard_id: str | None = Field(default=None, min_length=1, max_length=64)
+    concepto: str | None = Field(default=None, min_length=1, max_length=500, description="Concepto revisado.")
 
     @model_validator(mode="after")
     def _tipo_concepto_exige_concepto(self) -> "ProgressEvent":
@@ -142,6 +144,10 @@ class ProgressEvent(ModeloContenido):
             raise ValueError("concepto_revisado exige document_id")
         if self.tipo == "flashcard_vista" and (not self.generation_id or not self.flashcard_id):
             raise ValueError("flashcard_vista exige generation_id y flashcard_id")
+        if self.tipo == "concepto_revisado" and self.flashcard_id is not None:
+            raise ValueError("concepto_revisado no admite flashcard_id")
+        if self.tipo == "flashcard_vista" and self.concepto is not None:
+            raise ValueError("flashcard_vista no admite concepto")
         return self
 
 
