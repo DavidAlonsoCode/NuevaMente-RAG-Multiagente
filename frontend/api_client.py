@@ -232,7 +232,7 @@ class APIClient:
             "/api/documents/upload",
             token=token,
             files={"file": (filename, content, media_type)},
-            fields={"documento_titulo": title} if title is not None else None,
+            fields={"titulo": title} if title is not None else None,
             idempotency_key=idempotency_key,
         )
 

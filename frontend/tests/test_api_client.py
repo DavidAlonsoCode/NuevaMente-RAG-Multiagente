@@ -231,7 +231,7 @@ def test_upload_multipart_y_clave_idempotente(client):
         client.upload_file("token", "redes.pdf", b"%PDF", "application/pdf", title="Redes", idempotency_key="subida-1")
     args = request.call_args.kwargs
     assert args["files"] == {"file": ("redes.pdf", b"%PDF", "application/pdf")}
-    assert args["data"] == {"documento_titulo": "Redes"}
+    assert args["data"] == {"titulo": "Redes"}
     assert args["headers"] == {"Authorization": "Bearer token", "Idempotency-Key": "subida-1", "Accept-Language": "es"}
     assert args["json"] is None
 
