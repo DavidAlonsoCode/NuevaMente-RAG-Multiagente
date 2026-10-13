@@ -38,6 +38,7 @@ MAX_PAGINAS = 5
 CLAVE_PENDIENTE = "generacion_pendiente"
 CLAVE_ULTIMO_INTENTO = "generacion_ultimo_intento"
 CLAVE_ACTIVA = "generacion_activa"
+CLAVE_CONTROLES = "generacion_controles"
 
 
 class GeneracionPendiente(TypedDict):
@@ -136,9 +137,22 @@ def _cargar_documentos(api_client: APIClient, token: str, idioma: str) -> list[D
     return documentos_ready(items)
 
 
-def _descartar_valor_obsoleto(clave: str, opciones: list[str] | tuple[str, ...]) -> None:
-    if clave in st.session_state and st.session_state[clave] not in opciones:
-        del st.session_state[clave]
+def _guardar_control(clave: str) -> None:
+    st.session_state[CLAVE_CONTROLES][clave] = st.session_state[clave]
+    if clave == "gen_document_id":
+        st.session_state.documento_activo_id = st.session_state[clave]
+        st.session_state.documento_activo_demo = False
+
+
+def _preparar_control(clave: str, opciones: list[str] | tuple[str, ...], defecto: str | None) -> None:
+    # Los widgets cambian de identidad al traducir sus etiquetas. La selección
+    # vive fuera de sus claves temporales y se restaura antes de registrarlos.
+    controles = st.session_state.setdefault(CLAVE_CONTROLES, {})
+    valor = controles.get(clave, defecto)
+    if valor not in opciones:
+        valor = defecto
+    controles[clave] = valor
+    st.session_state[clave] = valor
 
 
 def render_panel_generacion(api_client: APIClient, idioma: str) -> None:
@@ -151,54 +165,102 @@ def render_panel_generacion(api_client: APIClient, idioma: str) -> None:
     documentos = _cargar_documentos(api_client, token, idioma)
     por_id = {d["document_id"]: d for d in documentos}
     ids = list(por_id)
-    _descartar_valor_obsoleto("gen_document_id", ids)
+    controles = st.session_state.setdefault(CLAVE_CONTROLES, {})
+    activo = (st.session_state.get("documento_activo_id"), st.session_state.get("documento_activo_demo", False))
+    if activo != st.session_state.get("gen_seleccion_anterior", (None, False)):
+        controles["gen_document_id"] = activo[0] if not activo[1] and activo[0] in por_id else None
+    _preparar_control("gen_document_id", ids, ids[0] if "gen_document_id" not in controles and ids else None)
+    if activo[1]:
+        st.warning(t("sidebar.demo_generacion_pendiente", idioma))
     if ids:
         document_id = st.selectbox(
             t("sidebar.documento", idioma),
             ids,
             format_func=lambda i: por_id[i].get("titulo") or i,
             key="gen_document_id",
+            index=None,
+            on_change=_guardar_control,
+            args=("gen_document_id",),
         )
     else:
         document_id = None
         st.caption(t("sidebar.sin_documentos", idioma))
 
+    if document_id is not None:
+        st.session_state.documento_activo_id = document_id
+        st.session_state.documento_activo_demo = False
+    elif not activo[1]:
+        st.session_state.documento_activo_id = None
+    st.session_state.gen_seleccion_anterior = (
+        st.session_state.get("documento_activo_id"),
+        st.session_state.get("documento_activo_demo", False),
+    )
+
+    for clave, opciones, defecto in (
+        ("gen_perfil", PERFILES, PERFILES[0]),
+        ("gen_formato", FORMATOS, FORMATOS[0]),
+        ("gen_nicho", NICHOS, "general"),
+        ("gen_detalle", NIVELES_DETALLE, NIVELES_DETALLE[0]),
+        ("gen_idioma_salida", IDIOMAS_SALIDA, "es"),
+    ):
+        _preparar_control(clave, opciones, defecto)
+
     perfil = st.selectbox(
-        t("sidebar.perfil", idioma), PERFILES, format_func=lambda v: t(f"perfil.{v}", idioma), key="gen_perfil"
+        t("sidebar.perfil", idioma),
+        PERFILES,
+        format_func=lambda v: t(f"perfil.{v}", idioma),
+        key="gen_perfil",
+        on_change=_guardar_control,
+        args=("gen_perfil",),
     )
     formato = st.selectbox(
-        t("sidebar.formato", idioma), FORMATOS, format_func=lambda v: t(f"formato.{v}", idioma), key="gen_formato"
+        t("sidebar.formato", idioma),
+        FORMATOS,
+        format_func=lambda v: t(f"formato.{v}", idioma),
+        key="gen_formato",
+        on_change=_guardar_control,
+        args=("gen_formato",),
     )
     nicho = st.selectbox(
         t("sidebar.nicho", idioma),
         NICHOS,
-        index=NICHOS.index("general"),
         format_func=lambda v: t(f"nicho.{v}", idioma),
         key="gen_nicho",
+        on_change=_guardar_control,
+        args=("gen_nicho",),
     )
     detalle = st.selectbox(
         t("sidebar.detalle", idioma),
         NIVELES_DETALLE,
         format_func=lambda v: t(f"detalle.{v}", idioma),
         key="gen_detalle",
+        on_change=_guardar_control,
+        args=("gen_detalle",),
     )
     idioma_salida = st.selectbox(
         t("sidebar.idioma_salida", idioma),
         IDIOMAS_SALIDA,
         format_func=lambda v: t(f"idioma.{v}", idioma),
         key="gen_idioma_salida",
+        on_change=_guardar_control,
+        args=("gen_idioma_salida",),
     )
 
     documento = por_id.get(document_id) if document_id else None
     secciones = secciones_de(documento)
     opciones_alcance = ("documento_completo", "seccion") if secciones else ("documento_completo",)
-    _descartar_valor_obsoleto("gen_alcance", opciones_alcance)
+    _preparar_control("gen_alcance", opciones_alcance, "documento_completo")
     etiquetas_alcance = {
         "documento_completo": t("sidebar.alcance_completo", idioma),
         "seccion": t("sidebar.alcance_seccion", idioma),
     }
     alcance = st.radio(
-        t("sidebar.alcance", idioma), opciones_alcance, format_func=etiquetas_alcance.get, key="gen_alcance"
+        t("sidebar.alcance", idioma),
+        opciones_alcance,
+        format_func=etiquetas_alcance.get,
+        key="gen_alcance",
+        on_change=_guardar_control,
+        args=("gen_alcance",),
     )
     if documento is not None and not secciones:
         st.caption(t("sidebar.sin_secciones", idioma))
@@ -207,12 +269,14 @@ def render_panel_generacion(api_client: APIClient, idioma: str) -> None:
     seccion_titulo: str | None = None
     if alcance == "seccion":
         por_seccion = {s["seccion_id"]: s for s in secciones}
-        _descartar_valor_obsoleto("gen_seccion_id", list(por_seccion))
+        _preparar_control("gen_seccion_id", list(por_seccion), next(iter(por_seccion)))
         seccion_id = st.selectbox(
             t("sidebar.seccion", idioma),
             list(por_seccion),
             format_func=lambda i: etiqueta_seccion(por_seccion[i], idioma),
             key="gen_seccion_id",
+            on_change=_guardar_control,
+            args=("gen_seccion_id",),
         )
         if seccion_id:
             seccion_titulo = por_seccion[seccion_id].get("titulo") or seccion_id
@@ -274,6 +338,7 @@ def _enviar(api_client: APIClient, pendiente: GeneracionPendiente, idioma: str) 
         "seccion_titulo": pendiente["seccion_titulo"],
     }
     st.session_state[CLAVE_ACTIVA] = activa
+    st.session_state.mostrando_documentos = False
     st.session_state[CLAVE_PENDIENTE] = None
     st.session_state[CLAVE_ULTIMO_INTENTO] = None
     return True

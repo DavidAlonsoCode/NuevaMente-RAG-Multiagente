@@ -391,7 +391,18 @@ class APIClient:
         self, token: str, payload: dict[str, object], *, idempotency_key: str | None = None
     ) -> dict[str, object]:
         """POST /api/generate"""
-        return self._solicitar("POST", "/api/generate", json=payload, token=token, idempotency_key=idempotency_key)
+        data = self._solicitar("POST", "/api/generate", json=payload, token=token, idempotency_key=idempotency_key)
+        generation_id = data.get("generation_id") if isinstance(data, dict) else None
+        if (
+            not isinstance(generation_id, str)
+            or not generation_id
+            or _identificador_seguro(generation_id) != generation_id
+            or data.get("status") not in get_args(JobStatus)
+            or data.get("status_url") != f"/api/generations/{quote(generation_id, safe='')}"
+            or data.get("events_url") != f"/api/generations/{quote(generation_id, safe='')}/events"
+        ):
+            raise APIError("INVALID_RESPONSE", "Admisión de generación incompleta.", 502)
+        return data
 
     def get_generations(self, token: str, params: dict[str, object] | None = None) -> dict[str, object]:
         """GET /api/generations"""

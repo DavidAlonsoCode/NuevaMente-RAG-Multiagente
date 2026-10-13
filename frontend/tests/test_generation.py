@@ -1,5 +1,6 @@
 """Panel de parámetros y disparo de generación (issue #32)."""
 
+from copy import deepcopy
 from pathlib import Path
 from typing import get_args
 
@@ -93,6 +94,9 @@ def ui(monkeypatch):
     respuestas = []
 
     def crear(_self, token, payload, *, idempotency_key=None):
+        from app.schemas.requests import GenerateRequest
+
+        GenerateRequest.model_validate(payload)
         llamadas.append({"token": token, "payload": payload, "idempotency_key": idempotency_key})
         respuesta = respuestas.pop(0) if respuestas else ACEPTADA
         if isinstance(respuesta, Exception):
@@ -104,6 +108,11 @@ def ui(monkeypatch):
         APIClient, "create_workspace", lambda _: {"workspace_id": "ws", "token": "tok", "recovery_code": "rc"}
     )
     monkeypatch.setattr(APIClient, "get_documents", lambda _self, token, params=None: documentos)
+    monkeypatch.setattr(
+        APIClient,
+        "get_document",
+        lambda _self, token, cid: next(d for d in documentos["items"] if d["document_id"] == cid),
+    )
     monkeypatch.setattr(
         APIClient,
         "workspace_status",
@@ -207,3 +216,102 @@ def test_sin_documento_ready_no_se_puede_generar(ui):
     assert not app.exception
     assert _boton(app, "sidebar.generar").disabled
     assert any(t("sidebar.sin_documentos") == c.value for c in app.caption)
+
+
+@pytest.mark.integration_mock
+def test_cambiar_idioma_ui_conserva_todos_los_parametros(ui):
+    app, llamadas, _, _ = ui
+    for key, value in {
+        "gen_perfil": "ejecutivo",
+        "gen_formato": "guion_clase",
+        "gen_nicho": "salud",
+        "gen_detalle": "tecnico_profundo",
+        "gen_idioma_salida": "pt",
+    }.items():
+        app.selectbox(key=key).set_value(value).run()
+    app.radio(key="gen_alcance").set_value("seccion").run()
+    app.selectbox(key="gen_seccion_id").set_value("seccion:2").run()
+    app.selectbox[0].set_value("en").run()
+    assert not app.exception
+    assert app.session_state.idioma_ui == "en"
+    assert app.selectbox(key="gen_perfil").value == "ejecutivo"
+    assert app.selectbox(key="gen_formato").value == "guion_clase"
+    assert app.selectbox(key="gen_nicho").value == "salud"
+    assert app.selectbox(key="gen_detalle").value == "tecnico_profundo"
+    assert app.selectbox(key="gen_idioma_salida").value == "pt"
+    assert app.radio(key="gen_alcance").value == "seccion"
+    assert app.selectbox(key="gen_seccion_id").value == "seccion:2"
+    assert not llamadas
+
+
+@pytest.mark.integration_mock
+def test_seleccion_del_catalogo_es_la_fuente_de_generacion(ui):
+    app, llamadas, _, documentos = ui
+    segundo = deepcopy(DOC_READY)
+    segundo.update(document_id="doc_segundo", titulo="Segunda fuente")
+    documentos["items"].append(segundo)
+    app.run()
+    app.button(key="seleccionar_doc_segundo").click().run()
+    assert not app.exception
+    assert app.selectbox(key="gen_document_id").value == "doc_segundo"
+    _click(app, "sidebar.generar")
+    _click(app, "generar.confirmar")
+    assert llamadas[0]["payload"]["document_id"] == "doc_segundo"
+
+
+@pytest.mark.integration_mock
+@pytest.mark.parametrize("perfil", api_client.PERFILES)
+@pytest.mark.parametrize("formato", api_client.FORMATOS)
+def test_matriz_de_perfiles_y_formatos_se_envia_desde_la_ui(ui, perfil, formato):
+    app, llamadas, _, _ = ui
+    app.selectbox(key="gen_perfil").set_value(perfil).run()
+    app.selectbox(key="gen_formato").set_value(formato).run()
+    _click(app, "sidebar.generar")
+    _click(app, "generar.confirmar")
+    assert llamadas[0]["payload"]["perfil_destinatario"] == perfil
+    assert llamadas[0]["payload"]["formato_salida"] == formato
+
+
+@pytest.mark.integration_mock
+def test_demo_seleccionada_no_genera_otra_fuente_del_espacio(ui):
+    app, llamadas, _, _ = ui
+    app.session_state.documento_activo_id = "demo-pagos-fintech"
+    app.session_state.documento_activo_demo = True
+    app.run()
+    assert not app.exception
+    assert app.selectbox(key="gen_document_id").value is None
+    assert _boton(app, "sidebar.generar").disabled
+    assert any(t("sidebar.demo_generacion_pendiente") == w.value for w in app.warning)
+    assert not llamadas
+    app.selectbox(key="gen_document_id").set_value("doc_vcn").run()
+    assert not app.session_state.documento_activo_demo
+    assert app.session_state.documento_activo_id == "doc_vcn"
+    assert not _boton(app, "sidebar.generar").disabled
+
+
+@pytest.mark.integration_mock
+def test_catalogo_sigue_accesible_despues_de_generar_sin_perder_cabecera(ui):
+    app, llamadas, _, _ = ui
+    _click(app, "sidebar.generar")
+    _click(app, "generar.confirmar")
+    activa = deepcopy(app.session_state.generacion_activa)
+    app.button(key="volver_documentos").click().run()
+    assert not app.exception
+    assert any(b.key == "seleccionar_doc_vcn" for b in app.button)
+    _click(app, "generar.volver_resultado")
+    assert app.session_state.generacion_activa == activa
+    assert len(llamadas) == 1
+
+
+@pytest.mark.integration_mock
+@pytest.mark.parametrize("code,status", [("IDEMPOTENCY_CONFLICT", 409), ("SERVICE_UNAVAILABLE", 503)])
+def test_error_conserva_parametros_y_reintenta_el_mismo_trabajo(ui, code, status):
+    app, llamadas, respuestas, _ = ui
+    respuestas.append(APIError(code, "privado", status))
+    app.selectbox(key="gen_formato").set_value("quiz").run()
+    _click(app, "sidebar.generar")
+    _click(app, "generar.confirmar")
+    assert t("errors." + code) in app.error[0].value
+    assert app.selectbox(key="gen_formato").value == "quiz"
+    _click(app, "generar.confirmar")
+    assert llamadas[0]["idempotency_key"] == llamadas[1]["idempotency_key"]

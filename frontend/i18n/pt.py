@@ -55,6 +55,8 @@ CATALOGO_PT: dict[str, str] = {
     # ------------------------- sidebar -------------------------
     "sidebar.titulo": "Parâmetros de adaptação",
     "sidebar.documento": "Documento de origem",
+    "sidebar.demo_generacion_pendiente": "A geração a partir da biblioteca demo ainda está pendente de integração. Para gerar, selecione um documento do seu espaço ou envie a fonte.",
+    "generar.volver_resultado": "Voltar à geração",
     "sidebar.perfil": "Perfil do destinatário",
     "sidebar.formato": "Formato de saída",
     "sidebar.nicho": "Nicho de aplicação",

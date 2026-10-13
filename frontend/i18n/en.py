@@ -55,6 +55,8 @@ CATALOGO_EN: dict[str, str] = {
     # ------------------------- sidebar -------------------------
     "sidebar.titulo": "Adaptation parameters",
     "sidebar.documento": "Source document",
+    "sidebar.demo_generacion_pendiente": "Generation from the demo library is pending integration. To generate, select a document from your workspace or upload the source.",
+    "generar.volver_resultado": "Back to generation",
     "sidebar.perfil": "Recipient profile",
     "sidebar.formato": "Output format",
     "sidebar.nicho": "Industry niche",
