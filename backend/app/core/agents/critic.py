@@ -128,7 +128,13 @@ _TAREAS = {
     "descomponer": "Extraer TODAS las afirmaciones factuales atómicas del contenido y metadatos. Resolver pronombres. "
     "Indicar su ubicación exacta en segmentos. No agregar hechos ni omitir falsedades. No tomar etiquetas, "
     "preguntas, tiempos estimados, analogías/escenarios explícitamente ficticios como hechos literales; "
-    "sus propiedades técnicas sí requieren respaldo. No excluir hechos solo porque falte evidencia.",
+    "sus propiedades técnicas sí requieren respaldo. No excluir hechos solo porque falte evidencia. "
+    "Extraer proposiciones sobre el tema, no describir la estructura del borrador: 'el título es Redes', "
+    "'la pregunta del ítem dice...' o 'las etiquetas son...' no son afirmaciones técnicas de la fuente. "
+    "Si un título afirma 'todas las redes son públicas', extraer esa proposición, aunque sea falsa. "
+    "Separar los hechos de las analogías explícitas: de 'una subred divide direcciones; analogía ilustrativa: "
+    "como calles de un barrio', extraer el hecho de la subred, no afirmar que la red es un barrio. "
+    "Cada ubicación debe ser UNA clave literal de segmentos; repetirla para varios hechos atómicos.",
     "juzgar": "Juzgar cada ID original exactamente una vez. Para respaldada/contradicha citar chunks que prueben "
     "el veredicto y estén entre las citas_permitidas de esa afirmación. Sin prueba usar sin_evidencia. "
     "Conservar números, unidades, negaciones y condiciones. No usar conocimiento externo.",
@@ -180,6 +186,12 @@ class _SesionRevision:
         prompt = json.dumps(payload, ensure_ascii=False, allow_nan=False)
         sistema = prompts.critic.system_instruction + "\nTarea actual: " + _TAREAS[tarea]
         schema = modelo_salida.model_json_schema()
+        if modelo_salida is Descomposicion:
+            # Gemini rechaza la gramática acotada a 256 objetos (HTTP 400).
+            # Pydantic conserva ese límite al validar la respuesta recibida.
+            schema["properties"]["afirmaciones"].pop("maxItems")
+            # Una ubicación es una clave original, nunca una concatenación.
+            schema["$defs"]["AfirmacionExtraida"]["properties"]["ubicacion"]["enum"] = list(self.segmentos)
         cfg = self.dependencias.configuracion
         max_output = cfg.generation_max_output_tokens
         tokens = TokenizadorBPE().contar(sistema + prompt + json.dumps(schema)) + max_output

@@ -51,11 +51,39 @@ Gemini simulado y almacenamiento local explícito. Se comprueba la carga de una
 fuente sintética, selección desde el catálogo, formato flashcards, idioma de
 contenido PT y traducción de la interfaz a EN conservando los parámetros.
 
-La corrida con Gemini real indicada en el issue queda pendiente: el `.env`
-disponible tiene la clave, pero no los triples RPM/TPM/RPD que exige §7.5.
-No se inventan cuotas ni se presenta el doble como evidencia real. El issue
-#32 debe permanecer abierto hasta registrar esa comprobación. Seguimiento: #117
-y smoke real #54.
+La corrida real se completó el **12/10/2026**, después de consultar las cuotas
+del proyecto de la clave local en AI Studio. El usuario eligió
+`gemini-3.5-flash-lite`: 15 RPM, 250.000 TPM y 500 RPD compartidos por redacción,
+revisión y visión. Embeddings mantiene `gemini-embedding-2`: 100 RPM, 30.000 TPM
+y 1.000 RPD. La cuenta muestra Pro y el proyecto de API, nivel gratuito.
+
+Se corrigieron los errores revelados por esa verificación:
+
+- Gemini devuelve HTTP 400 con el `maxItems: 256` del esquema de extracción.
+  La misma solicitud sin ese límite terminó con HTTP 200. Se retira únicamente
+  del esquema enviado; Pydantic sigue rechazando más de 256 afirmaciones o
+  textos de más de 2.000 caracteres.
+- Las ubicaciones del extractor se restringen a las claves reales de segmentos
+  mediante `enum`. Se mantiene la validación de pertenencia posterior.
+- La instrucción distingue las proposiciones técnicas de descripciones del
+  borrador como «el título es…», y separa hechos de analogías ficticias explícitas.
+  Los títulos que contienen afirmaciones técnicas siguen siendo evaluables.
+  La versión de prompts pasa a `nm-prompts-1.1.1`.
+
+El recorrido usa Streamlit AppTest y APIClient contra FastAPI TestClient, con
+SQLite, Chroma, worker, LangGraph y **Gemini reales**, y **storage local explícito**.
+Un único envío de flashcards/principiante/general/didáctico/ES/completo terminó
+en `completed`, con revisión automática aprobada: 14 afirmaciones, 14 respaldadas,
+anclaje 1,0. Usó 8 solicitudes de redacción/revisión, 30.600 tokens de entrada y
+7.367 de salida, tras dos redacciones; el contador reservó 25 solicitudes de
+embeddings. Son cifras de esta corrida, no del consumo global de la cuenta.
+
+La [evidencia reproducible](issue-32-gemini-real.json) contiene la fuente sintética,
+su hash, parámetros, trazabilidad, evaluación y consumo, sin claves ni tokens de
+sesión. El resultado de Gemini es una evaluación automática, no una revisión
+humana. Las 20 combinaciones y ES/EN/PT siguen acreditadas con dobles; esta
+evidencia real corresponde a un caso en español. La evaluación humana #60, el
+smoke con OCI real #54 y la entrega pública conservan sus verificaciones propias.
 
 La biblioteca demo tiene rutas de lectura, pero `POST /api/generate` todavía
 admite sólo documentos del workspace. Se informa esa limitación en la UI y se

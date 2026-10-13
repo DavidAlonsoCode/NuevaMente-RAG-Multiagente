@@ -139,6 +139,49 @@ def test_aprueba_cinco_formatos_sin_persistir_ni_completar(entorno, formato):
     assert aplicar(nuevo, {}) == nuevo
 
 
+def test_schema_descomposicion_compatible_con_gemini_conserva_el_contrato(entorno):
+    estado = borrador(entorno)
+    doble = entorno[1].proveedor
+    juez(doble)
+    nuevo = aplicar(estado, critic(estado, entorno[1]))
+    assert nuevo.destino_revision == "finalizer"
+    for entrada in doble.entradas_verificacion:
+        schema = entrada["response_json_schema"]
+        assert schema["type"] == "object"
+        assert schema["additionalProperties"] is False
+        assert schema["required"]
+    extraccion = doble.entradas_verificacion[0]["response_json_schema"]
+    assert "maxItems" not in extraccion["properties"]["afirmaciones"]
+    assert extraccion["$defs"]["AfirmacionExtraida"]["properties"]["texto"]["maxLength"] == 2000
+    segmentos = json.loads(doble.entradas_verificacion[0]["prompt"])["segmentos"]
+    assert extraccion["$defs"]["AfirmacionExtraida"]["properties"]["ubicacion"]["enum"] == list(segmentos)
+    pedagogia = doble.entradas_verificacion[2]["response_json_schema"]
+    assert pedagogia["properties"]["feedback"]["maxItems"] == 20
+    juicio = doble.entradas_verificacion[1]["response_json_schema"]
+    assert juicio["$defs"]["VeredictoFactual"]["properties"]["estado"]["enum"] == [
+        "respaldada",
+        "contradicha",
+        "sin_evidencia",
+    ]
+
+
+@pytest.mark.parametrize("exceso", ["texto", "afirmaciones"])
+def test_el_juez_conserva_limites_locales_aunque_gemini_no_acote_extraccion(entorno, exceso):
+    estado = borrador(entorno)
+
+    def modificar(fase, salida, datos, entrada):
+        if fase == "descomponer" and exceso == "texto":
+            salida["afirmaciones"][0]["texto"] = "x" * 2001
+        return salida
+
+    juez(entorno[1].proveedor, total=257 if exceso == "afirmaciones" else 4, modificar=modificar)
+    nuevo = aplicar(estado, critic(estado, entorno[1]))
+    assert nuevo.destino_revision != "finalizer"
+    assert nuevo.persistencia is None
+    assert nuevo.status == "failed" and nuevo.error.code == "INVALID_EVALUATION"
+    assert nuevo.evaluacion_factual is None and nuevo.evaluacion_pedagogica is None
+
+
 @pytest.mark.parametrize(
     "buenas,total,banda",
     [

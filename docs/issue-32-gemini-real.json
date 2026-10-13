@@ -1,0 +1,178 @@
+{
+  "verified_date_argentina": "2026-10-12",
+  "source": {
+    "kind": "synthetic_public_text",
+    "text": "Una red virtual agrupa recursos y permite organizar su comunicación. Una subred divide la red virtual en grupos de direcciones. Una tabla de rutas dirige el tráfico hacia un destino a través de una regla. Las reglas de seguridad establecen qué tráfico está permitido. Las rutas y las reglas de seguridad cumplen funciones diferentes. Al verificar conectividad hay que revisar ambos componentes.",
+    "sha256": "a649d6d630c205c5329db76e32d4dd1b978a849d1bdc83aa7e48f253c7014d90"
+  },
+  "environment": {
+    "frontend": "Streamlit AppTest",
+    "http": "APIClient con puente hacia FastAPI TestClient",
+    "backend": "FastAPI, SQLite, Chroma, worker y LangGraph reales",
+    "gemini_real": true,
+    "oci_real": false,
+    "storage": "local explícito"
+  },
+  "result": {
+    "status": "completed",
+    "metadata": {
+      "perfil_aplicado": "principiante",
+      "formato_generado": "flashcards",
+      "nicho_sector": "general",
+      "nivel_detalle": "didactico",
+      "idioma_origen": "es",
+      "idioma_salida": "es",
+      "conceptos_clave": [
+        "red virtual",
+        "subred",
+        "tabla de rutas",
+        "reglas de seguridad"
+      ],
+      "prerrequisitos": [],
+      "objetivos_aprendizaje": [
+        "Comprender la función de una red virtual y su subred",
+        "Identificar el propósito de las tablas de rutas y las reglas de seguridad",
+        "Revisar ambos componentes al verificar la conectividad"
+      ],
+      "tiempo_estimado_estudio_minutos": 5,
+      "alcance": {
+        "tipo": "documento_completo",
+        "seccion_id": null,
+        "secciones_cubiertas": [
+          "seccion:1"
+        ]
+      }
+    },
+    "quality": {
+      "anclaje_fuente_score": 1.0,
+      "cantidad_afirmaciones": 14,
+      "cantidad_respaldadas": 14,
+      "estado_evaluacion": "aprobada",
+      "claridad_pedagogica": "alta",
+      "adecuacion_perfil": "alta",
+      "cobertura_objetivos": "completa",
+      "coherencia_didactica": "alta",
+      "verificacion_visual": "no_aplica",
+      "observaciones": null,
+      "razones_bloqueo": []
+    },
+    "trace": {
+      "modelo_generacion": "gemini-3.5-flash-lite",
+      "modelo_verificacion": "gemini-3.5-flash-lite",
+      "modelo_embeddings": "gemini-embedding-2",
+      "prompt_version": "nm-prompts-1.1.1",
+      "parser_version": "config-sha256:4be5c606c9d0c76c1ba46fc199743a0005479fb05f7d7c3cf11fa78b403c78ef",
+      "retrieval": {
+        "k": 5,
+        "fetch_k": 15,
+        "lambda_mult": 0.7
+      }
+    }
+  },
+  "consumption": {
+    "generation_verification_sdk_requests": 8,
+    "prompt_tokens": 30600,
+    "output_tokens": 7367,
+    "total_tokens": 37967,
+    "embedding_requests_reserved": 25,
+    "accounting_scope": "Esta corrida; los contadores locales no representan el consumo global del proyecto",
+    "calls": [
+      {
+        "sequence": 1,
+        "model": "gemini-3.5-flash-lite",
+        "tokens": {
+          "prompt_token_count": 4037,
+          "candidates_token_count": 823,
+          "thoughts_token_count": null,
+          "total_token_count": 4860
+        }
+      },
+      {
+        "sequence": 2,
+        "model": "gemini-3.5-flash-lite",
+        "tokens": {
+          "prompt_token_count": 2710,
+          "candidates_token_count": 919,
+          "thoughts_token_count": null,
+          "total_token_count": 3629
+        }
+      },
+      {
+        "sequence": 3,
+        "model": "gemini-3.5-flash-lite",
+        "tokens": {
+          "prompt_token_count": 3591,
+          "candidates_token_count": 2217,
+          "thoughts_token_count": null,
+          "total_token_count": 5808
+        }
+      },
+      {
+        "sequence": 4,
+        "model": "gemini-3.5-flash-lite",
+        "tokens": {
+          "prompt_token_count": 5540,
+          "candidates_token_count": 164,
+          "thoughts_token_count": null,
+          "total_token_count": 5704
+        }
+      },
+      {
+        "sequence": 5,
+        "model": "gemini-3.5-flash-lite",
+        "tokens": {
+          "prompt_token_count": 5867,
+          "candidates_token_count": 1014,
+          "thoughts_token_count": null,
+          "total_token_count": 6881
+        }
+      },
+      {
+        "sequence": 6,
+        "model": "gemini-3.5-flash-lite",
+        "tokens": {
+          "prompt_token_count": 2121,
+          "candidates_token_count": 575,
+          "thoughts_token_count": null,
+          "total_token_count": 2696
+        }
+      },
+      {
+        "sequence": 7,
+        "model": "gemini-3.5-flash-lite",
+        "tokens": {
+          "prompt_token_count": 2511,
+          "candidates_token_count": 1556,
+          "thoughts_token_count": null,
+          "total_token_count": 4067
+        }
+      },
+      {
+        "sequence": 8,
+        "model": "gemini-3.5-flash-lite",
+        "tokens": {
+          "prompt_token_count": 4223,
+          "candidates_token_count": 99,
+          "thoughts_token_count": null,
+          "total_token_count": 4322
+        }
+      }
+    ]
+  },
+  "limits_verified_in_ai_studio": {
+    "billing_tier": "Free",
+    "account_badge": "Pro",
+    "gemini-3.5-flash-lite": {
+      "rpm": 15,
+      "tpm": 250000,
+      "rpd": 500
+    },
+    "gemini-embedding-2": {
+      "rpm": 100,
+      "tpm": 30000,
+      "rpd": 1000
+    }
+  },
+  "human_evaluation": false,
+  "production_smoke": false
+}
