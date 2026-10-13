@@ -1,10 +1,19 @@
+from collections.abc import Callable
+
 import streamlit as st
 from api_client import APIClient, APIError
 from i18n import CATALOGOS, t
 
 from components.budgets import render_presupuesto
 from components.errors import mostrar_error_ui
+from components.generation import (
+    cancelar_confirmacion,
+    confirmacion_pendiente,
+    enviar_confirmacion,
+    render_panel_generacion,
+)
 from components.history import render_historial
+from components.result_header import render_resumen_parametros
 from components.session import limpiar_sesion_local
 from components.upload import render_subida_archivo
 
@@ -15,6 +24,17 @@ def render_sidebar(api_client: APIClient, idioma_actual: str):
     # de carga, para no invalidar su estado durante la misma ejecución.
     if st.session_state.get("accion_confirmar"):
         _procesar_modal_pendiente(api_client, idioma_actual)
+    elif pendiente := confirmacion_pendiente():
+        _abrir_dialogo(
+            t("generar.resumen_titulo", idioma_actual),
+            etiqueta_aceptar=t("generar.confirmar", idioma_actual),
+            etiqueta_cancelar=t("comun.atras", idioma_actual),
+            dibujar_cuerpo=lambda: render_resumen_parametros(
+                pendiente["peticion"], pendiente["documento_titulo"], pendiente["seccion_titulo"], idioma_actual
+            ),
+            on_accept=lambda: enviar_confirmacion(api_client, idioma_actual),
+            on_cancel=cancelar_confirmacion,
+        )
     with st.sidebar:
         st.title(t("comun.app_nombre", idioma_actual))
 
@@ -22,20 +42,21 @@ def render_sidebar(api_client: APIClient, idioma_actual: str):
 
         st.divider()
 
-        st.markdown(f"### {t('sidebar.titulo', idioma_actual)}")
-
-        # Acciones de Sesión Activa
-        if st.session_state.get("session_token"):
-            st.divider()
-            render_presupuesto(api_client, idioma_actual)
-            _render_acciones_sesion(api_client, idioma_actual)
-
         bloque_carga = st.empty()
         if st.session_state.get("session_token") and not st.session_state.get("mostrando_recuperacion"):
             with bloque_carga.container():
                 render_subida_archivo(idioma_actual, api_client)
         else:
             bloque_carga.empty()
+
+        st.divider()
+        render_panel_generacion(api_client, idioma_actual)
+
+        # Acciones de Sesión Activa
+        if st.session_state.get("session_token"):
+            st.divider()
+            render_presupuesto(api_client, idioma_actual)
+            _render_acciones_sesion(api_client, idioma_actual)
 
         st.divider()
         # Componente de Historial
@@ -84,39 +105,60 @@ def _render_acciones_sesion(api_client: APIClient, idioma_actual: str):
             st.rerun()
 
 
-def _procesar_modal_pendiente(api_client: APIClient, idioma_actual: str):
-    """Maneja la ejecución del callback para el modal de confirmación."""
-    token = st.session_state.get("session_token")
-    accion = st.session_state.get("accion_confirmar")
+def _abrir_dialogo(
+    titulo: str,
+    *,
+    etiqueta_aceptar: str,
+    etiqueta_cancelar: str,
+    dibujar_cuerpo: Callable[[], None],
+    on_accept: Callable[[], bool],
+    on_cancel: Callable[[], None],
+) -> None:
+    """Marco compartido: on_accept cierra el diálogo solo si devuelve True; on_cancel siempre lo cierra."""
 
-    # Determinar título y mensaje según la acción a confirmar
-    if accion == "rotar":
-        titulo_modal = t("onboarding.rotar_codigo", idioma_actual)
-        mensaje_modal = t("onboarding.rotar_confirmacion", idioma_actual)
-    else:
-        titulo_modal = t("onboarding.borrar_espacio", idioma_actual)
-        mensaje_modal = t("onboarding.borrar_confirmacion", idioma_actual)
-
-    # Definición dinámica con título traducido
-    @st.dialog(titulo_modal, dismissible=False)
+    @st.dialog(titulo, dismissible=False)
     def _modal():
-        st.warning(mensaje_modal)
+        dibujar_cuerpo()
         col_si, col_no = st.columns(2)
         with col_si:
-            if st.button(t("comun.si", idioma_actual), type="primary", use_container_width=True):
-                if accion == "rotar":
-                    exito = _ejecutar_rotacion(api_client, token, idioma_actual)
-                else:
-                    exito = _ejecutar_borrado(api_client, token, idioma_actual)
-                if exito:
-                    st.session_state.accion_confirmar = None
-                    st.rerun()
+            if st.button(etiqueta_aceptar, type="primary", use_container_width=True) and on_accept():
+                st.rerun()
         with col_no:
-            if st.button(t("comun.no", idioma_actual), use_container_width=True):
-                st.session_state.accion_confirmar = None
+            if st.button(etiqueta_cancelar, use_container_width=True):
+                on_cancel()
                 st.rerun()
 
     _modal()
+
+
+def _procesar_modal_pendiente(api_client: APIClient, idioma_actual: str):
+    """Confirmación de rotar el código o borrar el espacio."""
+    token = st.session_state.get("session_token")
+    accion = st.session_state.get("accion_confirmar")
+    if accion == "rotar":
+        titulo = t("onboarding.rotar_codigo", idioma_actual)
+        mensaje = t("onboarding.rotar_confirmacion", idioma_actual)
+    else:
+        titulo = t("onboarding.borrar_espacio", idioma_actual)
+        mensaje = t("onboarding.borrar_confirmacion", idioma_actual)
+
+    def _aceptar() -> bool:
+        if accion == "rotar":
+            exito = _ejecutar_rotacion(api_client, token, idioma_actual)
+        else:
+            exito = _ejecutar_borrado(api_client, token, idioma_actual)
+        if exito:
+            st.session_state.accion_confirmar = None
+        return exito
+
+    _abrir_dialogo(
+        titulo,
+        etiqueta_aceptar=t("comun.si", idioma_actual),
+        etiqueta_cancelar=t("comun.no", idioma_actual),
+        dibujar_cuerpo=lambda: st.warning(mensaje),
+        on_accept=_aceptar,
+        on_cancel=lambda: st.session_state.__setitem__("accion_confirmar", None),
+    )
 
 
 def _ejecutar_rotacion(api_client: APIClient, token: str, idioma_actual: str) -> bool:

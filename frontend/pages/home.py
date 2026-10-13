@@ -4,6 +4,7 @@ import streamlit as st
 from api_client import APIError
 from components.documents import render_documentos_demo, render_lista_documentos
 from components.errors import mostrar_error_ui
+from components.result_header import render_cabecera_resultado
 from components.session import limpiar_sesion_local
 from components.sidebar import render_sidebar
 from components.upload import (
@@ -25,7 +26,15 @@ def render(api_client, idioma_actual: str):
     _render_banner_recuperacion(idioma_actual)
     if st.session_state.get("mostrando_recuperacion"):
         _render_pantalla_recuperacion(api_client, idioma_actual)
+    elif (generacion := st.session_state.get("generacion_activa")) and not st.session_state.get("mostrando_documentos"):
+        render_cabecera_resultado(generacion, idioma_actual)
+        if st.button(t("nav.documentos", idioma_actual), key="volver_documentos"):
+            st.session_state.mostrando_documentos = True
+            st.rerun()
     else:
+        if st.session_state.get("generacion_activa") and st.button(t("generar.volver_resultado", idioma_actual)):
+            st.session_state.mostrando_documentos = False
+            st.rerun()
         _render_pantalla_onboarding(idioma_actual, api_client=api_client)
 
 

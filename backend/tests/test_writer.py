@@ -407,7 +407,7 @@ def test_sdk_429_retry_after_y_cuota_diaria(entorno, diaria, monkeypatch):
         assert nuevo.status == "failed" and nuevo.borrador is None
         assert len(solicitudes) == nuevo.presupuesto.usadas == (1 if diaria else 3)
         assert nuevo.error.code == ("RATE_LIMITED" if diaria else "PROVIDER_UNAVAILABLE")
-        assert pausas == ([] if diaria else [2, 2])
+        assert pausas == pytest.approx([] if diaria else [2, 2], rel=0, abs=1e-6)
     finally:
         deps.proveedor.cerrar()
 

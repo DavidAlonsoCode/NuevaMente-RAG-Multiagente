@@ -258,8 +258,38 @@ def test_upload_texto_y_generacion_preservan_idempotencia(client):
         client.upload_document("token", texto, idempotency_key="texto-1")
         assert request.call_args.kwargs["json"] == texto
         assert request.call_args.kwargs["headers"]["Idempotency-Key"] == "texto-1"
+        response.json.return_value = {
+            "generation_id": "gen_1",
+            "status": "queued",
+            "status_url": "/api/generations/gen_1",
+            "events_url": "/api/generations/gen_1/events",
+        }
         client.create_generation("token", {"document_id": "doc"}, idempotency_key="generacion-1")
         assert request.call_args.kwargs["headers"]["Idempotency-Key"] == "generacion-1"
+
+
+@pytest.mark.parametrize(
+    "cambio",
+    [
+        {"generation_id": None},
+        {"generation_id": ""},
+        {"status": "processing"},
+        {"status_url": None},
+        {"events_url": "https://otro-servidor/events"},
+    ],
+)
+def test_admision_generacion_invalida_es_error_recuperable(client, cambio):
+    response = MagicMock(ok=True, status_code=202, headers={})
+    response.json.return_value = {
+        "generation_id": "gen_1",
+        "status": "queued",
+        "status_url": "/api/generations/gen_1",
+        "events_url": "/api/generations/gen_1/events",
+        **cambio,
+    }
+    with patch("requests.request", return_value=response), pytest.raises(APIError) as error:
+        client.create_generation("token", {"document_id": "doc"}, idempotency_key="generacion-1")
+    assert error.value.code == "INVALID_RESPONSE"
 
 
 @pytest.mark.parametrize("method", ["get_documents", "get_generations"])

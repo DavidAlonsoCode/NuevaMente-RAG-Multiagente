@@ -55,6 +55,8 @@ CATALOGO_EN: dict[str, str] = {
     # ------------------------- sidebar -------------------------
     "sidebar.titulo": "Adaptation parameters",
     "sidebar.documento": "Source document",
+    "sidebar.demo_generacion_pendiente": "Generation from the demo library is pending integration. To generate, select a document from your workspace or upload the source.",
+    "generar.volver_resultado": "Back to generation",
     "sidebar.perfil": "Recipient profile",
     "sidebar.formato": "Output format",
     "sidebar.nicho": "Industry niche",
@@ -68,6 +70,9 @@ CATALOGO_EN: dict[str, str] = {
     "sidebar.generando": "Generating…",
     "sidebar.idioma_ui": "Interface language",
     "sidebar.cerrar_sesion": "Log out",
+    "sidebar.sin_documentos": "You have no ready documents yet. Upload one or wait until it finishes processing.",
+    "sidebar.sin_secciones": "This document has no identified sections: it is adapted as a whole.",
+    "sidebar.seccion_lineas": "{titulo} (lines {inicio}–{fin})",
     # ------------------------- upload -------------------------
     "upload.titulo": "Upload a document",
     "upload.arrastrar": "Drop a PDF, Markdown or TXT file here",
@@ -92,6 +97,11 @@ CATALOGO_EN: dict[str, str] = {
     "generar.rechazado_detalle": "Reason: {motivo}. You can try again with a different combination of parameters.",
     "generar.cancelar": "Cancel generation",
     "generar.reintentar": "Generate again",
+    "generar.resumen_titulo": "Review your selection before generating",
+    "generar.confirmar": "Confirm and generate",
+    "generar.cabecera_titulo": "Material requested with these parameters",
+    "generar.enviada": "The generation was registered. The material appears here only once it is reviewed and saved.",
+    "generar.id_generacion": "Generation: {generation_id}",
     # ------------------------- job / document states -------------------------
     "estados.trabajo.queued": "Queued",
     "estados.trabajo.running": "Processing",
