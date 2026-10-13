@@ -17,6 +17,10 @@ PR #118, rama `feature/issue-32-panel-parametros-generacion`, destino `develop`.
   una respuesta inválida produce un error recuperable y conserva el intento.
 - Se eliminó la advertencia visible por definir simultáneamente el valor del
   selector de nicho en sus argumentos y en `session_state`.
+- Se aisló el indicador global de navegación que las pruebas AppTest conservaban
+  entre scripts; la suite completa ahora puede mezclar la app y scripts temporales.
+  Una comparación exacta de tiempos en el test de reintento de Writer se cambió a
+  tolerancia de un microsegundo, manteniendo el número de intentos y el Retry-After.
 
 ## Pruebas automatizadas
 

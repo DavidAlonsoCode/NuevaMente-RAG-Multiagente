@@ -10,12 +10,21 @@ import requests
 import test_api_generate as generaciones
 from api_client import FORMATOS, PERFILES, APIClient
 from i18n import t
+from streamlit.runtime.pages_manager import PagesManager
 from streamlit.testing.v1 import AppTest
 
 entorno_generacion = generaciones.entorno
 
 pytestmark = pytest.mark.integration_mock
 APP = Path(__file__).resolve().parents[2] / "frontend" / "app.py"
+
+
+@pytest.fixture(autouse=True)
+def aislar_navegacion_streamlit(monkeypatch):
+    # Streamlit mantiene este indicador en la clase, incluso entre AppTest.
+    # Restaurarlo permite que cada script derive su modo de navegación de su
+    # propio directorio; los scripts temporales de from_string no tienen pages/.
+    monkeypatch.setattr(PagesManager, "uses_pages_directory", None)
 
 
 @pytest.mark.parametrize("perfil", PERFILES)
