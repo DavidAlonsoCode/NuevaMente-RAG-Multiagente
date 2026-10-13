@@ -896,7 +896,7 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
 - `core/agents/prompts.py` compone Writer/Critic para los cuatro perfiles, cinco
   formatos, cuatro nichos y tres idiomas desde matrices comunes; el detalle es
   independiente del perfil. `cargar_plantilla(GenerateRequest)` entrega los dos
-  roles y `prompt_version=nm-prompts-1.1.0`, sin usar proveedores.
+  roles y `prompt_version=nm-prompts-1.1.1`, sin usar proveedores.
 - `preparar_prompts(..., workspace_id, source_hash, idioma_origen, evidencia)`
   separa `system_instruction` de `datos_json`. Documento, consultas, feedback y
   borrador nunca se interpolan en el sistema. Rechaza evidencia vacía, ajena,
