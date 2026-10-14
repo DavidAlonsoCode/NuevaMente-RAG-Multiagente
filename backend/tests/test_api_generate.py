@@ -159,8 +159,8 @@ def entorno(tmp_path, aislar_estado_seguridad):
             doble.bloquear.set()
 
 
-def esperar(e, recibo, status="completed"):
-    limite = time.monotonic() + 15
+def esperar(e, recibo, status="completed", *, timeout=15):
+    limite = time.monotonic() + timeout
     ultimo = None
     while time.monotonic() < limite:
         respuesta = e.cliente.get(recibo["status_url"], headers=e.headers)

@@ -3,12 +3,14 @@
 import sys
 
 import pytest
+from components.content_common import texto
 from i18n import t
 from streamlit.runtime.pages_manager import PagesManager
 from streamlit.testing.v1 import AppTest
 from test_chat_ui import Cliente, respuesta, trabajo
 from test_glossary_ui import API as GlosarioAPI
-from test_result import ClienteResultado, ui
+from test_history_ui import API as HistorialAPI
+from test_result import ClienteResultado, paquete, ui
 
 pytestmark = pytest.mark.integration_mock
 
@@ -28,16 +30,36 @@ class ClienteEstudio(ClienteResultado, Cliente):
         return self.glosario.get_glossary(token, gid)
 
 
+class ClienteHistorial(HistorialAPI, ClienteResultado):
+    def __init__(self):
+        super().__init__()
+        for fila in self.items:
+            p = paquete(fila["parametros"]["formato_salida"])
+            p["generation_id"] = fila["generation_id"]
+            p["metadatos"]["perfil_aplicado"] = fila["parametros"]["perfil_destinatario"]
+            p["metadatos"]["idioma_salida"] = fila["parametros"]["idioma_salida"]
+            fila["document_id"] = fila["parametros"]["document_id"] = p["documento_fuente"]["document_id"]
+            self.jobs[fila["generation_id"]]["contenido"] = p
+
+    def workspace_status(self, token):
+        return {**super().workspace_status(token), "workspace_id": "ws_test"}
+
+    def get_documents(self, token, params):
+        return {"items": [{"document_id": self.items[0]["document_id"], "titulo": "Redes"}], "next_cursor": None}
+
+
 @pytest.fixture
 def estudio(monkeypatch):
+    from pages import home
+
     monkeypatch.setitem(sys.modules, "__main__", sys.modules["__main__"])
     monkeypatch.setattr(PagesManager, "uses_pages_directory", None)
+    monkeypatch.setattr(home, "render_sidebar", lambda *args: None)
     base = ui()
     app = AppTest.from_string("""
 import streamlit as st
 from components.session import inicializar_estado_sesion
 from pages import home
-home.render_sidebar = lambda *args: None
 inicializar_estado_sesion()
 home.render(st.session_state.api, st.session_state.idioma_ui)
 """)
@@ -103,3 +125,24 @@ def test_home_solo_registra_estudio_explicito_y_consulta_agregados(estudio):
     next(b for b in app.button if b.label == t("progreso.marcar_concepto").format(concepto=concepto)).click().run()
     assert not app.exception and len(app.session_state.eventos_progreso) == 2
     assert any(m.label == t("progreso.conceptos") and m.value == "1" for m in app.metric)
+
+
+def test_home_historial_compara_materiales_completos_y_reabre_tarjeta(estudio):
+    app, _ = estudio
+    app.session_state.api = ClienteHistorial()
+    app.session_state.historial_abierto = True
+    app.run()
+    for i, gid in enumerate(("g1", "g2")):
+        next(s for s in app.selectbox if s.label == t("historial.adaptacion_" + str(i))).set_value(gid).run()
+    assert not app.exception
+    for gid in ("g1", "g2"):
+        titulo = app.session_state.api.jobs[gid]["contenido"]["contenido_adaptado"]["titulo"]
+        assert any(m.value == "## " + texto(titulo) for m in app.markdown)
+    assert len([m for m in app.metric if m.label == t("calidad.anclaje")]) == 2
+    app.session_state.historial_detalle = "g1"
+    app.run()
+    next(b for b in app.button if b.label == t("material.mostrar_respuesta")).click().run()
+    assert not app.exception and app.session_state.eventos_progreso
+    fuentes = [b for b in app.button if b.label == "Consultar fuente original"]
+    fuentes[-1].click().run()
+    assert not app.exception and any("EVIDENCIA" in m.value for m in app.markdown)

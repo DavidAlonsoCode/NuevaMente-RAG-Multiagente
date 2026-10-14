@@ -44,7 +44,7 @@ def test_historial_comparacion_reapertura_export_y_recuperacion_sin_llm(entorno,
         {"perfil_destinatario": "ejecutivo", "formato_salida": "resumen_ejecutivo", "idioma_salida": "pt"},
     ):
         recibo = generaciones.generar(e, **params).json()
-        generaciones.esperar(e, recibo)
+        generaciones.esperar(e, recibo, timeout=30)
         ids.append(recibo["generation_id"])
     token = e.ws["token"]
     contador = (e.doble.llamadas_generacion, e.doble.llamadas_verificacion, e.doble.llamadas_embeddings)
@@ -85,7 +85,7 @@ if "api" in st.session_state:
 def test_filtros_reales_y_usuario_ajeno(entorno, api):
     e = entorno
     recibo = generaciones.generar(e).json()
-    generaciones.esperar(e, recibo)
+    generaciones.esperar(e, recibo, timeout=30)
     s = estado_historial({}, e.ws["workspace_id"])
     assert (
         len(
@@ -108,7 +108,8 @@ def test_navegacion_desde_home_al_historial(entorno, api):
 
     e = entorno
     recibo = generaciones.generar(e).json()
-    generaciones.esperar(e, recibo)
+    # El primer arranque del worker en Windows puede superar 15 s.
+    generaciones.esperar(e, recibo, timeout=30)
     a = AppTest.from_file(str(Path(__file__).resolve().parents[2] / "frontend" / "app.py"))
     a.session_state.workspace_id = e.ws["workspace_id"]
     a.session_state.session_token = e.ws["token"]
@@ -120,3 +121,5 @@ def test_navegacion_desde_home_al_historial(entorno, api):
     a.button(key="historial:" + e.ws["workspace_id"] + ":open:" + recibo["generation_id"]).click().run()
     assert not a.exception and a.session_state.historial_detalle == recibo["generation_id"]
     assert any("Redes VCN" in m.value for m in a.markdown)
+    assert any(b.label == "Mostrar respuesta" for b in a.button)
+    assert any(m.value == "1.00" for m in a.metric)

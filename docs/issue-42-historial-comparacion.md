@@ -1,4 +1,4 @@
-# Issue #42 — Historial, comparación y recuperación (draft)
+# Issue #42 — Historial, comparación y recuperación
 
 El expander del sidebar abre el historial completo y permite consultar las últimas
 cinco generaciones. La vista completa consume páginas de `GET /api/generations`,
@@ -17,7 +17,7 @@ del quiz y no llama al LLM. Se informa la retención de 30 días de inactividad 
 expiración que devuelve el servidor. El código de recuperación reutiliza el flujo
 de sesión existente y vuelve a consultar el historial.
 
-## Integración pendiente
+## Integración
 
 `render_historial_completo(api, idioma, render_resultado=...)` está montado en home.
 El callback del #34 recibe `(paquete_estudiante, idioma, key_prefix=...)`, con un
@@ -27,7 +27,9 @@ Sin él se muestran fuente, fecha y parámetros, con aviso de visor pendiente.
 `render_etiqueta_ejemplo` está preparado para un catálogo demo explícito del #55.
 La API actual del historial no aporta procedencia demo ni resultados públicos
 precalculados: no se infiere por títulos/IDs y no se inventan ejemplos guardados.
-Faltan esa conexión, el renderer del #34 y QA manual/visual a 320/768/1024/1440 px.
+El catálogo de ejemplos precalculados pertenece al #55. El historial privado ya
+usa el renderizador completo del #34, con fuentes, quiz interactivo y revisión
+de flashcards/conceptos. Integrar después del #41.
 
 ## Verificación
 
@@ -37,4 +39,5 @@ paginación/filtros, exportación, recuperación, rechazo de hashes/versiones
 distintos y ocultamiento de resultados no aprobados. No acreditan proveedores reales.
 
 La rama incluye el arreglo de ámbitos pequeños de Chroma del PR #123 como
-dependencia compartida; el cambio es idéntico y no incluye su panel de glosario.
+dependencia compartida; también integra los paneles previos según el orden
+#36 → #38 → #40 → #41 → #42, conservando la base develop de los PR.
