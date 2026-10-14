@@ -15,10 +15,11 @@ from glossary_flow import (
 )
 from i18n import t
 
+from components.content_common import texto
 from components.errors import mostrar_error_ui
 
 
-def render_glosario(api, idioma_ui, *, document_id, perfil, idioma_salida, render_fuentes=None):
+def render_glosario(api, idioma_ui, *, document_id, perfil, idioma_salida, render_fuentes=None, render_sources=None):
     token, ws = st.session_state.get("session_token"), st.session_state.get("workspace_id")
     if not token or not ws or not document_id:
         return
@@ -85,16 +86,18 @@ def render_glosario(api, idioma_ui, *, document_id, perfil, idioma_salida, rende
             st.info(t("glosario.sin_resultados", idioma_ui))
         for termino in terminos:
             with st.container(border=True):
-                st.write(termino["termino_original"])
+                st.markdown(texto(termino["termino_original"]))
                 if termino["estado"] == "definido":
                     if termino.get("traduccion"):
-                        st.caption(t("glosario.traduccion", idioma_ui) + ": " + termino["traduccion"])
-                    st.write(termino["definicion"])
+                        st.caption(t("glosario.traduccion", idioma_ui) + ": " + texto(termino["traduccion"]))
+                    st.markdown(texto(termino["definicion"]))
                 else:
                     st.warning(t("glosario.limitacion", idioma_ui))
-                    st.write(termino["limitacion"])
+                    st.markdown(texto(termino["limitacion"]))
                 with st.expander(t("glosario.fuente", idioma_ui)):
-                    if render_fuentes:
+                    if render_sources:
+                        render_sources(termino["referencias"], scope + ":" + termino["id"])
+                    elif render_fuentes:
                         render_fuentes(document_id, termino["referencias"])
                     else:
                         st.caption(t("glosario.visor_pendiente", idioma_ui))

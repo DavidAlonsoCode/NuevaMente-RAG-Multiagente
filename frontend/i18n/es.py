@@ -52,6 +52,7 @@ CATALOGO_ES: dict[str, str] = {
     # ------------------------- navegación -------------------------
     "nav.inicio": "Inicio",
     "nav.resultado": "Material de estudio",
+    "estudio.herramientas": "Herramientas de estudio",
     "nav.documentos": "Documentos",
     "nav.generar": "Generar",
     "nav.historial": "Historial",

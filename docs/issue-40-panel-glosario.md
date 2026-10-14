@@ -1,4 +1,4 @@
-# Issue #40 — Panel de glosario (draft)
+# Issue #40 — Panel de glosario
 
 Componente `components.glossary.render_glosario` sobre las rutas del #39. Hereda
 documento, perfil e idioma de contenido como argumentos de la selección vigente;
@@ -14,16 +14,16 @@ la misma intención. El seguimiento consulta el job cada cinco segundos, permite
 actualización manual y solicita cancelación sin darla por terminada anticipadamente.
 La lectura del glosario revalida autorización en cada render.
 
-## Integración pendiente con #34
+## Integración con #34
 
-Invocar con `document_id`, `perfil`, `idioma_salida` y el cliente autenticado.
-`render_fuentes(document_id, referencias)` recibe las citas del resultado para
-montar el visor autorizado de fragmentos. Sin callback se muestran únicamente
-localizadores, con aviso explícito. El componente aún no está montado en home.
+Montado en una pestaña de la pantalla principal y en las herramientas del
+documento privado seleccionado. Los parámetros del material visible prevalecen
+sobre cambios posteriores del sidebar. El visor de fuentes del #34 tiene claves
+estables por término: filtrar o repetir una cita no mezcla controles ni evidencia.
 
-Falta comprobar el flujo completo desde la selección del sidebar, recarga con
-recuperación de espacio, cancelación en navegador y revisión visual en 320, 768,
-1024 y 1440 px. Este draft no cierra #40 ni reemplaza el plan maestro.
+La definición se presenta escapada. El renderizador conserva su callback previo
+y admite `render_sources(referencias, prefijo)` para componer el visor compartido.
+Integrar después de #38; no reemplaza el plan maestro.
 
 ## Verificación
 

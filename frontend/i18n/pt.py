@@ -30,6 +30,7 @@ CATALOGO_PT: dict[str, str] = {
     # ------------------------- navegação -------------------------
     "nav.inicio": "Início",
     "nav.resultado": "Material de estudo",
+    "estudio.herramientas": "Ferramentas de estudo",
     "nav.documentos": "Documentos",
     "nav.generar": "Gerar",
     "nav.historial": "Histórico",

@@ -68,7 +68,9 @@ if "api" in st.session_state:
         a.session_state[k] = v
     a.run()
     assert not a.exception
-    assert any(output["terminos"][0]["definicion"] == m.value for m in a.markdown)
+    from components.content_common import texto
+
+    assert any(texto(output["terminos"][0]["definicion"]) == m.value for m in a.markdown)
     assert any("subredes privadas" in m.value for m in a.markdown)
     a.session_state.lang = "en"
     a.run()

@@ -8,7 +8,7 @@ from components.result import render_generacion
 from components.result_header import render_cabecera_resultado
 from components.session import limpiar_sesion_local
 from components.sidebar import render_sidebar
-from components.study import render_herramientas_documento, render_tutor
+from components.study import render_glosario_contexto, render_herramientas_documento, render_tutor
 from components.upload import (
     inicializar_estado_documentos,
     render_pegar_texto,
@@ -30,11 +30,15 @@ def render(api_client, idioma_actual: str):
         _render_pantalla_recuperacion(api_client, idioma_actual)
     elif (generacion := st.session_state.get("generacion_activa")) and not st.session_state.get("mostrando_documentos"):
         render_cabecera_resultado(generacion, idioma_actual)
-        material, tutor = st.tabs([t("nav.resultado", idioma_actual), t("chat.titulo", idioma_actual)])
+        material, tutor, glosario = st.tabs(
+            [t("nav.resultado", idioma_actual), t("chat.titulo", idioma_actual), t("nav.glosario", idioma_actual)]
+        )
         with material:
             render_generacion(api_client, generacion, idioma_actual)
         with tutor:
             render_tutor(api_client, idioma_actual, generacion["parametros"])
+        with glosario:
+            render_glosario_contexto(api_client, idioma_actual, generacion["parametros"])
         if st.button(t("nav.documentos", idioma_actual), key="volver_documentos"):
             st.session_state.mostrando_documentos = True
             st.rerun()

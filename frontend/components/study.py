@@ -6,6 +6,7 @@ import streamlit as st
 from i18n import t
 
 from components.chat import render_chat
+from components.glossary import render_glosario
 from components.sources import render_fuentes
 
 
@@ -33,17 +34,31 @@ def render_tutor(api, idioma, parametros):
     )
 
 
+def render_glosario_contexto(api, idioma, parametros):
+    render_glosario(
+        api,
+        idioma,
+        document_id=parametros["document_id"],
+        perfil=parametros["perfil_destinatario"],
+        idioma_salida=parametros["idioma_salida"],
+        render_sources=lambda refs, prefijo: render_fuentes(
+            parametros["document_id"], refs, idioma, api_client=api, key_prefix="glosario:" + prefijo
+        ),
+    )
+
+
 def render_herramientas_documento(api, idioma):
     document_id = st.session_state.get("documento_activo_id")
     if not document_id or st.session_state.get("documento_activo_demo"):
         return
-    with st.expander(t("chat.titulo", idioma)):
-        render_tutor(
-            api,
-            idioma,
-            {
-                "document_id": document_id,
-                "perfil_destinatario": st.session_state.get("gen_perfil", "principiante"),
-                "idioma_salida": st.session_state.get("gen_idioma_salida", "es"),
-            },
-        )
+    parametros = {
+        "document_id": document_id,
+        "perfil_destinatario": st.session_state.get("gen_perfil", "principiante"),
+        "idioma_salida": st.session_state.get("gen_idioma_salida", "es"),
+    }
+    with st.expander(t("estudio.herramientas", idioma)):
+        tutor, glosario = st.tabs([t("chat.titulo", idioma), t("nav.glosario", idioma)])
+        with tutor:
+            render_tutor(api, idioma, parametros)
+        with glosario:
+            render_glosario_contexto(api, idioma, parametros)
