@@ -312,6 +312,12 @@ class APIClient:
             raise APIError("INVALID_RESPONSE", "Admisión incompleta", 502)
         return data
 
+    def create_chat(self, token, payload, *, idempotency_key):
+        return self._solicitar("POST", "/api/chat", json=payload, token=token, idempotency_key=idempotency_key)
+
+    def cancel_job(self, token, job_id):
+        return self._solicitar("POST", f"/api/jobs/{quote(job_id, safe='')}/cancel", token=token)
+
     def get_job(self, token, job_id):
         return self._solicitar("GET", f"/api/jobs/{quote(job_id, safe='')}", token=token)
 
