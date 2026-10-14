@@ -403,6 +403,14 @@ La interfaz adopta una estética oscura inspirada en Linear, con jerarquía visu
 
 La personalización da identidad a NuevaMente y distingue contenido, fuentes y acciones. Se priorizan controles nativos accesibles; el CSS no debe ocultar foco, etiquetas o mensajes. La estética se verifica en móvil y con teclado.
 
+**Precisión de cierre — 14 de octubre de 2026**: la UI completa y su acabado
+visual son prioritarios, incluidos efectos, animaciones, transiciones y
+microinteracciones con alternativa de movimiento reducido. Se acota el trabajo
+operativo adicional de infraestructura y validación, conservando funcionalidades,
+seguridad y todos los diferenciales comprometidos. El smoke de Gemini/OCI puede
+acreditar proveedores reales desde una instalación local; el despliegue Compute
+sigue requiriendo comprobación en la VM. Detalle: [plan §2.1](docs/plan-implementacion.md#21-prioridad-de-cierre-y-alcance-operativo--14-de-octubre-de-2026).
+
 ### 6.3 Layout: Sidebar + Área Principal
 
 ```

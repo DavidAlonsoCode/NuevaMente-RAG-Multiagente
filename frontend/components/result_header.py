@@ -50,9 +50,9 @@ def render_resumen_parametros(
 
 def render_cabecera_resultado(generacion: GeneracionActiva, idioma: str) -> None:
     st.subheader(t("generar.cabecera_titulo", idioma))
-    render_resumen_parametros(
-        generacion["parametros"], generacion["documento_titulo"], generacion["seccion_titulo"], idioma
-    )
-    st.info(t("generar.enviada", idioma))
+    with st.expander(t("generar.resumen_titulo", idioma)):
+        render_resumen_parametros(
+            generacion["parametros"], generacion["documento_titulo"], generacion["seccion_titulo"], idioma
+        )
     with st.expander(t("comun.detalles_tecnicos", idioma)):
         st.code(t("generar.id_generacion", idioma).format(generation_id=generacion["generation_id"]))

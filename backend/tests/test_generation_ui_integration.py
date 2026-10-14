@@ -1,5 +1,6 @@
 """Panel Streamlit -> API -> worker/grafo/Chroma/storage reales, IA con doble explícito."""
 
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +26,10 @@ def aislar_navegacion_streamlit(monkeypatch):
     # Restaurarlo permite que cada script derive su modo de navegación de su
     # propio directorio; los scripts temporales de from_string no tienen pages/.
     monkeypatch.setattr(PagesManager, "uses_pages_directory", None)
+    principal = sys.modules.get("__main__")
+    yield
+    if principal is not None:
+        sys.modules["__main__"] = principal
 
 
 @pytest.mark.parametrize("perfil", PERFILES)
@@ -76,3 +81,7 @@ def test_formatos_perfiles_del_panel_completan_el_pipeline(entorno_generacion, m
     solicitado = app.session_state.generacion_activa["parametros"]["alcance"]
     assert all(metadata["alcance"][k] == v for k, v in solicitado.items())
     assert len(admisiones) == 1
+    # El mismo cliente consulta el trabajo terminado y presenta su vista pública.
+    app.run()
+    assert not app.exception and not app.error
+    assert any(t("material.revisado") in item.value for item in app.markdown)

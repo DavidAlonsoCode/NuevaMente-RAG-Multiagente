@@ -327,7 +327,7 @@ def test_contratos_documentales_no_se_publican_sin_revision(entorno):
 
 
 def test_proveedor_sin_cuotas_falla_antes_de_abrir_registro(tmp_path):
-    ajustes = Configuracion(app_env="test", mock_oci=True, mock_gemini=True, data_dir=str(tmp_path))
+    ajustes = Configuracion(_env_file=None, app_env="test", mock_oci=True, mock_gemini=True, data_dir=str(tmp_path))
     with pytest.raises(ValueError, match="cuotas"):
         crear_app(ajustes, proveedor_embeddings=DobleGemini(16))
     assert not (tmp_path / "operativo.db").exists()
