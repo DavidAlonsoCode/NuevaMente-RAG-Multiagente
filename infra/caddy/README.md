@@ -819,7 +819,9 @@ en el reporte; no constituye evidencia de la revisión Chromium de CI.
 `contents: read`, sin secretos ni permisos de escritura. La selección revisada
 antes de corregir la guardia consta de **270 casos: 89 de configuración, 142 de
 despliegue, 29 de reporte/diagnóstico y 10 de proxy**. Con las 14 regresiones de
-esta corrección, la selección vigente es **284: 89 + 142 + 43 + 10**. El smoke
+esta corrección, la selección pasó a **284: 89 + 142 + 43 + 10**. Las 30
+regresiones posteriores del diagnóstico de navegador llevan la selección vigente
+a **314: 89 + 142 + 73 + 10**, conservando las 284 identidades anteriores. El smoke
 exige cada familia e identidad parametrizada: comprueba el recuento exacto,
 ausencia de duplicados y SHA256 de los nombres completos ordenados (JSON ASCII
 compacto) contra el manifiesto revisado `REQUIRED_FAMILIES`. No obtiene ese
@@ -1594,3 +1596,38 @@ Linux/ARM64/systemd/Docker/NAT y los tres criterios públicos. **A:** guardia y
 documentación corregidas. **B:** validación local acotada, con evidencia roja y
 posterior conservadas. **C:** validación nativa y aceptación pública pendientes.
 Detenerse para revisión; no hay autorización de despliegue.
+
+#### Diagnóstico de navegador — ejecución 38595531809, 14/10/2026
+
+La ejecución sobre `7d18bd9` produjo en ambas arquitecturas **282 aprobados y
+2 fallidos de 284, sin skips**. Fallaron las sondas de interacción/reconexión y
+de conexiones largas, ambas con `real-browser-probe-failed`. Los artifacts
+saneados carecen de observaciones del navegador porque el arnés anterior sólo
+las agregaba después de una salida exitosa. Los logs publicados no identifican
+la excepción del hijo ni su etapa: **la causa sigue desconocida**. No permiten
+atribuirla a Caddy, WebSocket o al sandbox.
+
+El hijo ahora escribe un diagnóstico acotado por sonda, con schema, resultado,
+última etapa alcanzada, tipo de excepción permitido y código fijo de fallo. Las
+etapas distinguen inicio de Playwright, lanzamiento/versionado de Chromium,
+contexto/página, navegación, interacciones, reconexión, espera, auditoría privada,
+cierre y escritura del resultado. No se serializan mensajes, argumentos de
+excepción, URLs, rutas, páginas ni perfiles. Tipos no reconocidos se representan
+como `OtherError`. Los logs existentes siguen privados y auditados; no se agregan
+a los artifacts.
+
+El padre incorpora el diagnóstico a `observations.json` antes de exigir salida
+cero, conservando el fallo rojo. También distingue fallo de creación del proceso
+y timeout del padre. Reportes ausentes, malformados, mayores de 4096 bytes o fuera
+del esquema cerrado producen evidencia no disponible con código fijo; una salida
+cero sin diagnóstico aprobado no acredita éxito. Las dos sondas usan archivos
+distintos. El sandbox, las assertions funcionales, el plazo de reconexión y los
+timeouts existentes se conservan.
+
+Las regresiones del protocolo y de exportación usan dobles explícitos de
+Playwright/proceso/infraestructura. Ejecutan la lógica real de reporte, espera y
+exportación durante el fallo; **no reproducen Chromium ni el runner Linux**.
+La guardia fija las 314 identidades revisadas, incluyendo las 30 nuevas, sin
+sustituir ninguna anterior. No se repite el smoke ni la suite ordinaria para
+validar este diagnóstico. Una nueva ejecución Linux requerirá autorización; no
+hay cambios de seguridad, runner o producción aprobados por esta investigación.

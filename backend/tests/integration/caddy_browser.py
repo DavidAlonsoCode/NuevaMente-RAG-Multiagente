@@ -8,11 +8,14 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from caddy_browser_diagnostics import BrowserProgress, success
 from caddy_fixture import CANARIES, SECRET, private_write
-from playwright.sync_api import sync_playwright
 
 
-def probe(url, directory, hold):
+def probe(url, directory, hold, progress):
+    # Import/start errors belong in the same closed report as browser errors.
+    from playwright.sync_api import sync_playwright
+
     sockets, received, sent, violations, blocked_fonts = [], [], [], [], []
     # Synthetic query/cookie canaries originate in the browser itself. Their
     # absence is required in server logs, whereas browser privacy protects the
@@ -43,11 +46,14 @@ def probe(url, directory, hold):
         executable = os.environ.get("NM_BROWSER_EXECUTABLE")
         if executable:
             options["executable_path"] = executable
+        progress.reached("browser_launch")
         browser = playwright.chromium.launch(**options)
+        progress.reached("browser_version")
         if not executable:
             metadata = json.loads(files("playwright").joinpath("driver/package/browsers.json").read_text())
             bundle = next(item for item in metadata["browsers"] if item["name"] == "chromium-headless-shell")
             assert browser.version == bundle["browserVersion"], "required-chromium-version-mismatch"
+        progress.reached("context_setup")
         context = browser.new_context(ignore_https_errors=True, service_workers="block")
 
         # Limit functional traffic to this fixture. Existing remote fonts are
@@ -79,6 +85,7 @@ def probe(url, directory, hold):
                 "X-Forwarded-Host": "evil.invalid",
             }
         )
+        progress.reached("page_setup")
         page = context.new_page()
         handshakes = []
         cdp = context.new_cdp_session(page)
@@ -110,13 +117,16 @@ def probe(url, directory, hold):
             inspect(headers)
 
         page.on("response", response)
+        progress.reached("navigation")
         page.goto(url + "/?probe=" + CANARIES["QUERY"], wait_until="domcontentloaded")
+        progress.reached("first_interaction")
         selector = page.get_by_test_id("stSelectbox").first
         selector.wait_for(timeout=30000)
         selector.click()
         page.get_by_role("option", name="English", exact=True).click()
         page.get_by_text("Interface language", exact=True).wait_for(timeout=15000)
         assert received and sent, "websocket-no-bidirectional-messages"
+        progress.reached("reconnection")
         first_count = len(sockets)
         page.evaluate("window.__fixtureSockets.forEach(socket => socket.close())")
         deadline = time.monotonic() + 25
@@ -125,14 +135,17 @@ def probe(url, directory, hold):
         assert len(sockets) > first_count, "websocket-no-reconnection"
         # Interaction after reconnection and after an optional >120s silence.
         start = time.monotonic()
+        progress.reached("hold")
         if hold:
             page.wait_for_timeout(hold * 1000)
+        progress.reached("second_interaction")
         before = len(received)
         selector.click()
         page.get_by_role("option", name="Español", exact=True).click()
         page.get_by_text("Idioma de la interfaz", exact=True).wait_for(timeout=15000)
         assert len(received) > before, "websocket-no-messages-after-interaction"
         assert len(handshakes) >= 2, "websocket-reconnect-handshake-not-observed"
+        progress.reached("privacy_audit")
         inspect(page.content())
         # Browser state deliberately contains injected cookie/header canaries;
         # audit only the actual private origin key across all browser storage.
@@ -152,8 +165,26 @@ def probe(url, directory, hold):
             "private_origin_absent": True,
             "blocked_remote_fonts": len(blocked_fonts),
         }
+        progress.reached("browser_close")
         browser.close()
+    progress.reached("result_write")
     private_write(directory / "browser-result.json", json.dumps(result))
+
+
+def run_probe(url, directory, hold):
+    progress = BrowserProgress()
+    try:
+        probe(url, directory, hold, progress)
+    except Exception as error:
+        report, exit_code = progress.failed(error), 1
+    else:
+        report, exit_code = success(), 0
+    try:
+        private_write(directory / f"browser-{hold}.diagnostic.json", json.dumps(report))
+    except OSError:
+        # The parent reports missing/invalid evidence, never successful fallback.
+        return 1
+    return exit_code
 
 
 if __name__ == "__main__":
@@ -162,4 +193,4 @@ if __name__ == "__main__":
     parser.add_argument("directory", type=Path)
     parser.add_argument("--hold", type=int, default=0)
     args = parser.parse_args()
-    probe(args.url, args.directory, args.hold)
+    raise SystemExit(run_probe(args.url, args.directory, args.hold))

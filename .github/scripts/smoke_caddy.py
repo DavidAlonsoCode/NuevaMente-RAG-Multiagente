@@ -43,8 +43,8 @@ REQUIRED_FAMILIES = {
         "a0d05acde761c16a23daca2e1e48d78bd33acaf86cea5a13998ff74780659225",
     ),
     "backend.tests.test_caddy_smoke": (
-        43,
-        "591943b8a7c4c9c39991c9efa3c68eb2b5d5a917113c0b465a1d117efe0273b7",
+        73,
+        "048ac8ab6e5f99579fc04493a9813e4956179248deda204923055c5ee733f606",
     ),
     "backend.tests.integration.test_caddy_proxy": (
         10,

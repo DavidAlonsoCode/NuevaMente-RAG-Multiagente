@@ -3,10 +3,12 @@
 import importlib
 import importlib.util
 import json
+import subprocess
+import sys
 import threading
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -144,6 +146,274 @@ def test_smoke_accepts_complete_successful_identity_contract(tmp_path, smoke_rep
     result = json.loads(capsys.readouterr().out)
     assert result["required_cases"] == 270
     assert result["skips"] == 0 and result["public_acceptance"] is False
+
+
+@pytest.fixture
+def browser_diagnostic_modules(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "backend/tests/integration"))
+    return SimpleNamespace(
+        child=importlib.import_module("caddy_browser"),
+        parent=importlib.import_module("test_caddy_proxy"),
+        protocol=importlib.import_module("caddy_browser_diagnostics"),
+    )
+
+
+@pytest.mark.parametrize("stage", ["playwright_start", "browser_launch", "context_setup", "page_setup", "navigation"])
+def test_browser_child_diagnostic_tracks_real_probe_stage(
+    tmp_path, monkeypatch, browser_diagnostic_modules, stage, capsys
+):
+    """Execute the real probe with an explicit Playwright double, never Chromium."""
+    module = browser_diagnostic_modules.child
+    secret = "synthetic-browser-private-canary"
+    error = type("TargetClosedError", (RuntimeError,), {})(secret)
+    options = []
+
+    def fail(at, result=None):
+        if at == stage:
+            raise error
+        return result
+
+    page = SimpleNamespace(
+        on=lambda *args: None,
+        add_init_script=lambda *args: None,
+        goto=lambda *args, **kwargs: fail("navigation"),
+    )
+    context = SimpleNamespace(
+        route=lambda *args: None,
+        add_cookies=lambda *args: None,
+        set_extra_http_headers=lambda *args: None,
+        new_page=lambda: fail("page_setup", page),
+        new_cdp_session=lambda *args: SimpleNamespace(send=lambda *args: None, on=lambda *args: None),
+    )
+    browser = SimpleNamespace(new_context=lambda **kwargs: fail("context_setup", context))
+
+    def launch(**kwargs):
+        options.append(kwargs)
+        return fail("browser_launch", browser)
+
+    class Manager:
+        def __enter__(self):
+            return fail("playwright_start", SimpleNamespace(chromium=SimpleNamespace(launch=launch)))
+
+        def __exit__(self, *args):
+            return False
+
+    package, api = ModuleType("playwright"), ModuleType("playwright.sync_api")
+    package.__path__ = []
+    api.sync_playwright = Manager
+    monkeypatch.setitem(sys.modules, "playwright", package)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", api)
+    # POSIX options are simulated here, not evidence of native Ubuntu execution.
+    monkeypatch.setattr(module, "os", SimpleNamespace(name="posix", environ={"NM_BROWSER_EXECUTABLE": secret}))
+    assert module.run_probe("https://" + secret, tmp_path, 0) == 1
+    report = browser_diagnostic_modules.protocol.read_diagnostic(tmp_path / "browser-0.diagnostic.json")
+    assert report == browser_diagnostic_modules.protocol.failure(stage, error)
+    assert report["exception_type"] == "TargetClosedError"
+    assert secret not in json.dumps(report)
+    assert capsys.readouterr() == ("", "")
+    if options:
+        assert options[0]["chromium_sandbox"] is True
+        assert "--no-sandbox" not in options[0]["args"]
+
+
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "first_interaction",
+        "reconnection",
+        "hold",
+        "second_interaction",
+        "privacy_audit",
+        "browser_close",
+        "result_write",
+    ],
+)
+def test_browser_child_failure_protocol_never_serializes_exception(
+    tmp_path, monkeypatch, browser_diagnostic_modules, stage, capsys
+):
+    module = browser_diagnostic_modules.child
+    secret = "synthetic-browser-private-canary"
+
+    def failing_probe(url, directory, hold, progress):
+        # Explicit probe double exercises the real reporting/exit boundary.
+        progress.reached(stage)
+        raise type(secret, (RuntimeError,), {})(url, directory, {"page": secret, "profile": secret})
+
+    monkeypatch.setattr(module, "probe", failing_probe)
+    assert module.run_probe("https://" + secret, tmp_path, 130) == 1
+    data = (tmp_path / "browser-130.diagnostic.json").read_text()
+    assert secret not in data and str(tmp_path) not in data and "https://" not in data
+    report = json.loads(data)
+    assert report["stage"] == stage and report["exception_type"] == "OtherError"
+    assert report["failure_code"] == browser_diagnostic_modules.protocol.STAGE_FAILURES[stage]
+    assert capsys.readouterr() == ("", "")
+
+
+def test_browser_child_success_reports_complete(tmp_path, monkeypatch, browser_diagnostic_modules):
+    module = browser_diagnostic_modules.child
+    monkeypatch.setattr(module, "probe", lambda *args: None)
+    assert module.run_probe("https://synthetic.invalid", tmp_path, 0) == 0
+    assert browser_diagnostic_modules.protocol.read_diagnostic(tmp_path / "browser-0.diagnostic.json") == (
+        browser_diagnostic_modules.protocol.success()
+    )
+
+
+@pytest.fixture
+def browser_parent_double(tmp_path, browser_diagnostic_modules):
+    """Real parent wait/report logic; process and infrastructure are doubles."""
+    state = SimpleNamespace(exit_code=1, start_error=None, wait_error=None, wait_timeouts=[])
+
+    def wait(timeout):
+        state.wait_timeouts.append(timeout)
+        if state.wait_error:
+            raise state.wait_error
+        return state.exit_code
+
+    state.proxy = SimpleNamespace(
+        directory=tmp_path,
+        url="https://synthetic-browser-private-canary.invalid",
+        evidence={"checks": []},
+        processes={},
+        counters=lambda: {"ui_origin_authenticated": 1},
+    )
+
+    def start(name, args, env):
+        if state.start_error:
+            raise state.start_error
+        state.proxy.processes[name] = SimpleNamespace(wait=wait)
+
+    state.proxy.start = start
+    return state
+
+
+@pytest.mark.parametrize("hold", [0, 130])
+def test_browser_parent_exports_failed_child_diagnostic_to_observations(
+    tmp_path, monkeypatch, browser_diagnostic_modules, browser_parent_double, hold, capsys
+):
+    module, protocol = browser_diagnostic_modules.parent, browser_diagnostic_modules.protocol
+    state = browser_parent_double
+    secret = "synthetic-browser-private-canary"
+    report = protocol.failure("browser_launch", RuntimeError(secret))
+    output = tmp_path / "evidence"
+    monkeypatch.setenv("NM_CADDY_EVIDENCE_DIR", str(output))
+
+    def harness(directory):
+        state.proxy.directory = directory
+        (directory / f"browser-{hold}.diagnostic.json").write_text(json.dumps(report))
+        state.proxy.launch = lambda: None
+        state.proxy.close = lambda: None
+        state.proxy.audit_logs = lambda: {"channels_audited": 0, "transport_double": True}
+        return state.proxy
+
+    monkeypatch.setattr(module, "ProxyHarness", harness)
+    fixture = module.proxy.__wrapped__()
+    proxy = next(fixture)
+    try:
+        with pytest.raises(AssertionError) as caught:
+            module.browser_probe(proxy, hold)
+        assert str(caught.value).splitlines()[0] == "real-browser-probe-failed"
+    finally:
+        fixture.close()  # Execute the real fixture's failure-time artifact export.
+    observed = json.loads((output / "observations.json").read_text())
+    assert observed["checks"] == [{"probe": "real-browser", "process": "exited_nonzero", "diagnostic": report}]
+    assert secret not in json.dumps(observed) and str(tmp_path) not in json.dumps(observed)
+    assert state.wait_timeouts == [hold + 90]
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "missing",
+        "malformed",
+        "oversized",
+        "raw_keys",
+        "raw_stage",
+        "raw_type",
+        "raw_code",
+        "bad_schema",
+        "failed_with_zero_exit",
+        "passed_with_nonzero_exit",
+        "wrong_hold",
+    ],
+)
+def test_browser_parent_rejects_incomplete_or_untrusted_diagnostic(
+    tmp_path, browser_diagnostic_modules, browser_parent_double, variant
+):
+    module, protocol = browser_diagnostic_modules.parent, browser_diagnostic_modules.protocol
+    state = browser_parent_double
+    state.exit_code = 0
+    secret = "synthetic-browser-private-canary"
+    value = protocol.failure("navigation", RuntimeError(secret))
+    if variant == "raw_keys":
+        value["profile"] = secret
+    elif variant in {"raw_stage", "raw_type", "raw_code"}:
+        value[{"raw_stage": "stage", "raw_type": "exception_type", "raw_code": "failure_code"}[variant]] = secret
+    elif variant == "bad_schema":
+        value["schema"] = True
+    elif variant == "passed_with_nonzero_exit":
+        value, state.exit_code = protocol.success(), 1
+    if variant != "missing":
+        path = tmp_path / ("browser-130.diagnostic.json" if variant == "wrong_hold" else "browser-0.diagnostic.json")
+        path.write_text("{" if variant == "malformed" else "x" * 4097 if variant == "oversized" else json.dumps(value))
+    with pytest.raises(AssertionError) as caught:
+        module.browser_probe(state.proxy)
+    assert str(caught.value).splitlines()[0] == (
+        "real-browser-probe-failed" if state.exit_code else "real-browser-diagnostic-not-passed"
+    )
+    diagnostic = state.proxy.evidence["checks"][0]["diagnostic"]
+    assert secret not in json.dumps(state.proxy.evidence)
+    if variant in {"missing", "wrong_hold"}:
+        assert diagnostic["failure_code"] == "BROWSER_DIAGNOSTIC_MISSING"
+    elif variant not in {"failed_with_zero_exit", "passed_with_nonzero_exit"}:
+        assert diagnostic["failure_code"] == "BROWSER_DIAGNOSTIC_INVALID"
+
+
+@pytest.mark.parametrize("boundary", ["start", "wait"])
+def test_browser_parent_process_errors_are_sanitized(
+    browser_diagnostic_modules, browser_parent_double, boundary, capsys
+):
+    module = browser_diagnostic_modules.parent
+    state = browser_parent_double
+    secret = "synthetic-browser-private-canary"
+    if boundary == "start":
+        state.start_error = PermissionError(5, secret, secret)
+    else:
+        state.wait_error = subprocess.TimeoutExpired([secret], 90, output=secret, stderr=secret)
+    with pytest.raises(AssertionError, match="^real-browser-probe-(start-failed|timeout)$") as caught:
+        module.browser_probe(state.proxy)
+    observed = state.proxy.evidence["checks"][0]
+    assert observed["diagnostic"]["stage"] == ("process_start" if boundary == "start" else "process_wait")
+    assert observed["diagnostic"]["exception_type"] == ("PermissionError" if boundary == "start" else "TimeoutExpired")
+    assert secret not in json.dumps(observed) and secret not in str(caught.value)
+    assert capsys.readouterr() == ("", "")
+
+
+def test_browser_parent_retains_success_assertions_and_diagnostic(
+    tmp_path, browser_diagnostic_modules, browser_parent_double
+):
+    module, protocol = browser_diagnostic_modules.parent, browser_diagnostic_modules.protocol
+    state = browser_parent_double
+    state.exit_code = 0
+    (tmp_path / "browser-0.diagnostic.json").write_text(json.dumps(protocol.success()))
+    (tmp_path / "ui-origin.json").write_text(json.dumps({"origin_authenticated": True}))
+    (tmp_path / "browser-result.json").write_text(json.dumps({"websockets": 2, "received_frames": 3}))
+    module.browser_probe(state.proxy)
+    assert state.proxy.evidence["checks"][0]["diagnostic"] == protocol.success()
+    assert state.proxy.evidence["checks"][0]["websockets"] == 2
+    assert state.wait_timeouts == [90]
+
+
+def test_browser_child_report_write_failure_remains_red(tmp_path, monkeypatch, browser_diagnostic_modules, capsys):
+    module = browser_diagnostic_modules.child
+    monkeypatch.setattr(module, "probe", lambda *args: None)
+
+    def denied(*args):
+        raise PermissionError("synthetic-browser-private-canary")
+
+    monkeypatch.setattr(module, "private_write", denied)
+    assert module.run_probe("https://synthetic.invalid", tmp_path, 0) == 1
+    assert capsys.readouterr() == ("", "")
 
 
 @pytest.fixture

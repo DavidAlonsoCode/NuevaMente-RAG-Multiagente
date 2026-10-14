@@ -7,6 +7,7 @@ The ordinary mock suite retains its existing selection and deadline.
 import concurrent.futures
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -14,6 +15,7 @@ import time
 from pathlib import Path
 
 import pytest
+from caddy_browser_diagnostics import failure, read_diagnostic
 from caddy_fixture import CANARIES, ROOT, ProxyHarness, clean_environment, cursor, private_write, sse
 
 pytestmark = pytest.mark.caddy_proxy
@@ -275,25 +277,45 @@ def browser_probe(proxy, hold=0):
     # diagnostic channel so they are audited, rather than discarded internally.
     env = clean_environment() | {"DEBUG": "pw:browser"}
     name = "browser-" + str(hold)
-    proxy.start(
-        name,
-        [
-            sys.executable,
-            str(ROOT / "backend/tests/integration/caddy_browser.py"),
-            proxy.url,
-            str(proxy.directory),
-            "--hold",
-            str(hold),
-        ],
-        env,
-    )
+    try:
+        proxy.start(
+            name,
+            [
+                sys.executable,
+                str(ROOT / "backend/tests/integration/caddy_browser.py"),
+                proxy.url,
+                str(proxy.directory),
+                "--hold",
+                str(hold),
+            ],
+            env,
+        )
+    except Exception as error:
+        proxy.evidence["checks"].append(
+            {"probe": "real-browser", "process": "start_failed", "diagnostic": failure("process_start", error)}
+        )
+        raise AssertionError("real-browser-probe-start-failed") from None
     process = proxy.processes[name]
-    assert process.wait(timeout=hold + 90) == 0, "real-browser-probe-failed"
+    try:
+        exit_code = process.wait(timeout=hold + 90)
+    except subprocess.TimeoutExpired as error:
+        proxy.evidence["checks"].append(
+            {"probe": "real-browser", "process": "timed_out", "diagnostic": failure("process_wait", error)}
+        )
+        raise AssertionError("real-browser-probe-timeout") from None
+    observation = {
+        "probe": "real-browser",
+        "process": "exited_zero" if exit_code == 0 else "exited_nonzero",
+        "diagnostic": read_diagnostic(proxy.directory / f"browser-{hold}.diagnostic.json"),
+    }
+    proxy.evidence["checks"].append(observation)
+    assert exit_code == 0, "real-browser-probe-failed"
+    assert observation["diagnostic"]["status"] == "passed", "real-browser-diagnostic-not-passed"
     audit = json.loads((proxy.directory / "ui-origin.json").read_text())
     assert audit and all(audit.values()), "streamlit-private-origin-or-security-invalid"
     assert proxy.counters()["ui_origin_authenticated"] > 0, "frontend-server-origin-not-forwarded-to-backend"
     result = json.loads((proxy.directory / "browser-result.json").read_text())
-    proxy.evidence["checks"].append({"probe": "real-browser", **result})
+    observation.update(result)
 
 
 def test_streamlit_real_browser_websocket_interaction_and_reconnection(proxy):
