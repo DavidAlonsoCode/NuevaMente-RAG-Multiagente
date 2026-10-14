@@ -82,7 +82,6 @@ graph TD
     I31 --> I54
     I44 --> I54
     I45 --> I54
-    I48 --> I54
     I50 --> I54
 ```
 
@@ -122,6 +121,24 @@ graph TD
 - Puertos 8000/8501 vinculados a loopback únicamente; firewall/NSG acorde.
 - Redirección de logs del proxy sin cuerpos ni tokens (§11.5).
 
+**Alcance operativo de cierre**:
+- Guía principal breve para instalar, arrancar y comprobar el despliegue;
+  diagnóstico histórico y herramientas adicionales quedan como referencia.
+- Conservar los checks `Caddy real / ubuntu-24.04` y
+  `Caddy real / ubuntu-24.04-arm` junto con los checks ordinarios. Verifican
+  configuración/proxy en CI con proveedores dobles; no acreditan OCI público.
+  Los fallos requieren diagnóstico y corrección, sin omitir pruebas para obtener verde.
+- Una sesión sobre la VM de entrega puede compartir evidencia con 53 y 54.
+  No se exige una segunda VM ni ejecutar toda la suite en el host de entrega.
+- El escaneo exhaustivo de 1–65535 por IP es diagnóstico opcional. Acreditar
+  exposición mediante reglas efectivas de OCI y firewall del host, inventario
+  de listeners y pruebas externas de web, SSH y puertos internos. Considerar
+  todas las reglas/interfaces y direcciones publicadas; un timeout no demuestra
+  por sí solo puerto cerrado y una inconsistencia impide aprobar el criterio.
+- Bloqueo de capacidad Always Free: intentos manuales acotados y diagnóstico;
+  preparar demo local con Gemini/OCI reales sin marcar Compute como desplegado.
+  No cambiar a recursos pagos ni eliminar HTTPS, secreto de origen o permisos.
+
 **Criterios de aceptación**:
 - [ ] `https://<dominio>` sirve la UI con certificado válido y la app es usable desde una red externa.
 - [ ] El progreso SSE se ve en vivo **a través del proxy** (test con generación real).
@@ -143,6 +160,18 @@ graph TD
 - Documentar el runbook de recarga de la demo (para reinicios de VM).
 
 - Preindexar y reconstruir ejecutan embeddings síncronos bajo el gestor/contexto común, con cuotas por modelo y sin bucles extra de reintentos. Registrar solicitudes reales incluso en mantenimiento.
+
+**Etapas de preparación y activación**:
+- Preparar y probar la precarga antes de 48, con un comando administrativo y
+  runbook breve; reutilizar originales, índices e interpretaciones compatibles.
+  No ampliar a paneles de administración ni recargas periódicas automáticas.
+- Activar y comprobar las tres fuentes en la VM tras 48. La preparación local
+  no acredita todavía los criterios públicos de este issue.
+- Verificar el puente entre selección demo y generación autorizada: fuentes
+  preindexadas no habilitan por sí solas ese flujo. Conservar el criterio de
+  generar sin subir y no inventar admisiones privadas ni permisos.
+- 55 puede preparar adaptaciones reales en un espacio propio autorizado mientras
+  se completa la biblioteca; su publicación/etiquetado mantiene los criterios previstos.
 
 **Criterios de aceptación**:
 - [ ] Desde la app pública, «probar documento demo» permite generar sin subir nada.
@@ -190,6 +219,13 @@ graph TD
 - Logs sin cuerpos de documentos ni códigos; métricas con request_id/generation_id (§11.5).
 - Exportaciones: revisión anti-CSV-injection ya cubierta en `Issue 45` (re-verificación).
 
+**Revisión acotada**: agrupar las tareas anteriores en acceso/sesiones,
+archivos/contenido, secretos/logs y configuración/recursos. Reutilizar pruebas
+existentes y evidencia de red de 48; registrar criterio, comprobación, resultado
+y hallazgo en una tabla breve. No añadir una certificación formal ni un framework
+de auditoría. Conservar todos los controles y corregir hallazgos que afecten
+la entrega; el plazo reservado para revisión no sustituye esa corrección.
+
 **Criterios de aceptación**:
 - [ ] Checklist §11 completo con evidencia por ítem (documento de revisión en `docs/`).
 - [ ] Escaneo de secretos del historial de Git limpio.
@@ -236,6 +272,13 @@ graph TD
 
 - Las pruebas E2E simuladas llevan ambas marcas `e2e` e `integration_mock` y se ejecutan en CI ordinaria. Las pruebas reales llevan `integration_real`, usan credenciales explícitas y quedan fuera de PRs ordinarios. Reutilizar las pruebas de seguridad aportadas por Issue 51.
 
+**Cobertura incremental**: mapear los 14 criterios a pruebas existentes
+(incluidos 51/52), casos nuevos sólo para huecos/regresiones y pasos manuales.
+No duplicar la suite de integración ni exigir todas las combinaciones posibles.
+Preparar y comprobar localmente antes de 48/49; conservar la aceptación pública
+para el cierre. Compartir evidencia aplicable con 48/54 y la demo, sin confundir
+proveedores dobles con integración real ni retirar pruebas para obtener CI verde.
+
 **Criterios de aceptación**:
 - [ ] Los 14 criterios tienen cobertura (test o protocolo) y pasan.
 - [ ] La suite automatizada corre en CI con dobles.
@@ -246,7 +289,7 @@ graph TD
 ---
 
 ### `Issue 54` — Smoke tests reales contra OCI y Gemini
-**F5** · **QAD** · **M** · **Depende de**: `Issue 14`, `Issue 31`, `Issue 44`, `Issue 45`, `Issue 48`, `Issue 50` · **Referencia**: decisiones_proyecto.md §12.1, §18.3, §20.1
+**F5** · **QAD** · **M** · **Depende de**: `Issue 14`, `Issue 31`, `Issue 44`, `Issue 45`, `Issue 50` · **Referencia**: decisiones_proyecto.md §12.1, §18.3, §20.1
 
 **Objetivo**: evidencia de integración activa con servicios reales (requisito 6 del enunciado), fuera del CI público.
 
@@ -257,6 +300,15 @@ graph TD
 - Marcado `integration_real`; nunca en PRs de terceros (§12.3).
 
 - La corrida real usa los mismos adaptadores síncronos y controles del worker que producción; verificar timeout, contador de solicitudes y ausencia de retries adicionales del SDK. No sirve como evidencia un cliente aislado que eluda el gestor.
+
+**Entorno y reutilización**: la corrida completa puede ejecutarse desde
+una instalación local con Gemini y OCI Object Storage reales, mediante los
+adaptadores y el worker normales. No requiere VM ni cierre de 48 para acreditar
+la integración obligatoria con proveedores. La aceptación pública del despliegue
+sigue perteneciendo a 48 y a los criterios públicos de 53. La misma generación,
+lecturas y exportaciones pueden reutilizarse como evidencia donde corresponda,
+identificando versión, configuración y resultado; no repetir llamadas reales
+por cada issue ni sustituirlas por clientes que eludan el gestor.
 
 **Criterios de aceptación**:
 - [ ] Una corrida completa real queda documentada con evidencia (JSON de respuesta + objeto en OCI + captura).
