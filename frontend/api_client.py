@@ -429,5 +429,13 @@ class APIClient:
             binary=True,
         )
 
+    def get_progress(self, token):
+        return self._solicitar("GET", "/api/progress", token=token)
+
+    def record_progress(self, token, payload):
+        return self._solicitar(
+            "POST", "/api/progress/events", token=token, json=payload, idempotency_key=payload["event_id"]
+        )
+
     def workspace_status(self, token: str) -> dict[str, Any]:
         return self._solicitar("GET", "/api/workspaces/current", token=token)
