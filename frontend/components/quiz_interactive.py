@@ -7,15 +7,20 @@ from api_client import APIError
 from i18n import t
 from quiz_flow import estado_quiz, validar_quiz
 
+from components.content_common import texto
 from components.errors import mostrar_error_ui
 
 
-def render_quiz_interactivo(api, idioma_ui, *, token, workspace_id, generation_id, render_fuentes=None):
+def render_quiz_interactivo(
+    api, idioma_ui, *, token, workspace_id, generation_id, render_fuentes=None, key_prefix="quiz", recibo=None
+):
     """Leer siempre la vista estudiante autorizada; no descargar el canónico."""
     estados = st.session_state.setdefault("quizzes_interactivos", {})
     clave = (workspace_id, generation_id)
     try:
-        document_id, preguntas = validar_quiz(api.get_generation(token, generation_id), generation_id)
+        document_id, preguntas = validar_quiz(
+            recibo if recibo is not None else api.get_generation(token, generation_id), generation_id
+        )
     except APIError as error:
         if error.status_code in (401, 404):
             estados.pop(clave, None)
@@ -26,7 +31,7 @@ def render_quiz_interactivo(api, idioma_ui, *, token, workspace_id, generation_i
         mostrar_error_ui(estado.error, idioma_ui)
     if estado.invalidado:
         return
-    prefijo = "quiz_" + hashlib.sha256(repr(clave).encode()).hexdigest()[:16]
+    prefijo = "quiz_" + hashlib.sha256(repr((clave, key_prefix)).encode()).hexdigest()[:16]
     resumen = estado.resumen()
     st.subheader(t("quiz.titulo", idioma_ui))
     st.caption(t("quiz.respondidas", idioma_ui).format(cantidad=resumen["respondidas"], total=len(preguntas)))
@@ -38,7 +43,7 @@ def render_quiz_interactivo(api, idioma_ui, *, token, workspace_id, generation_i
     pendiente = ultimo is not None and ultimo.feedback is None
     bloqueada = ultimo is not None and qid not in estado.nuevos
     st.caption(t("quiz.pregunta", idioma_ui).format(numero=estado.indice + 1, total=len(preguntas)))
-    st.write(pregunta["enunciado"])
+    st.markdown(texto(pregunta["enunciado"]))
     opciones = {o["option_id"]: o["texto"] for o in pregunta["opciones"]}
     seleccionado = ultimo.option_id if bloqueada else estado.selecciones.get(qid)
     modo = "nuevo" if qid in estado.nuevos else "actual"
@@ -47,7 +52,7 @@ def render_quiz_interactivo(api, idioma_ui, *, token, workspace_id, generation_i
         t("quiz.elegir", idioma_ui),
         list(opciones),
         index=list(opciones).index(seleccionado) if seleccionado else None,
-        format_func=lambda valor: opciones[valor],
+        format_func=lambda valor: texto(opciones[valor]),
         disabled=bloqueada,
         key=widget_key,
         on_change=lambda: estado.selecciones.update({qid: st.session_state[widget_key]}),
@@ -62,8 +67,10 @@ def render_quiz_interactivo(api, idioma_ui, *, token, workspace_id, generation_i
         (st.success if feedback["correcta"] else st.error)(
             t("quiz.correcto" if feedback["correcta"] else "quiz.incorrecto", idioma_ui)
         )
-        st.write(t("quiz.respuesta_correcta", idioma_ui).format(opcion=opciones[feedback["correct_option_id"]]))
-        st.write(feedback["justificacion"])
+        st.markdown(
+            texto(t("quiz.respuesta_correcta", idioma_ui).format(opcion=opciones[feedback["correct_option_id"]]))
+        )
+        st.markdown(texto(feedback["justificacion"]))
         if render_fuentes is not None:
             render_fuentes(document_id, feedback["referencias"])
         else:

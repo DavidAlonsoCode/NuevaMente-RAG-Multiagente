@@ -37,6 +37,16 @@ def paquete(formato="flashcards"):
 
 
 class ClienteResultado:
+    def answer_quiz(self, token, generation_id, payload):
+        st.session_state.llamadas.append(("respuesta", payload))
+        pregunta = TODOS_LOS_FORMATOS["quiz"][0]["preguntas"][0]
+        return {
+            "correcta": payload["option_id"] == pregunta["correct_option_id"],
+            "correct_option_id": pregunta["correct_option_id"],
+            "justificacion": pregunta["justificacion"],
+            "referencias": pregunta["referencias"],
+        }
+
     def get_generation(self, token, gid):
         st.session_state.llamadas.append(("estado", gid))
         return st.session_state.job
@@ -170,6 +180,17 @@ def test_quiz_no_expone_canonico_y_conserva_opcion_al_traducir():
     app.run()
     assert app.error and not app.radio
     assert "Un rango CIDR" not in textos(app)
+
+
+def test_quiz_integrado_corrige_y_enlaza_fuentes_sin_consultas_duplicadas():
+    app = ui("quiz")
+    assert app.session_state.llamadas == [("estado", "gen_01HX")]
+    app.radio[0].set_value("B").run()
+    boton(app, t("quiz.responder")).click().run()
+    assert not app.exception and any(t("quiz.incorrecto") == e.value for e in app.error)
+    assert texto(TODOS_LOS_FORMATOS["quiz"][0]["preguntas"][0]["justificacion"]) in textos(app)
+    boton(app, t("fuentes.cargar")).click().run()
+    assert texto("EVIDENCIA_ORIGINAL") in textos(app)
 
 
 @pytest.mark.parametrize("estado", ["queued", "running", "rejected_quality", "failed", "cancelled"])

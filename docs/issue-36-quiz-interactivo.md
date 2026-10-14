@@ -1,6 +1,6 @@
-# Avance del quiz interactivo (#36)
+# Quiz interactivo (#36)
 
-Rama independiente desde develop. El PR permanece en draft; no cierra #36.
+Integrado con el contenedor de resultados del #34 en la rama del #36.
 
 Se implementa `components/quiz_interactive.py` y el controlador `quiz_flow.py`.
 El componente obtiene únicamente GET /api/generations/{id}, cuya vista es
@@ -16,17 +16,18 @@ envíos observados en esta sesión: no inventa historial de otras sesiones.
 Los reruns y cambios de idioma conservan la intención y la opción sin enviar; cerrar o recuperar
 otra sesión elimina el estado mediante el mecanismo existente.
 
-## Integración pendiente con #34
+## Integración con #34
 
-- El contenedor de resultados debe llamar a render_quiz_interactivo con la
-  sesión activa y generation_id, después de seleccionar el formato quiz.
-- Inyectar render_fuentes(document_id, referencias), el visor compartido del
-  #34. Sin ese callback solo se muestran localizadores, no fuentes abiertas.
-- No se modifica components/quiz.py ni la composición de home: pertenecen #34.
+- El contenedor llama a render_quiz_interactivo con la sesión activa y el recibo
+  ya consultado; no duplica el GET de la generación en cada renderizado.
+- Las referencias del feedback abren el visor compartido del #34. El texto de
+  preguntas, opciones y justificaciones se presenta escapado.
+- El renderizador estático conserva su uso sin cliente API. La vista conectada
+  permite responder, recibir la corrección y consultar la fuente original.
 - Verificar recarga completa del navegador y recuperación del espacio; este
   avance acredita reruns, no persistencia de la sesión Streamlit en el navegador.
-- Completar revisión visual/teclado/320 px y recorrido manual E2E antes de salir
-  de draft. Pruebas simuladas no acreditan Gemini/OCI reales.
+- La vista de revisión manual incluye corrección simulada para probar teclado
+  y presentación. Pruebas simuladas no acreditan Gemini/OCI reales.
 
 Verificación enfocada: frontend/tests/test_quiz_interactive.py y
 backend/tests/test_quiz_ui_integration.py. La integración usa API, registro,
@@ -48,3 +49,7 @@ producción ni sus pruebas. No se ejecutaron Gemini/OCI reales.
 La última mejora conserva la opción todavía no enviada al cambiar ES/EN/PT.
 Se verificaron 63 pruebas enfocadas después de ese cambio, incluidos el cliente,
 i18n, respuestas perdidas y rasterizado; sin nuevas llamadas a servicios reales.
+
+Después de integrar #34: 68 pruebas de quiz, resultado, idiomas y API/UI
+aprobadas. El recorrido integrado comprueba feedback, apertura de evidencia y
+una sola consulta inicial de la generación. Ruff y formato correctos.
