@@ -33,7 +33,7 @@ def registrar_cara_flashcard(api, idioma_ui, *, generation_id, flashcard_id, car
     return _registrar(api, idioma_ui, estado)
 
 
-def render_marca_concepto(api, idioma_ui, *, document_id, concepto, generation_id=None):
+def render_marca_concepto(api, idioma_ui, *, document_id, concepto, generation_id=None, key_prefix="concepto"):
     if not st.session_state.get("workspace_id") or not st.session_state.get("session_token"):
         return
     # Preparar una intención no la envía: sólo el botón inicia el registro.
@@ -42,7 +42,7 @@ def render_marca_concepto(api, idioma_ui, *, document_id, concepto, generation_i
         estado["listo"] = False
     if st.button(
         t("progreso.marcar_concepto", idioma_ui).format(concepto=concepto),
-        key=estado["event_id"] + ":marcar",
+        key=key_prefix + ":" + estado["event_id"] + ":marcar",
         disabled=estado["confirmado"],
     ):
         estado["listo"] = True

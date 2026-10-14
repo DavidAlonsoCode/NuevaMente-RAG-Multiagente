@@ -1,4 +1,4 @@
-# Issue #41 — Progreso de estudio (draft)
+# Issue #41 — Progreso de estudio
 
 `components.progress.render_progreso(api, idioma_ui)` consulta `GET /api/progress`
 en cada render. Presenta conceptos, flashcards, intentos, aciertos iniciales y
@@ -9,9 +9,9 @@ El tiempo es orientativo y no afirma dominio ni certificación. El progreso pert
 al espacio recuperable: el flujo de sesión existente recupera el código y el panel
 lee de nuevo la API, sin restaurar contadores desde el navegador.
 
-## Integración pendiente con #34
+## Integración con #34
 
-El componente aún no está montado en home. Los renderizadores deben llamar:
+La pantalla principal muestra la pestaña de progreso y los renderizadores llaman:
 
 - `registrar_concepto_revisado` al abrir o marcar un concepto concreto, con
   documento y generación opcional. `render_marca_concepto` ofrece un botón explícito.
@@ -25,8 +25,11 @@ pendientes tienen reintento explícito, uno por clic; se puede elegir cuál comp
 rerun. `session_state` sólo conserva caras consultadas e intenciones de presentación.
 El quiz registra sus intentos en su endpoint de respuestas; este panel no los duplica.
 
-Faltan montaje y callbacks sobre el material real del #34, recorrido manual con código
-de recuperación y QA visual a 320, 768, 1024 y 1440 px. Este draft no cierra #41.
+Revelar una tarjeta registra ambas caras mostradas; ocultar, volver a revelar o
+cambiar idioma no vuelve a enviar el evento confirmado. Los conceptos se marcan
+con botones explícitos dentro de la preparación del material. También se puede
+consultar el progreso desde la pantalla de documentos, sin generación activa.
+Integrar después de #40. La validación de proveedores reales pertenece a la entrega.
 
 ## Verificación
 
