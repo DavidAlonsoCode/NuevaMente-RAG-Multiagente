@@ -67,6 +67,12 @@ graph TD
 - Registrar tiempos medidos de cada ejecución (para mostrar métricas reales — §18.3).
 - Guardar el caso intencional de evidencia insuficiente (sección débil de `Issue 05`) que se bloquea correctamente.
 
+**Preparación anticipada**: generar y revisar los escenarios desde un
+documento en un espacio propio autorizado antes de la activación de 49. Conservar
+el mismo ID/hash para A/B/C, todos los complementos y aprobación/persistencia
+reales. La publicación, recuperación y etiqueta de ejemplos en la app siguen
+siendo necesarias para cerrar el issue; no simular el catálogo ni sus resultados.
+
 **Criterios de aceptación**:
 - [ ] Los 3 escenarios + complementos están persistidos y recuperables desde la app con su etiqueta.
 - [ ] Todos los paquetes publicados pasaron por aprobación real (ningún JSON escrito a mano); el caso rechazado conserva solo diagnóstico.
@@ -86,6 +92,12 @@ graph TD
 - Grabación completa de respaldo (la grabación no sustituye la integración activa ni la prueba funcional nueva — §18.3).
 - Ensayo general con cronómetro y registro de desvíos; plan B técnico (si Gemini/VM fallan: resultados precargados + grabación + explicación honesta).
 - Checklist de evidencias por diferencial y por requisito mínimo, con enlaces (objetos OCI, capturas, video).
+
+**Trabajo en paralelo**: preparar el guion y ensayar tramos desde el inicio,
+sin esperar el cierre de todas las dependencias. La grabación final y el cierre
+conservan su evidencia y condiciones. Una contingencia local con proveedores
+reales identifica Compute pendiente; ni video ni resultados guardados sustituyen
+la integración activa o acreditan un despliegue inexistente.
 
 **Criterios de aceptación**:
 - [ ] Ensayo completo dentro del tiempo sin errores bloqueantes.
@@ -165,6 +177,12 @@ graph TD
 - Anotación humana independiente (2 revisores): claridad, adecuación al perfil, cobertura, utilidad — separada del score de fidelidad (§12.2).
 - Contraste juez automático vs. anotación: registrar falsos aprobados y falsos rechazados; corregir prompts/recuperación/juez y reevaluar; no bajar umbrales ni cambiar decisiones sin acuerdo explícito.
 - Reporte final con resultados medidos, tamaño de muestra y configuración (sin promesas de calidad absoluta — §12.4).
+
+**Muestra acotada**: mantener los 12 casos y dos revisores previstos,
+cubriendo por idioma los perfiles y formatos exigidos. Reutilizar casos reales
+de 55 cuando satisfagan la cobertura; no ampliar a todas las combinaciones
+posibles. Mantener la corrección y reevaluación de falsos aprobados y un reporte
+breve con configuración, muestra y resultados medidos.
 
 **Criterios de aceptación**:
 - [ ] ≥12 casos anotados por 2 revisores en los 3 idiomas.
