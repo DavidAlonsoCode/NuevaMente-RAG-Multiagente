@@ -60,7 +60,7 @@ def render_sidebar(api_client: APIClient, idioma_actual: str):
 
         st.divider()
         # Componente de Historial
-        render_historial(idioma_actual)
+        render_historial(idioma_actual, api_client)
 
 
 def _render_selector_idioma(idioma_actual: str):
