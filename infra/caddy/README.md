@@ -848,6 +848,42 @@ perfiles de navegador nunca son artifacts de CI. Los procesos temporales se cier
 en teardown incluso tras fallo. Un fallo del pipeline real queda visible: no se
 amplía el plazo de 15 s, no se debilitan assertions ni se modifica `PresupuestoOCI`.
 
+Compatibilidad experimental del sandbox en CI: la corrida 38615063540 sobre
+`744264c` obtuvo 352 aprobados y 2 fallidos por arquitectura, con las 354
+identidades completas. Las cuatro sondas fallaron en `browser_launch` con firma
+genérica de sandbox. El inspector capturó los lanzamientos, pero no denegaciones
+correlacionadas del kernel: **AppArmor sigue siendo una hipótesis**; los
+descendientes no quedaron acreditados. Se conservan esos artifacts históricos.
+
+El parche propuesto usa la [autorización específica documentada por Ubuntu](https://documentation.ubuntu.com/release-notes/24.04/#unprivileged-user-namespace-restrictions)
+y [Chromium](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md):
+un perfil nuevo `nm48-chromium-ci`, `flags=(unconfined) { userns, }`, asociado
+únicamente a la ruta exacta del headless shell fijado. Autoriza namespaces de
+usuario para ese programa y su contexto heredado; no constituye un confinamiento
+AppArmor de archivos/red. Amplía para ese contexto el acceso a superficie del
+kernel restringida por Ubuntu, para que Chromium construya su propio sandbox.
+No concede privilegios root en el host ni garantiza aislar código que ya tenga
+sudo. No cambia sysctl, otros perfiles ni instala helpers setuid.
+
+Solo se prepara en la VM GitHub-hosted efímera de cada job. El bundle completo se
+copia a inodos nuevos bajo `/opt/nm48-playwright-ci/browsers`: root:root,
+directorios/ejecutables 0555, otros archivos 0444, raíz 0755 y ancestros verificados
+sin escritura de grupo/otros. Se rechazan enlaces y tipos especiales; el perfil
+0644 se crea exclusivamente y se carga con `--add`, nunca reemplazando otro.
+El inventario SHA256 completo debe coincidir antes/después; acredita preservación
+de bytes, no una firma independiente del navegador descargado. La procedencia
+sigue siendo Playwright 1.63.0 verificado por el lock y su descarga oficial HTTPS.
+`PLAYWRIGHT_BROWSERS_PATH` conserva la selección por revisión y la assertion de
+versión; no se usa `NM_BROWSER_EXECUTABLE` ni se cambia `chromium_sandbox=True`.
+
+El smoke se invoca directamente una sola vez, con la misma guardia de 354
+identidades, assertions y deadlines. Se retiran el inspector temporal y
+`runner-sandbox.json` de nuevas publicaciones, sin borrar evidencia anterior.
+Falta ejecutar este parche y validar parser/carga/permisos/browser en ambas
+arquitecturas; prepararlo no acredita compatibilidad ni causa confirmada. Una
+corrida verde tampoco resolverá los fallos históricos de generación/recuperación,
+la suite ordinaria incompleta o la aceptación pública pendiente.
+
 Pendientes que estas pruebas no sustituyen: instalación/permisos POSIX, unidad
 systemd/notify/recuperación reales, Docker/NAT y peer comprobado, VM OCI Ubuntu ARM64,
 DNS, ACME/cadena pública, red/firewall externos y los tres criterios públicos del

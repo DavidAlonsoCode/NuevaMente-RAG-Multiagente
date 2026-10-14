@@ -58,220 +58,141 @@ jobs:
         with:
           python-version: "3.11"
       - name: Dependencias fijadas y herramientas Python verificadas
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/nm48-playwright-download
         run: |
+          test ! -e "$PLAYWRIGHT_BROWSERS_PATH"
           python -m pip install -r requirements-dev.txt -r backend/requirements.txt -r frontend/requirements.txt
           python -m pip install --require-hashes --only-binary=:all: -r .github/requirements-caddy.lock
           python .github/scripts/check_pinned_requirements.py .github/requirements-caddy.txt
           python -m playwright install --with-deps chromium
       - name: Caddy y Compose oficiales con versión y digest verificados
         run: python .github/scripts/smoke_caddy.py --prepare-tools "${{ runner.temp }}/caddy-tools"
-      - name: Sintaxis de wrappers y smoke requerido, sin skips
+      - name: Compatibilidad userns del Chromium fijado, solo VM efímera
         env:
-          CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
-          COMPOSE_BIN: ${{ runner.temp }}/caddy-tools/docker-compose
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/nm48-playwright-download
         run: |
-          bash -n infra/caddy/install.sh
-          bash -n infra/caddy/deploy.sh
-          python -m py_compile .github/scripts/smoke_caddy.py backend/tests/integration/caddy_backend.py backend/tests/integration/caddy_browser.py
-          # Temporary read-only inspection; exactly one smoke, unchanged exit status.
-          python - <<'PY'
-          import datetime
+          test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+          # Resolve the pinned default headless shell, never an executable override.
+          relative_executable="$(python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          from importlib.resources import files
+          try:
+              assert not os.environ.get("NM_BROWSER_EXECUTABLE")
+              package = files("playwright").joinpath("driver/package/lib/coreBundle.js")
+              node = files("playwright").joinpath("driver/node")
+              query = "process.stdout.write(require(process.argv[1]).registry.registry.findExecutable('chromium-headless-shell').executablePath())"
+              result = subprocess.run([str(node), "-e", query, str(package)],
+                                      check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+              executable = Path(os.fsdecode(result.stdout))
+              print(executable.relative_to(Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"])).as_posix())
+          except Exception:
+              print("SANDBOX_CI_RESOLUTION_FAILED", file=sys.stderr)
+              sys.exit(1)
+          PY
+          )"
+          # Dedicated fixed locations; refuse pre-existing files, directories or profiles.
+          sudo -n /usr/bin/python3 - "$PLAYWRIGHT_BROWSERS_PATH" "$relative_executable" <<'PY'
+          import hashlib
           import json
           import os
           from pathlib import Path
           import re
+          import shutil
           import stat
           import subprocess
           import sys
-          import time
-          from importlib.resources import files
 
-          report = {"attribution": "inconclusive", "inspection": "incomplete"}
-          target = Path(".data/caddy-evidence/runner-sandbox.json")
-          launches = {}
-          started = time.time()
+          def protected(path):
+              info = path.lstat()
+              assert not stat.S_ISLNK(info.st_mode)
+              assert info.st_uid == info.st_gid == 0 and not info.st_mode & 0o6022
 
-          def read(path, limit=65536):
-              try:
-                  with Path(path).open() as stream:
-                      return stream.read(limit + 1)
-              except (OSError, UnicodeError):
-                  return ""
-
-          def restrictions():
-              result = {"euid": os.geteuid(), "egid": os.getegid()}
-              for name, path in {
-                  "unprivileged_userns_clone": "/proc/sys/kernel/unprivileged_userns_clone",
-                  "max_user_namespaces": "/proc/sys/user/max_user_namespaces",
-                  "apparmor_restrict_unprivileged_userns": "/proc/sys/kernel/apparmor_restrict_unprivileged_userns",
-                  "apparmor_restrict_unprivileged_unconfined": "/proc/sys/kernel/apparmor_restrict_unprivileged_unconfined",
-              }.items():
-                  value = read(path).strip()
-                  result[name] = int(value) if re.fullmatch(r"[0-9]{1,12}", value) else None
-              enabled = read("/sys/module/apparmor/parameters/enabled").strip()
-              result["apparmor_enabled"] = {"Y": True, "N": False}.get(enabled)
-              current = read("/proc/self/attr/current").strip()
-              result["confinement"] = "unavailable" if not current else (
-                  "unconfined" if current == "unconfined" else "confined"
-              )
-              status = read("/proc/self/status")
-              for name in ("NoNewPrivs", "Seccomp"):
-                  match = re.search(rf"^{name}:\s*([0-9]+)$", status, re.M)
-                  result[name] = int(match[1]) if match else None
-              return result
-
-          def executable_metadata():
-              # Registry of the installed, pinned Playwright package; no launch/download.
-              package = files("playwright").joinpath("driver/package")
-              node = files("playwright").joinpath("driver/node")
-              query = "process.stdout.write(require(process.argv[1]).registry.registry.findExecutable('chromium-headless-shell').executablePath())"
-              data = subprocess.run(
-                  [str(node), "-e", query, str(package.joinpath("lib/coreBundle.js"))],
-                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5, check=True,
-              ).stdout
-              if not 0 < len(data) <= 4096 or os.environ.get("NM_BROWSER_EXECUTABLE"):
-                  raise ValueError("unverified-executable")
-              executable = Path(os.fsdecode(data)).resolve(strict=True)
-              mode = executable.stat()
-              report["chromium"] = {
-                  "pinned_headless_shell_present": stat.S_ISREG(mode.st_mode),
-                  "executable": os.access(executable, os.X_OK),
-                  "root_owned": mode.st_uid == 0,
-                  "setuid_helpers": [],
-              }
-              for name in ("chrome-sandbox", "chrome_sandbox"):
-                  helper = executable.parent / name
-                  if helper.exists():
-                      info = helper.stat()
-                      report["chromium"]["setuid_helpers"].append({
-                          "regular": stat.S_ISREG(info.st_mode), "root_owned": info.st_uid == 0,
-                          "setuid": bool(info.st_mode & stat.S_ISUID),
-                          "executable": os.access(helper, os.X_OK),
-                      })
-              # Absence of a setuid helper does not exclude the namespace sandbox.
-              return executable
-
-          stamp = r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z) pw:browser "
-
-          def observe(executable):
-              # Existing private DEBUG=pw:browser channel; never export its contents.
-              for path in Path(".data").glob("caddy-proxy-*/browser-*.stderr"):
-                  if path.name not in {"browser-0.stderr", "browser-130.stderr"}:
-                      continue
-                  text = read(path, 1048576)
-                  if len(text) > 1048576:
-                      report["launch_capture"] = "inconclusive_size_limit"
-                      continue
-                  # Do not mistake a partially written PID/timestamp for a complete record.
-                  text = text.rsplit("\n", 1)[0] if "\n" in text else ""
-                  begin = re.findall(stamp + r"<launching> (.*?) --", text)
-                  pid = re.findall(stamp + r"<launched> pid=([0-9]+)$", text, re.M)
-                  if len(begin) != 1 or len(pid) != 1 or Path(begin[0][1]) != executable:
-                      continue
-                  def when(value):
-                      return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
-                  launch_time = when(begin[0][0])
-                  if not started <= launch_time <= time.time():
-                      continue
-                  number = int(pid[0][1])
-                  end = re.findall(stamp + rf"\[pid={number}\] <process did exit:", text)
-                  key = "interactive" if path.name == "browser-0.stderr" else "long_lived"
-                  item = {"pid": number, "start_epoch": launch_time,
-                          "end_epoch": when(end[0]) if len(end) == 1 else None}
-                  if key in launches and launches[key]["pid"] != number:
-                      report["launch_capture"] = "inconclusive_multiple_launches"
+          def inventory(base, verify_protection=False):
+              rows = {}
+              for path in [base, *sorted(base.rglob("*"))]:
+                  info = path.lstat()
+                  assert not info.st_mode & 0o6000
+                  if verify_protection:
+                      protected(path)
+                  if stat.S_ISDIR(info.st_mode):
+                      value = ["directory"]
                   else:
-                      launches[key] = item
+                      assert stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+                      with path.open("rb") as stream:
+                          value = ["file", bool(info.st_mode & 0o111),
+                                   hashlib.file_digest(stream, "sha256").hexdigest()]
+                  rows[path.relative_to(base).as_posix()] = value
+              return rows
 
-          def kernel_evidence():
-              # Noninteractive elevation is only for reading kernel journal records.
-              # Raw JSON/stderr stay in memory. No sudo policy or host setting changes.
-              end = time.time()
-              command = ["sudo", "-n", "journalctl", "-k", "--no-pager", "-o", "json",
-                         "--since", f"@{started:.6f}", "--until", f"@{end:.6f}", "-n", "512"]
-              try:
-                  output = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                          timeout=10, check=False)
-              except (OSError, subprocess.TimeoutExpired):
-                  return {"status": "inconclusive_unavailable"}
-              lines = output.stdout.splitlines()
-              if output.returncode or output.stderr or len(lines) >= 512 or len(output.stdout) > 1048576:
-                  return {"status": "inconclusive_unavailable_or_truncated"}
-              matches = []
-              try:
-                  for line in lines:
-                      event = json.loads(line)
-                      timestamp = int(event["__REALTIME_TIMESTAMP"]) / 1000000
-                      message = event.get("MESSAGE", "")
-                      if not isinstance(message, str):
-                          continue
-                      audit_time = re.search(r"\baudit\(([0-9]{10}\.[0-9]{1,6}):[0-9]+\)", message)
-                      if audit_time:
-                          timestamp = float(audit_time[1])
-                      pids = re.findall(r"\bpid=([0-9]+)\b", message)
-                      if len(set(pids)) != 1:
-                          continue
-                      for probe, launch in launches.items():
-                          # Exact PID + browser launch/exit window, with 100 ms clock margin.
-                          if str(launch["pid"]) not in pids or launch["end_epoch"] is None:
-                              continue
-                          if not launch["start_epoch"] - 0.1 <= timestamp <= launch["end_epoch"] + 0.1:
-                              continue
-                          apparmor = 'apparmor="DENIED"' in message
-                          userns = 'operation="userns_create"' in message
-                          seccomp = bool(re.search(r"\btype=(?:1326|SECCOMP)\b", message))
-                          if apparmor or seccomp:
-                              matches.append({"probe": probe, "pid": launch["pid"],
-                                              "clock": "audit_event" if audit_time else "journal_received",
-                                              "seconds_after_launch": round(timestamp - launch["start_epoch"], 3),
-                                              "apparmor_denied": apparmor,
-                                              "userns_create": apparmor and userns,
-                                              "seccomp_audit": seccomp})
-              except (ValueError, KeyError, TypeError):
-                  return {"status": "inconclusive_record_format"}
-              return {"status": "correlated_records" if matches else "inconclusive_no_correlated_records",
-                      "correlation": "main_browser_pid_and_launch_window_only",
-                      "descendant_coverage": "not_established", "records": matches}
+          def copy_file(source, destination):
+              descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+              with os.fdopen(descriptor, "rb") as incoming, open(destination, "xb") as outgoing:
+                  mode = os.fstat(incoming.fileno()).st_mode
+                  assert stat.S_ISREG(mode) and not mode & 0o6000
+                  shutil.copyfileobj(incoming, outgoing)
+                  os.fchmod(outgoing.fileno(), 0o555 if mode & 0o111 else 0o444)
 
           try:
-              report["runner"] = restrictions()
-              executable = executable_metadata()
+              assert os.geteuid() == os.getegid() == 0
+              source = Path(sys.argv[1])
+              relative = Path(sys.argv[2])
+              assert not source.is_symlink() and source.is_dir()
+              assert not relative.is_absolute() and ".." not in relative.parts
+              assert re.fullmatch(r"[A-Za-z0-9_./-]+", relative.as_posix())
+              root = Path("/opt/nm48-playwright-ci")
+              bundle = root / "browsers"
+              profile = Path("/etc/apparmor.d/nm48-chromium-ci")
+              for path in [*root.parents, profile.parent, *profile.parent.parents]:
+                  protected(path)
+              assert not root.exists() and not root.is_symlink()
+              assert not profile.exists() and not profile.is_symlink()
+              assert Path("/sys/module/apparmor/parameters/enabled").read_text().strip() == "Y"
+              loaded = Path("/sys/kernel/security/apparmor/profiles")
+              assert not any(line.startswith("nm48-chromium-ci ") for line in loaded.read_text().splitlines())
+              before = inventory(source)
+              assert before[relative.as_posix()][:2] == ["file", True]
+              # New root-owned inodes, not a rename of files the runner may have open.
+              root.mkdir(mode=0o700)
+              root.chmod(0o700)
+              shutil.copytree(source, bundle, symlinks=True, copy_function=copy_file)
+              assert inventory(bundle) == before
+              for path in [bundle, *bundle.rglob("*")]:
+                  mode = path.lstat().st_mode
+                  path.chmod(0o555 if stat.S_ISDIR(mode) or mode & 0o111 else 0o444)
+              root.chmod(0o755)
+              protected(root)
+              assert inventory(bundle, verify_protection=True) == before == inventory(source)
+              executable = bundle / relative
+              policy = 'abi <abi/4.0>,\nprofile nm48-chromium-ci "' + str(executable) + '" flags=(unconfined) {\n  userns,\n}\n'
+              with profile.open("x") as stream:
+                  stream.write(policy)
+              profile.chmod(0o644)
+              protected(profile)
+              # --add refuses replacement; no global reload, sysctl or setuid helper.
+              subprocess.run(["/usr/sbin/apparmor_parser", "--add", "--skip-cache", str(profile)],
+                             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              assert "nm48-chromium-ci (unconfined)" in loaded.read_text().splitlines()
+              digest = hashlib.sha256(json.dumps(before, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+              print(json.dumps({"sandbox_ci": "prepared", "bundle_manifest_sha256": digest}))
           except Exception:
-              # Closed diagnostic status: never render exceptions, paths or process output.
-              executable = None
-              report["metadata"] = "inconclusive_unavailable"
-          code = 1
-          try:
-              process = subprocess.Popen([sys.executable, ".github/scripts/smoke_caddy.py"])
-              while process.poll() is None:
-                  if executable is not None:
-                      try:
-                          observe(executable)
-                      except Exception:
-                          report["launch_capture"] = "inconclusive_read_error"
-                  time.sleep(0.25)
-              code = process.wait()
-          except OSError:
-              report["smoke"] = "start_failed"
-          try:
-              if executable is not None:
-                  observe(executable)
-              report["launches"] = launches
-              report.setdefault("launch_capture", "complete" if len(launches) == 2 and all(
-                  item["end_epoch"] is not None for item in launches.values()
-              ) else "inconclusive_missing_launch_window")
-              report["kernel"] = kernel_evidence()
-              report["inspection"] = "finished"
-          except Exception:
-              report["inspection"] = "inconclusive_collection_error"
-          try:
-              target.parent.mkdir(parents=True, exist_ok=True)
-              target.write_text(json.dumps(report, indent=2) + "\n")
-          except OSError:
-              print("RUNNER_INSPECTION_EXPORT_FAILED", file=sys.stderr)
-              code = code or 1
-          sys.exit(code if code >= 0 else 128 - code)
+              print("SANDBOX_CI_PREPARATION_FAILED", file=sys.stderr)
+              sys.exit(1)
           PY
+      - name: Sintaxis de wrappers y smoke requerido, sin skips
+        env:
+          CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
+          COMPOSE_BIN: ${{ runner.temp }}/caddy-tools/docker-compose
+          PLAYWRIGHT_BROWSERS_PATH: /opt/nm48-playwright-ci/browsers
+        run: |
+          test -z "${NM_BROWSER_EXECUTABLE:-}"
+          bash -n infra/caddy/install.sh
+          bash -n infra/caddy/deploy.sh
+          python -m py_compile .github/scripts/smoke_caddy.py backend/tests/integration/caddy_backend.py backend/tests/integration/caddy_browser.py
+          python .github/scripts/smoke_caddy.py
       - name: Evidencia saneada (sin logs crudos, TLS, tokens ni perfiles)
         if: always()
         uses: actions/upload-artifact@v4
@@ -280,6 +201,5 @@ jobs:
           path: |
             .data/caddy-evidence/observations.json
             .data/caddy-evidence/required-tests.xml
-            .data/caddy-evidence/runner-sandbox.json
           if-no-files-found: error
           retention-days: 14
