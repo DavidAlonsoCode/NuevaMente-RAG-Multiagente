@@ -18,6 +18,8 @@ La consulta del aprovisionador se probó contra OCI real. Las guardas y la
 creación/reanudación tienen pruebas con OCI simulado; los scripts pasan `bash -n`.
 Todavía no se ejecutaron en una VM real ni completan la provisión del #47.
 La aplicación, Caddy y sus credenciales se despliegan en Issue 48.
+La precarga offline de las fuentes demo del #49 y sus pendientes se describen
+en el [runbook de precarga](../../docs/demo-precarga.md).
 
 ## Bloqueo observado el 8 de octubre de 2026
 

@@ -313,6 +313,14 @@ la biblioteca desplegada y Issue 30 completa visión.
   La huella de chunks usa la firma del catálogo de #17; la configuración usa
   `ConfigChunker.huella(parser)`. `huella_documental_demo` liga metadata y cobertura
   exactas, incluyendo fecha, conteos y huella de parser, a esa publicación.
+  Las interpretaciones visuales demo conservan procedencia y tipo
+  `image_description`. El lector verifica el raster de la página original,
+  versiones de prompt/raster, cobertura completa y chunks derivados exactos;
+  una interpretación alterada no habilita fuentes ni `ready`. No agrega visión
+  ni embeddings durante GET. La precarga administrativa de #49 se ejecuta
+  offline con el gestor común y exclusividad de volumen con la API;
+  ver [runbook de precarga](demo-precarga.md). No crea adaptaciones del #55
+  ni habilita la generación demo todavía pendiente en #31/#32.
   Issue 49 debe emitir esta evidencia solo después
   de verificar su publicación, con ETag vigente. H03 únicamente valida y consume
   el bloque: no implementa precarga, ejecución de rebuild, embeddings ni runbook.
