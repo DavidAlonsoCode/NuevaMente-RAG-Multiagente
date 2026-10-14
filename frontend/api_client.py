@@ -387,6 +387,16 @@ class APIClient:
     # ------------------------------------------------------------------
     # 3. Generaciones
     # ------------------------------------------------------------------
+    def answer_quiz(self, token, generation_id, payload):
+        """El mismo evento conserva su clave en reintentos de transporte."""
+        return self._solicitar(
+            "POST",
+            f"/api/quizzes/{quote(generation_id, safe='')}/answers",
+            json=payload,
+            token=token,
+            idempotency_key=payload["event_id"],
+        )
+
     def create_generation(
         self, token: str, payload: dict[str, object], *, idempotency_key: str | None = None
     ) -> dict[str, object]:
