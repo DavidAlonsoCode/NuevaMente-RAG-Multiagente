@@ -123,6 +123,9 @@ def ui(monkeypatch):
         },
     )
     monkeypatch.setattr(APIClient, "create_generation", crear)
+    monkeypatch.setattr(
+        APIClient, "get_generation", lambda _self, token, gid: {"generation_id": gid, "status": "queued"}
+    )
     app = AppTest.from_file(str(APP)).run()
     assert not app.exception
     return app, llamadas, respuestas, documentos
