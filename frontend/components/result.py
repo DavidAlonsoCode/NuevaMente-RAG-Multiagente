@@ -116,6 +116,12 @@ def render_generacion(api_client, generacion: dict, idioma: str) -> None:
                     for salida, entrada in campos.items()
                 ):
                     raise ValueError("Parámetros incompatibles")
+                pedido = generacion["parametros"]["alcance"]
+                alcance = paquete["metadatos"]["alcance"]
+                if alcance["tipo"] != pedido["tipo"] or (
+                    pedido["tipo"] == "seccion" and alcance.get("seccion_id") != pedido["seccion_id"]
+                ):
+                    raise ValueError("Alcance incompatible")
             except ValueError:
                 raise APIError("INVALID_RESPONSE", "Resultado incompatible con la solicitud.", 502) from None
             rotulo = "material.guardado" if persistencia["provider"] == "oci" else "almacenamiento.local_dev"

@@ -93,6 +93,7 @@ def ui(formato="flashcards", idioma="es", estado="completed"):
                 "nicho_sector": "general",
                 "nivel_detalle": "didactico",
                 "idioma_salida": "es",
+                "alcance": {"tipo": "documento_completo"},
             },
         },
         "job": {
@@ -201,7 +202,8 @@ def test_cancelar_y_persistir_no_disparan_generacion_nueva():
 
 
 @pytest.mark.parametrize(
-    "cambio", ["persistencia", "generation_id", "document_id", "formato", "bloqueo", "score", "respuesta_invalida"]
+    "cambio",
+    ["persistencia", "generation_id", "document_id", "formato", "alcance", "bloqueo", "score", "respuesta_invalida"],
 )
 def test_completed_inconsistente_no_publica_material(cambio):
     app = ui()
@@ -214,6 +216,8 @@ def test_completed_inconsistente_no_publica_material(cambio):
         job["contenido"]["documento_fuente"]["document_id"] = "doc_otro"
     elif cambio == "formato":
         job["contenido"]["metadatos"]["formato_generado"] = "quiz"
+    elif cambio == "alcance":
+        job["contenido"]["metadatos"]["alcance"] = {"tipo": "seccion", "seccion_id": "otra"}
     elif cambio == "bloqueo":
         job["contenido"]["evaluacion_calidad"]["razones_bloqueo"] = ["Sin respaldo"]
     elif cambio == "score":
