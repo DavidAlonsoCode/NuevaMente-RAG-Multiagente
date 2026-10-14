@@ -92,6 +92,7 @@ class EstadoQuiz:
     indice: int = 0
     intentos: dict[str, list[IntentoQuiz]] = field(default_factory=dict)
     nuevos: set[str] = field(default_factory=set)
+    selecciones: dict[str, str | None] = field(default_factory=dict)
     error: APIError | None = None
     invalidado: bool = False
 
@@ -128,6 +129,7 @@ class EstadoQuiz:
         if not historial or historial[-1].feedback is None or self.invalidado:
             raise ValueError("Primero debe confirmarse el intento anterior")
         self.nuevos.add(pregunta_id)
+        self.selecciones.pop(pregunta_id, None)
 
     def resumen(self):
         confirmados = [[i.feedback for i in items if i.feedback is not None] for items in self.intentos.values()]

@@ -181,3 +181,15 @@ def test_cliente_transporta_evento_y_token_en_cabecera(monkeypatch):
     assert llamadas[0]["headers"]["Authorization"] == "Bearer token"
     assert llamadas[0]["headers"]["Idempotency-Key"] == "evento"
     assert llamadas[0]["json"] == body and llamadas[0]["allow_redirects"] is False
+
+
+@pytest.mark.parametrize("idioma", ["es", "en", "pt"])
+def test_opcion_sin_enviar_se_conserva_al_cambiar_idioma(ui, idioma):
+    app, api = ui
+    app.radio[0].set_value("B").run()
+    app.radio[0].set_value("C").run()
+    app.session_state.lang = idioma
+    app.run()
+    assert not app.exception and app.radio[0].value == "C" and not api.envios
+    boton(app, t("quiz.responder", idioma)).click().run()
+    assert not app.exception and api.envios[0]["option_id"] == "C"

@@ -13,7 +13,7 @@ adicional a progreso ni nuevas llamadas LLM.
 Estado aislado por espacio/generación, radios nativos, navegación, feedback
 textual de acierto/error, justificación y resumen. El resumen describe los
 envíos observados en esta sesión: no inventa historial de otras sesiones.
-Los reruns y cambios de idioma conservan la intención; cerrar o recuperar
+Los reruns y cambios de idioma conservan la intención y la opción sin enviar; cerrar o recuperar
 otra sesión elimina el estado mediante el mecanismo existente.
 
 ## Integración pendiente con #34
@@ -34,7 +34,7 @@ worker y almacenamiento locales con proveedores explícitamente simulados.
 
 ## Validación de este avance
 
-223 pruebas aprobadas: frontend completo, quiz UI/API, corrección/progreso,
+Corrida ampliada: 223 pruebas aprobadas de frontend completo, quiz UI/API, corrección/progreso,
 rasterizado, Researcher y retrieval. Ruff/formato, pip check y git diff --check
 correctos. AppTest restaura __main__ después de cada prueba para que procesos
 spawn de parser/PDFium no ejecuten el script de interfaz. El harness además
@@ -44,3 +44,7 @@ En Windows usar un basetemp único y corto dentro de .data/ (por ejemplo .data/t
 fue el directorio de esta corrida). Un nombre largo hizo fallar os.replace en el
 mock de storage; al acortarlo los cuatro casos de upload E2E pasaron sin cambiar
 producción ni sus pruebas. No se ejecutaron Gemini/OCI reales.
+
+La última mejora conserva la opción todavía no enviada al cambiar ES/EN/PT.
+Se verificaron 63 pruebas enfocadas después de ese cambio, incluidos el cliente,
+i18n, respuestas perdidas y rasterizado; sin nuevas llamadas a servicios reales.

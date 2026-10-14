@@ -40,15 +40,17 @@ def render_quiz_interactivo(api, idioma_ui, *, token, workspace_id, generation_i
     st.caption(t("quiz.pregunta", idioma_ui).format(numero=estado.indice + 1, total=len(preguntas)))
     st.write(pregunta["enunciado"])
     opciones = {o["option_id"]: o["texto"] for o in pregunta["opciones"]}
-    seleccionado = ultimo.option_id if bloqueada else None
+    seleccionado = ultimo.option_id if bloqueada else estado.selecciones.get(qid)
     modo = "nuevo" if qid in estado.nuevos else "actual"
+    widget_key = f"{prefijo}_{qid}_{len(historial)}_{modo}"
     opcion = st.radio(
         t("quiz.elegir", idioma_ui),
         list(opciones),
         index=list(opciones).index(seleccionado) if seleccionado else None,
         format_func=lambda valor: opciones[valor],
         disabled=bloqueada,
-        key=f"{prefijo}_{qid}_{len(historial)}_{modo}",
+        key=widget_key,
+        on_change=lambda: estado.selecciones.update({qid: st.session_state[widget_key]}),
     )
     etiqueta = t("quiz.reenviar", idioma_ui) if pendiente else t("quiz.responder", idioma_ui)
     if st.button(etiqueta, key=f"{prefijo}_enviar", disabled=opcion is None or (bloqueada and not pendiente)):
