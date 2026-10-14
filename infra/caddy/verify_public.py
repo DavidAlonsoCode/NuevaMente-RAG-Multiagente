@@ -41,20 +41,15 @@ CHECKS = {
     },
     "public_tcp": {
         "full_tcp_range": "automatic",
-        "nonadmin_ssh_unreachable": "automatic",
+        "nonadmin_ssh_unreachable": "human_host",
         "external_nonadmin_origin_all_addresses": "human",
         "host_firewall_loopback_nsg": "host",
         "admin_ssh_key_only": "human_host",
     },
 }
+OPTIONAL_CHECKS = {("public_tcp", "full_tcp_range")}
 RESULTS = {"not_executed", "passed", "failed", "inconclusive"}
 PRIVATE_HEADERS = {"x-nuevamente-origin-key", "x-nuevamente-client-ip"}
-OPEN_PENDING = [
-    "stage3_generation_timeouts_open",
-    "stage3_frontend_start_failure_open",
-    "ordinary_suite_not_approved",
-    "native_linux_arm64_systemd_docker_nat_pending",
-]
 
 
 class InvalidInput(ValueError):
@@ -133,17 +128,17 @@ def plan(args):
                     name: {
                         "implementation": "collector" if kind == "automatic" else "runbook",
                         "verification": kind,
+                        "required": (criterion, name) not in OPTIONAL_CHECKS,
                         "result": "not_executed",
                         "executed": False,
                         "observations": [],
                     }
                     for name, kind in checks.items()
                 },
-                "pending": list(checks),
+                "pending": [name for name in checks if (criterion, name) not in OPTIONAL_CHECKS],
             }
             for criterion, checks in CHECKS.items()
         },
-        "historical_pending": OPEN_PENDING.copy(),
     }
 
 
@@ -154,7 +149,11 @@ def finish(report):
         states = [check["result"] for check in checks.values()]
         if any(state not in RESULTS for state in states):
             raise InvalidInput()
-        criterion["pending"] = [name for name, check in checks.items() if check["result"] != "passed"]
+        criterion["pending"] = [
+            name for name, check in checks.items() if check["required"] and check["result"] != "passed"
+        ]
+        # Optional means absence is not missing evidence. An observed failure
+        # still contradicts the exposure criterion and must remain visible.
         criterion["result"] = (
             "failed"
             if "failed" in states

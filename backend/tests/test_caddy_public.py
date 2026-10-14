@@ -71,11 +71,65 @@ def test_default_plan_no_dns_network_or_credential_prompt(monkeypatch, capsys):
     report = json.loads(capsys.readouterr().out)
     assert report["mode"] == "plan" and report["acceptance"] == "not_approved"
     assert report["origin"]["external_nonadmin"] == "operator_declared_not_verified"
-    assert report["historical_pending"] == public.OPEN_PENDING
+    assert "historical_pending" not in report
+    assert "ordinary_suite_not_approved" not in json.dumps(report)
+    assert "stage3_generation_timeouts_open" not in json.dumps(report)
+    assert "stage3_frontend_start_failure_open" not in json.dumps(report)
+    assert "ci_status" not in report
     for criterion in report["criteria"].values():
         assert criterion["result"] == "not_executed"
         assert all(not c["executed"] for c in criterion["checks"].values())
         assert criterion["pending"]
+
+
+def test_unexecuted_optional_scan_is_not_missing_required_evidence():
+    report = public.plan(args())
+    exposure = report["criteria"]["public_tcp"]
+    scan = check(report, "public_tcp", "full_tcp_range")
+    assert scan["required"] is False and scan["executed"] is False
+    assert "full_tcp_range" not in exposure["pending"]
+    ssh = check(report, "public_tcp", "nonadmin_ssh_unreachable")
+    assert ssh["required"] is True and ssh["verification"] == "human_host"
+    # Report-contract double: these attestations are not real host/public proof.
+    for name, item in exposure["checks"].items():
+        if item["required"]:
+            public.observed(report, "public_tcp", name, "passed")
+    public.finish(report)
+    assert exposure["pending"] == []
+    assert scan["result"] == "not_executed" and scan["observations"] == []
+    assert exposure["result"] == "inconclusive"
+    assert report["acceptance"] == "not_approved"
+
+
+@pytest.mark.parametrize("result", ["passed", "failed", "inconclusive"])
+def test_optional_scan_retains_observed_result_without_becoming_required(result):
+    report = public.plan(args("tcp"))
+    exposure = report["criteria"]["public_tcp"]
+    for name, item in exposure["checks"].items():
+        if item["required"]:
+            public.observed(report, "public_tcp", name, "passed")
+    public.observed(report, "public_tcp", "full_tcp_range", result, checked=65535)
+    public.finish(report)
+    scan = check(report, "public_tcp", "full_tcp_range")
+    assert scan["required"] is False and scan["executed"] is True
+    assert scan["result"] == result and scan["observations"] == [{"result": result, "checked": 65535}]
+    assert exposure["pending"] == []
+    expected = "failed" if result == "failed" else "inconclusive"
+    assert exposure["result"] == report["execution_result"] == expected
+    assert report["acceptance"] == "not_approved"
+
+
+def test_optional_scan_contradiction_survives_later_success():
+    report = public.plan(args("tcp"))
+    public.observed(report, "public_tcp", "full_tcp_range", "failed", open_ports=[80, 443, 8000], target_index=0)
+    public.observed(report, "public_tcp", "full_tcp_range", "passed", open_ports=[80, 443], target_index=1)
+    public.finish(report)
+    scan = check(report, "public_tcp", "full_tcp_range")
+    assert [row["result"] for row in scan["observations"]] == ["failed", "passed"]
+    assert scan["result"] == report["criteria"]["public_tcp"]["result"] == report["execution_result"] == "failed"
+    assert "full_tcp_range" not in report["criteria"]["public_tcp"]["pending"]
+    assert "nonadmin_ssh_unreachable" in report["criteria"]["public_tcp"]["pending"]
+    assert report["acceptance"] == "not_approved"
 
 
 @pytest.mark.parametrize(

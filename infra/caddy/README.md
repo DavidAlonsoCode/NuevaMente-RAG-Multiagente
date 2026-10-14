@@ -1,5 +1,76 @@
 # Proxy del host — Issue 48, implementación y protocolo de aceptación
 
+## Guía principal: instalar → arrancar → comprobar
+
+Esta guía sigue el alcance vigente de [#48](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/48)
+y el ajuste de [#128](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/pull/128).
+Es una receta para una ejecución futura autorizada; no concede permiso para
+instalar, activar servicios, contactar proveedores ni cambiar DNS/firewall.
+
+1. **Instalar sin publicar.** En Ubuntu 24.04 **ARM64** con #47 comprobado,
+   seguir [preparación de Caddy](#preparar-caddy-sin-publicar-un-sitio),
+   [archivos canónicos y evidencia de red](#preparar-archivos-canónicos-y-evidencias-de-47)
+   y [volumen e imágenes existentes](#volumen-existente-e-imágenes).
+   `install.sh` verifica procedencia y prepara la unidad sin iniciarla.
+   Sigstore requiere Rekor/TUF con caché nueva: no suponer verificación offline.
+2. **Arrancar explícitamente.** Completar la [observación inicial del peer](#observación-inicial-antes-de-confiar-en-headers)
+   en cuarentena, configurar sólo la IP comprobada y seguir
+   [validación y activación](#validar-sin-publicar-activar-explícitamente).
+   El orden es `--observe-peer`, completar la confianza, `--validate` y, sólo con
+   autorización operativa, `--activate`. El overlay productivo fuerza ambos mocks
+   a 0; esta operación no es un arnés con proveedores dobles. Ante fallo usar
+   [recuperación](#fallos-y-recuperación), conservando journal, datos y evidencia.
+3. **Comprobar y documentar.** Acreditar primero permisos, unidad efectiva/notify,
+   socket, Docker/NAT y recuperación nativos. Después, con autorización pública
+   separada, completar los [tres criterios](#criterio-1-https-público-y-ui-usable)
+   desde el dominio y una red externa. Para exposición correlacionar todas las
+   reglas OCI/firewall, interfaces/listeners y sondas externas de web, SSH y
+   8000/8501 en cada dirección publicada. El [escaneo completo](#criterio-3-exposición-tcp-y-acceso-administrativo)
+   es diagnóstico opcional; una contradicción observada impide aprobar y un
+   timeout no demuestra puerto cerrado.
+
+Una misma sesión autorizada en la VM de entrega puede compartir evidencia con
+#53/#54; no se exige una segunda VM ni repetir toda la suite en ella. Si falta
+capacidad Always Free, registrar intentos manuales acotados y el bloqueo. Una
+demo local con Gemini/OCI reales requiere su autorización y no acredita Compute
+desplegado. No comprar recursos ni debilitar HTTPS, origen o permisos.
+
+## Evidencia Linux de 42af012
+
+Estado revisado el **14/10/2026**, sin ejecutar nuevamente esos workflows:
+
+| Ejecución | Evidencia observada y alcance |
+| --- | --- |
+| [Caddy 38626809239](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/actions/runs/38626809239) | **354 aprobados por arquitectura**, Ubuntu 24.04 AMD64/ARM64, sin fallos/errores/skips. Cobertura 89 configuración + 142 despliegue + 113 reporte/diagnóstico + 10 proxy; cuatro huellas esperadas/observadas iguales, sin duplicados. Caddy 2.11.7/Compose 2.40.3 reales, diagnóstico desactivado, backend/gestor/SQLite/Streamlit reales y proveedores dobles. |
+| [CI 38626809237](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/actions/runs/38626809237) | Python 3.11/Linux: **2372 aprobados, 52 skips, 10 deseleccionados**; Ruff/formato aprobados. Los skips son 47 de configuración y cinco de despliegue sin Caddy/Compose en ese job: las mismas identidades pasan en Caddy. Los 10 proxy se seleccionan expresamente allí. La tanda adicional de 37 integraciones se solapa con la ordinaria. |
+| [Contenedores 38626810038](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/actions/runs/38626810038) | Tres jobs aprobados: Compose base con mocks, aislamiento y persistencia SQLite/volumen tras recreación; ambas imágenes construidas/ejecutadas en ARM64 nativo con UID 10001 y Chroma nativo. No acredita activación del overlay productivo. |
+
+HEAD de las tres ejecuciones: `42af012dfb0ef23c062888e9f3179104eacee917`.
+El checkout efectivo fue el merge temporal
+`cf48f9702fbeca297ec5aa7ce532b096a468c5c9`, con base
+`5289ed8e3470c6e923e9addd1d1d83e1fc9df1b3`. El `develop` revisado después,
+`8f5449045e8b8e80656dd6da514952ced0e61054`, incorpora #34: esa combinación
+posterior requiere los checks del siguiente push manual. No sumar los casos
+solapados ni las dos arquitecturas como identidades independientes.
+
+Las sondas registraron interacción/reconexión de Chromium 153.0.8010.12 fijado,
+WS durante 130,33–130,42 s, SSE H1/H2 con silencio de 134,24–134,43 s y upload
+progresivo de 72 s. Preparación, integridad, permisos y carga/confirmación del
+perfil AppArmor de CI pasaron en ambas arquitecturas, conservando el sandbox.
+Esto acredita compatibilidad de la intervención en esos runners, sin demostrar
+retrospectivamente la causa única de sus fallos anteriores ni aceptar OCI público.
+
+**Pendientes actuales:** instalación/idempotencia/permisos de despliegue,
+systemd/notify/socket y recuperación nativos Ubuntu ARM64; Docker/NAT/peer del
+modelo productivo; los tres criterios públicos. CI no los sustituye. Los timeouts
+y fallos `frontend-start`/`reload` de Windows conservan sus reportes y causa no
+demostrada; no quedan resueltos retrospectivamente ni obligan a nueva investigación
+sin un riesgo vigente demostrado. El reporte público describe sus observaciones,
+sin incorporar estados fijos de CI ni bloqueos históricos. Los registros fechados
+y plegados más abajo conservan el estado de cada revisión, no el estado actual.
+
+## Referencia de configuración y procedimientos
+
 Este directorio define configuración, contratos y herramientas de instalación,
 despliegue y recuperación para **Caddy 2.11.7** en Ubuntu 24.04 ARM64.
 Las herramientas requieren ejecución explícita por un administrador en un host
@@ -267,6 +338,9 @@ socket. La extracción/ejecución local del argumento Python prueba la guardia,
 Los tests de generación de configuración tampoco acreditan permisos POSIX,
 ACME/DNS públicos, WS/SSE temporal ni arranque de imágenes ARM64.
 
+<details>
+<summary>Historial local — Etapa 1, 12/10/2026 (estado de esa revisión)</summary>
+
 ### Resultado local observado — 12 de octubre de 2026
 
 | Comprobación | Resultado observado |
@@ -320,6 +394,8 @@ resultados y límites sin secretos. La falta de VM no reduce esos requisitos:
 los tres criterios públicos de #48 permanecen pendientes hasta evidencia real.
 
 **Etapa 2 autorizada para implementación. Detenerse antes de Etapas 3–4.**
+
+</details>
 
 ## Etapa 2 — preparación, validación, activación y recuperación
 
@@ -654,6 +730,9 @@ canarios no aparecen en stdout/stderr/journal/archivos. No hacer estas inyeccion
 de fallos contra datos de usuarios. Sin ese entorno las verificaciones quedan
 **no ejecutadas**, y los ensayos públicos, SSE/WS y generación real siguen pendientes.
 
+<details>
+<summary>Historial local — Etapa 2, 12–13/10/2026 (estado de esas revisiones)</summary>
+
 ### Suite ordinaria y evidencia previa
 
 El supervisor comunicó reproducción del fallo de generación en Windows y localizó
@@ -728,6 +807,8 @@ activar servicios. Reportes ignorados:
 `.data/issue48-tools/review-regressions-local.txt` (98 regresiones).
 
 **Finalizar Etapa 2 con archivos/resultados para revisión. No comenzar Etapas 3–4.**
+
+</details>
 
 ### Etapa 3 — integración local y automatización (sin despliegue)
 
@@ -855,7 +936,7 @@ genérica de sandbox. El inspector capturó los lanzamientos, pero no denegacion
 correlacionadas del kernel: **AppArmor sigue siendo una hipótesis**; los
 descendientes no quedaron acreditados. Se conservan esos artifacts históricos.
 
-El parche propuesto usa la [autorización específica documentada por Ubuntu](https://documentation.ubuntu.com/release-notes/24.04/#unprivileged-user-namespace-restrictions)
+La compatibilidad implementada usa la [autorización específica documentada por Ubuntu](https://documentation.ubuntu.com/release-notes/24.04/#unprivileged-user-namespace-restrictions)
 y [Chromium](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md):
 un perfil nuevo `nm48-chromium-ci`, `flags=(unconfined) { userns, }`, asociado
 únicamente a la ruta exacta del headless shell fijado. Autoriza namespaces de
@@ -880,20 +961,25 @@ incompatible con la guardia estricta de ancestros ([AMD64](https://github.com/ac
 [ARM64](https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261004.142/images/ubuntu/scripts/build/configure-system.sh#L15)).
 La nueva ubicación evita ese árbol sin modificar `/opt` ni relajar comprobaciones.
 El perfil sigue generándose desde `bundle / relative`, bajo la nueva raíz exacta;
-se conserva el permiso `userns` autorizado. Su funcionamiento continúa pendiente.
+se conserva el permiso `userns` autorizado. Su funcionamiento en ambas
+arquitecturas está acreditado por la ejecución Linux 38626809239 indicada arriba.
 
 El smoke se invoca directamente una sola vez, con la misma guardia de 354
 identidades, assertions y deadlines. Se retiran el inspector temporal y
 `runner-sandbox.json` de nuevas publicaciones, sin borrar evidencia anterior.
-Falta ejecutar este parche y validar parser/carga/permisos/browser en ambas
-arquitecturas; prepararlo no acredita compatibilidad ni causa confirmada. Una
-corrida verde tampoco resolverá los fallos históricos de generación/recuperación,
-la suite ordinaria incompleta o la aceptación pública pendiente.
+La ejecución 38626809239 completó parser/carga/permisos y navegador en ambas
+arquitecturas. Esa evidencia acredita compatibilidad en CI, sin confirmar una
+causa única de los fallos históricos. La suite ordinaria Linux también completó
+su selección según la tabla inicial; las corridas incompletas de Windows quedan
+como historial. La aceptación pública continúa pendiente.
 
 Pendientes que estas pruebas no sustituyen: instalación/permisos POSIX, unidad
 systemd/notify/recuperación reales, Docker/NAT y peer comprobado, VM OCI Ubuntu ARM64,
 DNS, ACME/cadena pública, red/firewall externos y los tres criterios públicos del
 issue. **Detenerse para revisión antes de Etapa 4.**
+
+<details>
+<summary>Historial local — Etapa 3 y cierre diagnóstico, 13/10/2026</summary>
 
 ### Resultados observados de Etapa 3 — corrida verde histórica, 13/10/2026
 
@@ -1249,16 +1335,17 @@ Archivos de este cierre: `integration/caddy_diagnostics.py`, nuevo
 `integration/caddy_fixture.py`, `test_caddy_smoke.py`, `test_caddy_deploy.py` y este
 runbook. Branch/HEAD/base y todos los cambios anteriores se conservan.
 
+</details>
+
 ### Etapa 4 — archivos y protocolo preparados; ejecución NO autorizada
 
 Este apartado prepara la revisión. **No autoriza despliegue, tráfico público,
-escaneos, llamadas a proveedores ni cambios de DNS/firewall.** La revisión del
-supervisor aceptó el cierre diagnóstico y reprodujo 260 tests, Ruff/formato y
-`diff --check`; esa aprobación no completa la validación de Etapa 3. Persisten los
-timeouts históricos de generación, el fallo histórico `frontend-start`, la suite
-ordinaria sin aprobación y las verificaciones Linux/ARM64, permisos, systemd,
-Docker/NAT. Las corridas verdes posteriores no resuelven esos fallos. Toda la
-evidencia histórica descrita arriba se conserva; no se repite el smoke largo.
+escaneos, llamadas a proveedores ni cambios de DNS/firewall.** La evidencia Linux
+del HEAD 42af012 y sus límites constan al inicio. Los incidentes Windows conservan
+su causa no demostrada y evidencia histórica, sin convertirlos en bloqueos fijos
+del colector. Siguen pendientes instalación/permisos/systemd y Docker/NAT del
+despliegue real, además de los tres criterios públicos. Ninguna aprobación de CI
+autoriza por sí sola estas ejecuciones.
 
 #### Verificador y frontera de autorización
 
@@ -1286,7 +1373,7 @@ no acredita DNS, propiedad del dominio/IP ni el origen real detrás de NAT/VPN.
 | --- | --- | --- |
 | `--execute web --operator-authorized` | Resolver DNS y exigir coincidencia exacta con IP autorizadas; GET `/` HTTPS y HTTP por cada IP | TLS estricto del almacén del sistema, SNI/Host del dominio y 308 exacto a HTTPS; no acredita CA pública ni UI usable |
 | `--execute sse --operator-authorized --generation-id "$ID_PROPIO"` | GET de estado y SSE H1 por cada IP; desconectar, consultar estado, reconectar con `Last-Event-ID` | No crea/sube/persiste/cancela trabajos; mide recepción, no emisión ni tiempo de proveedores; no acredita H2 ni ejecución real por sí solo |
-| `--execute tcp --operator-authorized` | Conexiones TCP a **1–65535 inclusive** por cada IP, 16 conexiones concurrentes como máximo, timeout de sonda 1 s | Puede tardar más de una hora por IP; timeout = `no_response`, nunca cerrado. Rango parcial/error/silencio queda inconcluso |
+| `--execute tcp --operator-authorized` (diagnóstico opcional) | Conexiones TCP a **1–65535 inclusive** por cada IP, 16 conexiones concurrentes como máximo, timeout de sonda 1 s | Puede tardar más de una hora por IP; timeout = `no_response`, nunca cerrado. Rango parcial/error/silencio queda inconcluso; una contradicción observada conserva el fallo |
 
 Estas opciones son una declaración del operador sobre una autorización **futura**,
 no una autorización otorgada por este documento. No ejecutar ninguna ahora.
@@ -1317,7 +1404,15 @@ Cada comprobación hereda ese contexto; `target_index` identifica su dirección 
 `target.addresses`. Separa implementación (`collector`/`runbook`), tipo de prueba,
 ejecución, resultado y observaciones. `not_executed`, `failed` e `inconclusive` son
 resultados distintos. Una comprobación automática aprobada deja el criterio
-inconcluso mientras falte evidencia humana/host. El colector **siempre** emite
+inconcluso mientras falte evidencia humana/host. Cada check declara `required`;
+`full_tcp_range` es el único opcional y no figura en `pending`, aunque no se ejecute
+o resulte inconcluso. Sus observaciones y resultado se conservan: un fallo también
+hace fallar el criterio y la ejecución, sin poder compensarlo con otra IP aprobada.
+`nonadmin_ssh_unreachable` sigue siendo obligatorio, de verificación humana/host;
+si se usa el escáner, éste aporta además su observación de TCP/22. El colector no
+incorpora nuevas sondas ni recibe/aprueba fichas externas. No exporta
+`historical_pending` ni estados universales de suite/CI: esa evidencia se revisa
+por HEAD/plataforma en este runbook. El colector **siempre** emite
 `acceptance: not_approved`; no acepta JSON de terceros para convertirlo en verde.
 Código de salida: 0 plan válido sin red; 1 entrada/sonda fallida; 2 ejecución con
 evidencia parcial/inconclusa. El 0 de planificación no es aceptación pública.
@@ -1472,16 +1567,30 @@ fallback exitoso ni repetir hasta conseguir verde. Si termina demasiado rápido
 o falta trazabilidad disponible, registrar inconcluso y proponer un ensayo
 adicional sujeto a aprobación; no introducir retardos en producción.
 
-#### Criterio 3: exposición TCP completa y acceso administrativo
+#### Criterio 3: exposición TCP y acceso administrativo
 
-**Automático futuro desde red no administrativa comprobada:** sonda `tcp` por
-cada A/AAAA, rango 1–65535 sin exclusiones. Exigir 80/443 accesibles y ningún otro
-puerto abierto, incluyendo 22, 8000 y 8501. Conservar rango/cantidad efectiva,
-conteos y puertos abiertos de cada IP. Un rango parcial, una dirección omitida o
-errores de red no aprueban. `no_response` queda inconcluso hasta revisar origen,
-conectividad y políticas; no convertir silencios en "puerto cerrado". 22 abierto
-desde esa red es fallo, rechazo explícito es evidencia de inaccesibilidad pero
-no acredita autenticación ni la política de origen por sí solo.
+**Comprobación principal humana/host y externa correlacionada:** revisar todas
+las NSG/security lists OCI asociadas, firewall efectivo del host, interfaces,
+rutas y listeners/bindings. Enumerar todas las direcciones publicadas A/AAAA y
+correlacionar esa política con sondas externas autorizadas de web 80/443, SSH 22
+y puertos internos 8000/8501 desde una red no administrativa comprobada. Exigir
+aplicación web accesible, puertos internos inaccesibles y SSH restringido, sin
+otras aperturas en reglas/listeners. Registrar UTC, dirección/interface revisada,
+origen y resultado saneado por comprobación; una dirección/interfaz/regla omitida
+deja evidencia incompleta. Una inconsistencia impide aprobar el criterio. Estas
+observaciones se adjuntan como fichas revisadas; el colector no agrega sondas
+selectivas ni las da por ejecutadas.
+
+**Diagnóstico automático opcional:** si se autoriza `tcp`, escanear 1–65535 sin
+exclusiones por cada IP autorizada. Conservar rango/cantidad efectiva, conteos,
+puertos abiertos, fallos e inconclusos. Su ausencia no es un requisito incumplido.
+Si revela un puerto adicional abierto (incluidos 22, 8000 o 8501) o una contradicción
+con las comprobaciones principales, conservar el fallo: no omitirlo por ser opcional
+ni compensarlo con otra dirección aprobada. Un rango parcial/error/silencio no
+acredita ese diagnóstico. `no_response` queda inconcluso hasta revisar origen,
+conectividad y políticas; un timeout nunca demuestra puerto cerrado. El rechazo
+explícito de SSH desde esa red es evidencia de inaccesibilidad, sin acreditar
+autenticación ni la política de origen por sí solo.
 
 **Host y humano:** correlacionar silencios/rechazos con políticas efectivas de #47
 y OCI, revisar IPv6 y rutas alternativas. Confirmar SSH rechazado desde la red
@@ -1505,7 +1614,7 @@ Adjuntar los JSON del colector **y** una ficha por observación humana/host:
 | Resultado | **No ejecutado**, **fallido**, **inconcluso** o comprobación **aprobada**; motivo saneado y alcance exacto |
 | Plataforma/origen | OS/arch/herramienta/versión; red externa o host/admin, origen comprobado vs declarado, A/AAAA ensayados |
 | Evidencia | Referencia a artefacto saneado nuevo, tiempos/IDs de evento/contadores/booleanos, sin datos privados |
-| Pendientes | Evidencia faltante de este criterio y pendientes históricos de Etapa 3/nativos/suite completa |
+| Pendientes | Comprobaciones obligatorias faltantes del criterio; diagnóstico opcional separado y evidencia nativa faltante. Incidentes históricos y CI se revisan por fecha/HEAD/plataforma, sin bloqueo ni aprobación hardcodeados |
 
 Una ficha sin ejecución debe decir **no ejecutado**, no "aprobado por tests".
 Dobles de TLS/HTTP/socket/reloj de `test_caddy_public.py` validan localmente el
@@ -1518,6 +1627,9 @@ conserva con su evidencia, incluso si una corrida posterior resulta verde.
 **Estado de esta preparación:** archivo, protocolo y tests locales preparados;
 ninguna sonda pública, generación real, escaneo, observación humana externa o
 comprobación nueva del host ejecutada. Detenerse para revisión antes de todo ello.
+
+<details>
+<summary>Historial local y diagnóstico de CI — 13–14/10/2026, anterior a la evidencia Linux de 42af012</summary>
 
 #### Validación local de esta preparación — 13/10/2026
 
@@ -1742,3 +1854,5 @@ HTML que envuelve el bloque y bloques modificados permanecen en `unknown`.
 Si el bloque coexiste con otra categoría reconocida, se conserva `unknown` por
 ambigüedad. Se reutiliza `CHROMIUM_X_SERVER_MISSING`, sin categorías nuevas ni
 cambios de sandbox, runner, assertions o deadlines.
+
+</details>
