@@ -303,10 +303,11 @@ def test_bloqueo_entre_procesos_y_liberacion(tmp_path):
     )
     with exclusividad_runtime(tmp_path):
         r = subprocess.run(
-            [sys.executable, "-c", codigo, str(tmp_path)],
+            [sys.executable, "-X", "utf8", "-c", codigo, str(tmp_path)],
             cwd=DOCUMENTS.parent / "backend",
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
         assert r.returncode != 0 and "volumen" in r.stderr
     with exclusividad_runtime(tmp_path):

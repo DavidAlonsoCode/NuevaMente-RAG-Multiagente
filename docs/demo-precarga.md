@@ -4,6 +4,13 @@ Este runbook prepara las tres fuentes de `documents/`: VCN, pagos y salud.
 Es mantenimiento administrativo offline; no expone una ruta de escritura.
 El despliegue y la comprobación en la URL pública dependen del #48.
 
+Preparar las fuentes significa leer e indexar los tres documentos de ejemplo
+una vez, para que luego la biblioteca pueda consultarlos sin repetir ese trabajo.
+El PR integra esa preparación y esta guía; no cierra el #49 ni acredita una VM
+operativa. Conserva el alcance acordado: no añade generación desde documentos demo.
+Para una demostración local de generación se puede subir el mismo archivo como
+documento privado y usar el recorrido habitual de la aplicación.
+
 ## Alcance y pendientes
 
 - Los IDs coinciden con las tarjetas existentes: `demo-redes-vcn`,
