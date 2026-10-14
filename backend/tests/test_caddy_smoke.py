@@ -14,6 +14,16 @@ import pytest
 
 pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
+# Exact output of Playwright 1.63.0 wrapInASCIIBox(kNoXServerRunningError, 1),
+# captured from its bundled formatter; no formatter reimplementation in tests.
+_PINNED_XSERVER_BOX = (
+    "╔════════════════════════════════════════════════════════════════════════════════════════════════╗\n"
+    "║ Looks like you launched a headed browser without having a XServer running.                     ║\n"
+    "║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║\n"
+    "║                                                                                                ║\n"
+    "║ <3 Playwright Team                                                                             ║\n"
+    "╚════════════════════════════════════════════════════════════════════════════════════════════════╝"
+)
 spec = importlib.util.spec_from_file_location("caddy_smoke", ROOT / ".github/scripts/smoke_caddy.py")
 smoke = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(smoke)
@@ -148,6 +158,100 @@ def test_smoke_accepts_complete_successful_identity_contract(tmp_path, smoke_rep
     assert result["skips"] == 0 and result["public_acceptance"] is False
 
 
+@pytest.mark.parametrize("outcome", ["failure", "error", "skipped", "exit"])
+def test_smoke_exports_verified_coverage_before_rejecting_red(tmp_path, monkeypatch, smoke_report_double, outcome):
+    state = smoke_report_double
+    secret = "synthetic-coverage-private-canary"
+    first = state.cases[0]
+    first.set("name", first.get("name") + "[" + secret + "]")
+    family = first.get("classname")
+    names = [c.get("name") for c in state.cases if c.get("classname") == family]
+    monkeypatch.setitem(smoke.REQUIRED_FAMILIES, family, (len(names), smoke.identity_digest(names)))
+    if outcome == "exit":
+        state.returncode = 1
+    else:
+        ET.SubElement(first, outcome, message=secret).text = secret
+    checked = []
+    required = smoke.require_coverage
+
+    def verify(cases):
+        required(cases)
+        checked.append(True)
+
+    monkeypatch.setattr(smoke, "require_coverage", verify)
+    with pytest.raises(AssertionError) as caught:
+        smoke.run(tmp_path)
+    assert str(caught.value).splitlines()[0] == (
+        "mandatory-tests-skipped" if outcome == "skipped" else "required-caddy-tests-failed"
+    )
+    assert checked == [True]
+    public = tmp_path / "required-tests.xml"
+    tree = ET.parse(public)
+    summary = json.loads(tree.find('.//property[@name="caddy.coverage"]').get("value"))
+    assert summary["complete"] is True and summary["total"] == 270
+    assert summary["unexpected_family_cases"] == 0
+    for key, row in summary["families"].items():
+        assert row["observed"] == row["expected"] == row["unique"] == smoke.REQUIRED_FAMILIES[key][0]
+        assert row["duplicates"] == 0
+        assert row["observed_sha256"] == row["expected_sha256"] == smoke.REQUIRED_FAMILIES[key][1]
+    assert secret not in public.read_text()
+    if outcome != "exit":
+        assert tree.find(".//testcase/" + outcome) is not None
+
+
+@pytest.mark.parametrize("defect", ["missing-family", "substitution", "duplicate", "unknown-family", "invalid-name"])
+def test_smoke_exports_coverage_defects_even_when_tests_fail(tmp_path, smoke_report_double, defect):
+    state = smoke_report_double
+    secret = "synthetic-coverage-private-canary"
+    if defect == "missing-family":
+        state.cases = [c for c in state.cases if not c.get("classname").endswith("test_caddy_smoke")]
+    elif defect == "substitution":
+        state.cases[0].set("name", "test_required_0[" + secret + "]")
+    elif defect == "duplicate":
+        state.cases[1].set("name", state.cases[0].get("name"))
+    elif defect == "unknown-family":
+        state.cases.append(ET.Element("testcase", classname=secret, name="test_unexpected[" + secret + "]"))
+    else:
+        state.cases[0].set("name", secret + "/invalid")
+    ET.SubElement(state.cases[0], "failure", message=secret).text = secret
+    with pytest.raises(AssertionError) as caught:
+        smoke.run(tmp_path)
+    assert (
+        str(caught.value)
+        .splitlines()[0]
+        .startswith("unexpected-test-identity" if defect == "invalid-name" else "mandatory-tests-")
+    )
+    public = tmp_path / "required-tests.xml"
+    tree = ET.parse(public)
+    summary = json.loads(tree.find('.//property[@name="caddy.coverage"]').get("value"))
+    assert summary["complete"] is False
+    assert tree.find(".//testcase/failure") is not None
+    assert secret not in public.read_text()
+    rows = summary["families"]
+    if defect == "duplicate":
+        assert rows["backend.tests.test_caddy_config"]["duplicates"] == 1
+    elif defect == "unknown-family":
+        assert summary["unexpected_family_cases"] == 1
+    elif defect == "missing-family":
+        assert rows["backend.tests.test_caddy_smoke"]["observed"] == 0
+    else:
+        assert (
+            rows["backend.tests.test_caddy_config"]["observed_sha256"]
+            != rows["backend.tests.test_caddy_config"]["expected_sha256"]
+        )
+
+
+def test_smoke_coverage_hashes_ignore_order_without_ignoring_parameters(smoke_report_double):
+    cases = smoke_report_double.cases
+    original = smoke.coverage_summary(cases)
+    assert original["complete"] is True
+    assert smoke.coverage_summary(list(reversed(cases))) == original
+    cases[0].set("name", cases[0].get("name") + "[synthetic-private-parameter]")
+    changed = smoke.coverage_summary(cases)
+    assert changed["complete"] is False and changed["total"] == original["total"]
+    assert "synthetic-private-parameter" not in json.dumps(changed)
+
+
 @pytest.fixture
 def browser_diagnostic_modules(monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "backend/tests/integration"))
@@ -156,6 +260,165 @@ def browser_diagnostic_modules(monkeypatch):
         parent=importlib.import_module("test_caddy_proxy"),
         protocol=importlib.import_module("caddy_browser_diagnostics"),
     )
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        pytest.param(
+            "[pid=17][err] [17:23:ERROR] No usable sandbox! <private>",
+            "CHROMIUM_SANDBOX_STARTUP_FAILED",
+            id="native-sandbox",
+        ),
+        pytest.param(
+            "BrowserType.launch: Chromium sandboxing failed!", "CHROMIUM_SANDBOX_STARTUP_FAILED", id="rewritten-sandbox"
+        ),
+        pytest.param(
+            "[pid=17][err] No usable sandbox! AppArmor may be relevant; <private>",
+            "CHROMIUM_SANDBOX_STARTUP_FAILED",
+            id="sandbox-does-not-prove-apparmor",
+        ),
+        pytest.param(
+            "[pid=17][err] [17:23:ERROR] Missing X server or $DISPLAY <private>",
+            "CHROMIUM_X_SERVER_MISSING",
+            id="native-x-server",
+        ),
+        pytest.param(
+            "Looks like you launched a headed browser without having a XServer running.",
+            "CHROMIUM_X_SERVER_MISSING",
+            id="rewritten-x-server",
+        ),
+        pytest.param(
+            "- [pid=17][err] /<private>/chrome: error while loading shared libraries: lib<private>.so: cannot open shared object file: No such file or directory",
+            "CHROMIUM_SHARED_LIBRARY_LOAD_FAILED",
+            id="native-shared-library",
+        ),
+        pytest.param(
+            "[pid=17][err] error while loading shared libraries: <private>", "unknown", id="incomplete-loader-message"
+        ),
+        pytest.param("Operation not permitted: <private>", "unknown", id="generic-permission-error"),
+        pytest.param("AppArmor DENIED <private>", "unknown", id="unclassified-apparmor-text"),
+        pytest.param("https://<private>/No usable sandbox!", "unknown", id="signature-in-url"),
+        pytest.param(
+            "Chromium sandboxing failed!\n[pid=17][err] Missing X server or $DISPLAY",
+            "unknown",
+            id="conflicting-sandbox-and-display",
+        ),
+        pytest.param(
+            "Chromium sandboxing failed!\n[pid=17][err] error while loading shared libraries: lib.so: cannot open shared object file: No such file or directory",
+            "unknown",
+            id="conflicting-sandbox-and-library",
+        ),
+        pytest.param("Chromium sandboxing failed!\n" + "x" * 65536, "unknown", id="oversized-error"),
+        pytest.param(
+            "Chromium sandboxing failed!\n[pid=17][err] No usable sandbox!",
+            "CHROMIUM_SANDBOX_STARTUP_FAILED",
+            id="same-category-twice",
+        ),
+        pytest.param("", "unknown", id="empty-error"),
+        pytest.param("[pid=17][out] No usable sandbox! <private>", "unknown", id="not-native-stderr"),
+    ],
+)
+def test_browser_launch_signatures_are_closed_and_sanitized(
+    tmp_path, browser_diagnostic_modules, message, expected, capsys
+):
+    protocol = browser_diagnostic_modules.protocol
+    secret = "synthetic-launch-private-canary"
+    report = protocol.failure("browser_launch", RuntimeError(message.replace("<private>", secret)))
+    assert report["failure_code"] == "BROWSER_LAUNCH_FAILED"
+    assert report["launch_signature"] == expected
+    path = tmp_path / "diagnostic.json"
+    path.write_text(json.dumps(report))
+    assert protocol.read_diagnostic(path) == report
+    assert secret not in json.dumps(report) and "https://" not in json.dumps(report)
+    assert "APPARMOR" not in report["launch_signature"]
+    assert capsys.readouterr() == ("", "")
+
+
+def test_browser_launch_recognizes_pinned_xserver_box(tmp_path, browser_diagnostic_modules, capsys):
+    protocol = browser_diagnostic_modules.protocol
+    error = RuntimeError("BrowserType.launch: \n" + _PINNED_XSERVER_BOX + "\nCall log:\nsynthetic-box-private-canary")
+    report = protocol.failure("browser_launch", error)
+    assert report["failure_code"] == "BROWSER_LAUNCH_FAILED"
+    assert report["launch_signature"] == "CHROMIUM_X_SERVER_MISSING"
+    path = tmp_path / "diagnostic.json"
+    path.write_text(json.dumps(report))
+    assert protocol.read_diagnostic(path) == report
+    assert "synthetic-box-private-canary" not in json.dumps(report) and "║" not in json.dumps(report)
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("variant", ["paragraph", "framed-fragment", "html-content", "modified-box"])
+def test_browser_launch_does_not_extract_xserver_phrase_from_arbitrary_content(browser_diagnostic_modules, variant):
+    phrase = "Looks like you launched a headed browser without having a XServer running."
+    message = {
+        "paragraph": "Arbitrary page content: " + phrase + " synthetic-box-private-canary",
+        "framed-fragment": "║ " + phrase + " ║",
+        "html-content": "<html><pre>" + _PINNED_XSERVER_BOX + "</pre></html>",
+        "modified-box": _PINNED_XSERVER_BOX.replace("Playwright Team", "arbitrary page"),
+    }[variant]
+    report = browser_diagnostic_modules.protocol.failure("browser_launch", RuntimeError(message))
+    assert report["launch_signature"] == "unknown"
+    assert "synthetic-box-private-canary" not in json.dumps(report)
+
+
+def test_browser_launch_box_preserves_unknown_for_conflicting_signatures(browser_diagnostic_modules):
+    error = RuntimeError(_PINNED_XSERVER_BOX + "\nChromium sandboxing failed!")
+    report = browser_diagnostic_modules.protocol.failure("browser_launch", error)
+    assert report["launch_signature"] == "unknown"
+
+
+def test_browser_launch_classifier_handles_unprintable_error(browser_diagnostic_modules, capsys):
+    class UnprintableError(Exception):
+        def __str__(self):
+            raise RuntimeError("synthetic-launch-private-canary")
+
+    report = browser_diagnostic_modules.protocol.failure("browser_launch", UnprintableError())
+    assert report["launch_signature"] == "unknown" and report["exception_type"] == "OtherError"
+    assert capsys.readouterr() == ("", "")
+
+
+def test_browser_launch_classifier_does_not_inspect_other_stages(browser_diagnostic_modules):
+    class UnprintableError(Exception):
+        def __str__(self):
+            pytest.fail("non-launch-error-was-inspected")
+
+    report = browser_diagnostic_modules.protocol.failure("privacy_audit", UnprintableError())
+    assert report["stage"] == "privacy_audit" and "launch_signature" not in report
+
+
+@pytest.mark.parametrize("value", ["synthetic-launch-private-canary", None, [], {}, "absent"])
+def test_browser_launch_report_rejects_untrusted_signature(tmp_path, browser_diagnostic_modules, value):
+    protocol = browser_diagnostic_modules.protocol
+    report = protocol.failure("browser_launch", RuntimeError())
+    if value == "absent":
+        report.pop("launch_signature")
+    else:
+        report["launch_signature"] = value
+    path = tmp_path / "diagnostic.json"
+    path.write_text(json.dumps(report))
+    sanitized = protocol.read_diagnostic(path)
+    assert sanitized["failure_code"] == "BROWSER_DIAGNOSTIC_INVALID"
+    assert "synthetic-launch-private-canary" not in json.dumps(sanitized)
+
+
+def test_browser_launch_signature_survives_child_and_parent_failure(
+    tmp_path, monkeypatch, browser_diagnostic_modules, browser_parent_double
+):
+    modules = browser_diagnostic_modules
+
+    def launch_failure(url, directory, hold, progress):
+        progress.reached("browser_launch")
+        raise RuntimeError("[pid=17][err] No usable sandbox! synthetic-launch-private-canary")
+
+    monkeypatch.setattr(modules.child, "probe", launch_failure)
+    assert modules.child.run_probe("https://synthetic.invalid", tmp_path, 0) == 1
+    with pytest.raises(AssertionError) as caught:
+        modules.parent.browser_probe(browser_parent_double.proxy)
+    assert str(caught.value).splitlines()[0] == "real-browser-probe-failed"
+    observed = browser_parent_double.proxy.evidence
+    assert observed["checks"][0]["diagnostic"]["launch_signature"] == "CHROMIUM_SANDBOX_STARTUP_FAILED"
+    assert "synthetic-launch-private-canary" not in json.dumps(observed)
 
 
 @pytest.mark.parametrize("stage", ["playwright_start", "browser_launch", "context_setup", "page_setup", "navigation"])

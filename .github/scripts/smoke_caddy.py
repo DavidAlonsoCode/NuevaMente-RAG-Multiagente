@@ -43,8 +43,8 @@ REQUIRED_FAMILIES = {
         "a0d05acde761c16a23daca2e1e48d78bd33acaf86cea5a13998ff74780659225",
     ),
     "backend.tests.test_caddy_smoke": (
-        73,
-        "048ac8ab6e5f99579fc04493a9813e4956179248deda204923055c5ee733f606",
+        113,
+        "9d8a813fafb050fdf86d696aae45f3dc36fd35609916e3b5716c54b253e0638f",
     ),
     "backend.tests.integration.test_caddy_proxy": (
         10,
@@ -59,17 +59,46 @@ def identity_digest(names):
     return hashlib.sha256(encoded).hexdigest()
 
 
-def require_coverage(cases):
+def coverage_summary(cases):
     families = {family: [] for family in REQUIRED_FAMILIES}
+    unexpected = 0
     for case in cases:
         family = case.get("classname", "")
-        assert family in families, "mandatory-tests-unexpected-family"
-        families[family].append(case.get("name", ""))
+        if family in families:
+            families[family].append(case.get("name", ""))
+        else:
+            unexpected += 1
+    rows = {}
     for family, (count, digest) in REQUIRED_FAMILIES.items():
         names = families[family]
-        assert len(names) == count, "mandatory-tests-family-count-mismatch:" + family
-        assert len(set(names)) == count, "mandatory-tests-duplicate-identity:" + family
-        assert identity_digest(names) == digest, "mandatory-tests-identities-mismatch:" + family
+        rows[family] = {
+            "expected": count,
+            "observed": len(names),
+            "unique": len(set(names)),
+            "duplicates": len(names) - len(set(names)),
+            "expected_sha256": digest,
+            "observed_sha256": identity_digest(names),
+        }
+    return {
+        "schema": 1,
+        "total": len(cases),
+        "unexpected_family_cases": unexpected,
+        "families": rows,
+        "complete": unexpected == 0
+        and all(
+            r["observed"] == r["expected"] and r["duplicates"] == 0 and r["observed_sha256"] == r["expected_sha256"]
+            for r in rows.values()
+        ),
+    }
+
+
+def require_coverage(cases):
+    summary = coverage_summary(cases)
+    assert summary["unexpected_family_cases"] == 0, "mandatory-tests-unexpected-family"
+    for family, row in summary["families"].items():
+        assert row["observed"] == row["expected"], "mandatory-tests-family-count-mismatch:" + family
+        assert row["duplicates"] == 0, "mandatory-tests-duplicate-identity:" + family
+        assert row["observed_sha256"] == row["expected_sha256"], "mandatory-tests-identities-mismatch:" + family
 
 
 def fetch(url, destination, algorithm, expected):
@@ -137,10 +166,18 @@ def publish_report(raw, destination):
     cases = ET.parse(raw).findall(".//testcase")
     root = ET.Element("testsuites")
     suite = ET.SubElement(root, "testsuite", name="Caddy required", tests=str(len(cases)))
+    properties = ET.SubElement(suite, "properties")
+    ET.SubElement(
+        properties, "property", name="caddy.coverage", value=json.dumps(coverage_summary(cases), separators=(",", ":"))
+    )
     totals = {kind: 0 for kind in ("failure", "error", "skipped")}
+    invalid_identity = False
+    allowed_families = {family.split(".")[-1] for family in REQUIRED_FAMILIES}
     for index, case in enumerate(cases):
         name = case.get("name", "").split("[", 1)[0]
-        assert re.fullmatch(r"test_[A-Za-z0-9_]+", name), "unexpected-test-identity"
+        if not re.fullmatch(r"test_[A-Za-z0-9_]+", name):
+            invalid_identity = True
+            name = "test_unknown_identity"
         protocol = next(
             (label for label in ("http1", "http2") if case.get("name", "").endswith("[" + label + "]")), None
         )
@@ -149,7 +186,9 @@ def publish_report(raw, destination):
             suite,
             "testcase",
             name=name + "[" + label + "]",
-            classname=case.get("classname", "").split(".")[-1],
+            classname=case.get("classname", "").split(".")[-1]
+            if case.get("classname", "").split(".")[-1] in allowed_families
+            else "unknown-family",
             time=case.get("time", "0"),
         )
         for kind in totals:
@@ -160,6 +199,7 @@ def publish_report(raw, destination):
     suite.set("errors", str(totals["error"]))
     suite.set("skipped", str(totals["skipped"]))
     ET.ElementTree(root).write(destination, encoding="utf-8", xml_declaration=True)
+    assert not invalid_identity, "unexpected-test-identity"
     return cases
 
 
@@ -192,11 +232,11 @@ def run(evidence):
     )
     assert raw.is_file(), "required-test-report-absent"
     cases = publish_report(raw, report)
+    require_coverage(cases)
     assert not any(case.find("skipped") is not None for case in cases), "mandatory-tests-skipped"
     assert not any(case.find("failure") is not None or case.find("error") is not None for case in cases), (
         "required-caddy-tests-failed"
     )
-    require_coverage(cases)
     assert result.returncode == 0, "required-caddy-tests-failed"
     print(
         json.dumps(

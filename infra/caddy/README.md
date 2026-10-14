@@ -821,7 +821,11 @@ antes de corregir la guardia consta de **270 casos: 89 de configuración, 142 de
 despliegue, 29 de reporte/diagnóstico y 10 de proxy**. Con las 14 regresiones de
 esta corrección, la selección pasó a **284: 89 + 142 + 43 + 10**. Las 30
 regresiones posteriores del diagnóstico de navegador llevan la selección vigente
-a **314: 89 + 142 + 73 + 10**, conservando las 284 identidades anteriores. El smoke
+a **314: 89 + 142 + 73 + 10**, conservando las 284 identidades anteriores. La
+clasificación acotada de lanzamiento y la cobertura en rojo añaden otras 34:
+selección **348: 89 + 142 + 107 + 10**, conservando las 314 anteriores. La
+corrección del encuadre XServer añade 6 regresiones: selección vigente
+**354: 89 + 142 + 113 + 10**, conservando las 348 anteriores. El smoke
 exige cada familia e identidad parametrizada: comprueba el recuento exacto,
 ausencia de duplicados y SHA256 de los nombres completos ordenados (JSON ASCII
 compacto) contra el manifiesto revisado `REQUIRED_FAMILIES`. No obtiene ese
@@ -1631,3 +1635,68 @@ La guardia fija las 314 identidades revisadas, incluyendo las 30 nuevas, sin
 sustituir ninguna anterior. No se repite el smoke ni la suite ordinaria para
 validar este diagnóstico. Una nueva ejecución Linux requerirá autorización; no
 hay cambios de seguridad, runner o producción aprobados por esta investigación.
+
+#### Firmas de lanzamiento y cobertura en rojo — sobre HEAD 9f49186
+
+La ejecución 38600882605 sobre ese HEAD registró en ambas arquitecturas 312
+aprobados, 2 fallidos, 0 errores y 0 skips. Las dos sondas de cada arquitectura
+informaron `browser_launch`, `TargetClosedError`, `BROWSER_LAUNCH_FAILED`.
+Eso ubica el fallo antes de navegar, pero no demuestra su causa.
+
+El campo adicional `launch_signature` sólo existe en fallos de `browser_launch`.
+Se examina la excepción en memoria, sin exportar su texto. Se reconocen tres
+categorías cerradas:
+
+| Firma reconocida | Código exportado | Límite de interpretación |
+| --- | --- | --- |
+| Registro stderr nativo con `No usable sandbox!`, o reescritura exacta `Chromium sandboxing failed!` | `CHROMIUM_SANDBOX_STARTUP_FAILED` | Fallo genérico de inicio del sandbox; **no demuestra una denegación de AppArmor** |
+| Registro stderr nativo con `Missing X server or $DISPLAY`, o reescritura exacta de Playwright sobre ausencia de XServer | `CHROMIUM_X_SERVER_MISSING` | Ausencia de servidor gráfico informada; no cambia `headless` ni configura uno |
+| En un mismo registro stderr, `error while loading shared libraries:` y `cannot open shared object file: No such file or directory` | `CHROMIUM_SHARED_LIBRARY_LOAD_FAILED` | Mensaje de carga de biblioteca; no publica su nombre/ruta ni instala dependencias |
+
+La procedencia de las firmas se contrastó con el código disponible del paquete
+oficial fijado Playwright **1.63.0**, `driver/package/lib/coreBundle.js`:
+`doRewriteStartupLog` de Chromium reconoce/reformula los mensajes de sandbox y
+XServer; el lanzador incluido reconoce el error de shared object del cargador
+ELF. No se efectuaron consultas externas para esta comprobación. El formato
+nativo reconocido es `[pid=…][err]` de los errores de lanzamiento de Playwright,
+también cuando aparece en su call log. Una cadena aislada dentro de una URL o
+un canal stdout no cuenta como ese registro.
+
+Sin firma reconocida, con categorías distintas coexistiendo, texto mayor de
+65536 caracteres o excepción no convertible a texto, se conserva `unknown`.
+La repetición de una misma categoría no crea una segunda causa. Textos genéricos
+como `Operation not permitted` o una mención aislada de AppArmor no se clasifican.
+El lector del padre acepta únicamente los códigos cerrados; nunca propaga campos
+arbitrarios. El código principal sigue siendo `BROWSER_LAUNCH_FAILED`, el hijo
+sigue saliendo con error y no cambian sandbox, runner, assertions ni deadlines.
+
+El JUnit saneado ya publicado incluye ahora la propiedad **`caddy.coverage`**:
+schema, total, cantidad de casos de familia inesperada y, por cada familia
+obligatoria, recuentos esperado/observado/único, duplicados y SHA256
+esperado/observado de las identidades completas ordenadas. No exporta identidades
+parametrizadas, nombres de familias inesperadas, capturas ni mensajes privados.
+También se escribe cuando hay fallos, errores, skips o cobertura incorrecta.
+Una identidad de formato inválido se representa con nombre fijo en el reporte y
+sigue rechazándose después de escribirlo. No se agregan artifacts ni se cambia
+el workflow.
+
+La guardia verifica cobertura **antes** de rechazar resultados rojos. El resumen
+`complete: true` acredita únicamente cobertura; no aprueba tests fallidos,
+errores, skips ni una salida de proceso no cero. Una sustitución de parámetro
+cambia la huella aunque mantenga el total. Las 34 regresiones nuevas ejecutan
+estas decisiones con dobles y canarios sintéticos, sin Chromium real ni red.
+La colección revisada preserva las 314 identidades anteriores. La próxima
+ejecución Linux deberá aportar la firma o mantener `unknown`; no se corrige
+seguridad ni configuración del runner sin revisión de esa evidencia.
+
+El mensaje XServer de Playwright 1.63.0 se reescribe realmente mediante
+`wrapInASCIIBox(kNoXServerRunningError, 1)`. Se reconoce también ese bloque
+completo de **6 líneas de 98 caracteres**, con bordes `╔═╗`, `║` y `╚═╝`,
+padding y texto exactos, delimitado por líneas completas. El literal y la fixture
+se contrastaron con la salida de la función original del paquete fijado,
+ejecutando sólo su formatter JavaScript; no se inició Chromium. No se eliminan
+bordes de frases arbitrarias para intentar clasificarlas. Fragmentos, contenido
+HTML que envuelve el bloque y bloques modificados permanecen en `unknown`.
+Si el bloque coexiste con otra categoría reconocida, se conserva `unknown` por
+ambigüedad. Se reutiliza `CHROMIUM_X_SERVER_MISSING`, sin categorías nuevas ni
+cambios de sandbox, runner, assertions o deadlines.
