@@ -183,6 +183,9 @@ def test_error_inicial_desconocido_es_amigable(monkeypatch, lang):
 
 @pytest.fixture
 def workspace_ui(monkeypatch):
+    from test_progress_ui import agregado
+
+    monkeypatch.setattr(APIClient, "get_progress", lambda *_: agregado())
     monkeypatch.setattr(APIClient, "get_documents", lambda *_: {"items": [], "next_cursor": None})
     monkeypatch.setattr(
         APIClient,

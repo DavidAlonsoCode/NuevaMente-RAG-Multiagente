@@ -30,14 +30,16 @@ class ClienteEstudio(ClienteResultado, Cliente):
 
 @pytest.fixture
 def estudio(monkeypatch):
+    from pages import home
+
     monkeypatch.setitem(sys.modules, "__main__", sys.modules["__main__"])
     monkeypatch.setattr(PagesManager, "uses_pages_directory", None)
+    monkeypatch.setattr(home, "render_sidebar", lambda *args: None)
     base = ui()
     app = AppTest.from_string("""
 import streamlit as st
 from components.session import inicializar_estado_sesion
 from pages import home
-home.render_sidebar = lambda *args: None
 inicializar_estado_sesion()
 home.render(st.session_state.api, st.session_state.idioma_ui)
 """)
