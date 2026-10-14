@@ -1,5 +1,6 @@
 """Regresiones de la vista estudiante, intenciones y reruns del quiz."""
 
+import sys
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -12,6 +13,13 @@ from streamlit.runtime.pages_manager import PagesManager
 from streamlit.testing.v1 import AppTest
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def aislar_principal_streamlit(monkeypatch):
+    # AppTest no debe cambiar la entrada heredada por procesos spawn de PDF.
+    monkeypatch.setitem(sys.modules, "__main__", sys.modules["__main__"])
+
 
 PREGUNTA = {
     "id": "q1",

@@ -34,9 +34,13 @@ worker y almacenamiento locales con proveedores explícitamente simulados.
 
 ## Validación de este avance
 
-53 pruebas enfocadas aprobadas (quiz, cliente, i18n e integración UI/API),
-Ruff/formato y pip check correctos. La corrida ampliada registró 172 aprobadas
-y cuatro fallos en test_upload_e2e.py. El primer fallo de upload se reprodujo
-con el api_client.py original de develop, en un directorio temporal nuevo;
-no se alteraron esos tests ni el backend. El diagnóstico del harness TCP
-local permanece separado; no se afirma que toda la suite local haya pasado.
+223 pruebas aprobadas: frontend completo, quiz UI/API, corrección/progreso,
+rasterizado, Researcher y retrieval. Ruff/formato, pip check y git diff --check
+correctos. AppTest restaura __main__ después de cada prueba para que procesos
+spawn de parser/PDFium no ejecuten el script de interfaz. El harness además
+protege sus referencias a session_state durante un import sin sesión.
+
+En Windows usar un basetemp único y corto dentro de .data/ (por ejemplo .data/t36s1
+fue el directorio de esta corrida). Un nombre largo hizo fallar os.replace en el
+mock de storage; al acortarlo los cuatro casos de upload E2E pasaron sin cambiar
+producción ni sus pruebas. No se ejecutaron Gemini/OCI reales.

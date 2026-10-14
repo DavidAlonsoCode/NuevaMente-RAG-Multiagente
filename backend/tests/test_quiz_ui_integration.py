@@ -1,5 +1,6 @@
 """Streamlit/cliente -> corrección HTTP real; Gemini y OCI son dobles explícitos."""
 
+import sys
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
@@ -12,6 +13,14 @@ from streamlit.runtime.pages_manager import PagesManager
 from streamlit.testing.v1 import AppTest
 
 pytestmark = pytest.mark.integration_mock
+
+
+@pytest.fixture(autouse=True)
+def aislar_principal_streamlit(monkeypatch):
+    # AppTest no debe cambiar la entrada heredada por procesos spawn de PDF.
+    monkeypatch.setitem(sys.modules, "__main__", sys.modules["__main__"])
+
+
 entorno = generaciones.entorno
 
 
@@ -43,7 +52,8 @@ def test_respuesta_perdida_y_nuevo_intento_registran_solo_dos_eventos(entorno, m
     app = AppTest.from_string("""
 import streamlit as st
 from components.quiz_interactive import render_quiz_interactivo
-render_quiz_interactivo(st.session_state.api, "es", token=st.session_state.token_prueba,
+if "api" in st.session_state:
+    render_quiz_interactivo(st.session_state.api, "es", token=st.session_state.token_prueba,
     workspace_id=st.session_state.ws, generation_id=st.session_state.gen)
 """)
     app.session_state.api = APIClient()
