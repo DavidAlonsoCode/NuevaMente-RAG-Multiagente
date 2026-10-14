@@ -1,5 +1,6 @@
 """Estado de presentación del glosario; autorización y contenido permanecen en la API."""
 
+import unicodedata
 from typing import get_args
 from uuid import uuid4
 
@@ -123,5 +124,11 @@ def filtrar_terminos(terminos, consulta):
             if consulta
             in " ".join(str(t.get(k) or "") for k in ("termino_original", "traduccion", "definicion")).casefold()
         ),
-        key=lambda t: (t["termino_original"].casefold(), t["id"]),
+        key=lambda t: (
+            "".join(
+                c for c in unicodedata.normalize("NFD", t["termino_original"]) if not unicodedata.combining(c)
+            ).casefold(),
+            t["termino_original"].casefold(),
+            t["id"],
+        ),
     )

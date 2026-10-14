@@ -214,3 +214,9 @@ def test_borrado_revoca_resultado_previamente_visible(monkeypatch):
     assert not a.exception and not a.text_input
     assert "chunk-1" not in [c.value for c in a.code]
     assert "Conecta subredes." not in [m.value for m in a.markdown]
+
+
+def test_orden_alfabetico_con_acentos_conserva_nombres_originales():
+    terms = [termino("z", "Zona"), termino("a", "Árbol"), termino("c", "çapa")]
+    assert [t["termino_original"] for t in filtrar_terminos(terms, "")] == ["Árbol", "çapa", "Zona"]
+    assert [t["termino_original"] for t in terms] == ["Zona", "Árbol", "çapa"]
