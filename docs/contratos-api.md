@@ -80,15 +80,26 @@ Los `code` son estables y no se traducen; los `message` se localizan según idio
 
 **Origen detrás de Streamlit/Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. Streamlit transmite ambas cabeceras al backend desde su contexto del servidor. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
 
-En cada `reverse_proxy` de UI y API del despliegue #49, incorporar:
+En cada `reverse_proxy` de UI y API del proxy #48, incorporar:
 
 ```caddyfile
 header_up X-NuevaMente-Client-IP {remote_host}
 header_up X-NuevaMente-Origin-Key {env.TRUSTED_ORIGIN_SECRET}
+header_down -X-NuevaMente-Client-IP
 header_down -X-NuevaMente-Origin-Key
 ```
 
 Esto supone Caddy como entrada pública directa, según la arquitectura vigente. Si se incorpora otro proxy anterior, su cadena de confianza debe definirse explícitamente. La clave nunca se envía al navegador ni se registra. Referencias: [cabeceras de Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers) y [placeholders](https://caddyserver.com/docs/caddyfile/concepts#placeholders). La configuración documentada debe verificarse en el despliegue real; las pruebas locales no acreditan OCI/Caddy públicos.
+
+El [contrato de producción #48](../infra/caddy/README.md) fija una clave de 32
+bytes aleatorios representados como 64 caracteres hexadecimales, cargada desde
+una única `origin.env` privada. `/api` y `/api/*` conservan su prefijo. Se preservan
+`Authorization`, `Idempotency-Key`, `Last-Event-ID`, `X-Request-ID`, `Retry-After`
+y las cabeceras SSE; el proxy retira ambas cabeceras privadas de las respuestas.
+La confianza Uvicorn en `X-Forwarded-*` es independiente: requiere IPs de conexión
+comprobadas desde el contenedor, nunca `*` ni una gateway supuesta. CORS/XSRF de
+Streamlit permanecen activos; la clave solo circula en el contexto del servidor,
+incluido el handshake WebSocket, y nunca debe serializarse en mensajes o páginas.
 
 ### Documentos (issues `Issue 19`, `Issue 11`)
 

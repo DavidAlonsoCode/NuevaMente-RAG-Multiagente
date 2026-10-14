@@ -1,0 +1,85 @@
+name: Caddy / configuración y proxy
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "infra/caddy/**"
+      - "infra/oci/**"
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose*.yml"
+      - ".env*.example"
+      - ".github/scripts/**"
+      - ".github/requirements-caddy.*"
+      - ".github/workflows/caddy.yml"
+      - "requirements-dev.txt"
+      - "pytest.ini"
+  push:
+    branches: [develop, main]
+    paths:
+      - "infra/caddy/**"
+      - "infra/oci/**"
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose*.yml"
+      - ".env*.example"
+      - ".github/scripts/**"
+      - ".github/requirements-caddy.*"
+      - ".github/workflows/caddy.yml"
+      - "requirements-dev.txt"
+      - "pytest.ini"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: caddy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proxy:
+    name: Caddy real / ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    env:
+      APP_ENV: ci
+      MOCK_OCI: "1"
+      MOCK_GEMINI: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
+      COMPOSE_BIN: ${{ runner.temp }}/caddy-tools/docker-compose
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Dependencias fijadas y herramientas Python verificadas
+        run: |
+          python -m pip install -r requirements-dev.txt -r backend/requirements.txt -r frontend/requirements.txt
+          python -m pip install --require-hashes --only-binary=:all: -r .github/requirements-caddy.lock
+          python .github/scripts/check_pinned_requirements.py .github/requirements-caddy.txt
+          python -m playwright install --with-deps chromium
+      - name: Caddy y Compose oficiales con versión y digest verificados
+        run: python .github/scripts/smoke_caddy.py --prepare-tools "${{ runner.temp }}/caddy-tools"
+      - name: Sintaxis de wrappers y smoke requerido, sin skips
+        run: |
+          bash -n infra/caddy/install.sh
+          bash -n infra/caddy/deploy.sh
+          python -m py_compile .github/scripts/smoke_caddy.py backend/tests/integration/caddy_backend.py backend/tests/integration/caddy_browser.py
+          python .github/scripts/smoke_caddy.py
+      - name: Evidencia saneada (sin logs crudos, TLS, tokens ni perfiles)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caddy-${{ matrix.runner }}
+          path: |
+            .data/caddy-evidence/observations.json
+            .data/caddy-evidence/required-tests.xml
+          if-no-files-found: error
+          retention-days: 14

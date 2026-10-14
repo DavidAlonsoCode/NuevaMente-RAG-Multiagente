@@ -1,0 +1,121 @@
+{
+	admin unix//run/caddy/admin.sock|0200
+	persist_config off
+	storage file_system {$CADDY_STORAGE_DIR:/var/lib/caddy}
+	servers {
+		protocols h1 h2
+		strict_sni_host on
+		timeouts {
+			read_header 15s
+			read_body_idle 60s
+			write_idle 60s
+			idle 120s
+		}
+	}
+	log default {
+		level INFO
+		exclude http.log.access
+		output file {$CADDY_LOG_DIR:/var/log/caddy}/operational.json {
+			mode 0600
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 168h
+		}
+		format filter {
+			wrap json {
+				message_key ""
+				stacktrace_key ""
+			}
+			fields {
+				request delete
+				resp_headers delete
+				headers delete
+				uri delete
+				url delete
+				body delete
+				error delete
+				err delete
+				config delete
+				stacktrace delete
+			}
+		}
+	}
+}
+
+# Explicit HTTP server also receives the timeout/protocol policy above.
+# ACME HTTP-01 is handled natively ahead of these routes.
+http://{$NUEVAMENTE_DOMAIN} {
+	redir https://{$NUEVAMENTE_DOMAIN}{uri} 308
+}
+
+(origin_headers) {
+	header_up Host {$NUEVAMENTE_DOMAIN}
+	header_up X-Forwarded-For {remote_host}
+	header_up X-Forwarded-Proto https
+	header_up X-Forwarded-Host {$NUEVAMENTE_DOMAIN}
+	header_up -Forwarded
+	header_up -X-Real-IP
+	header_up X-NuevaMente-Client-IP {remote_host}
+	header_up X-NuevaMente-Origin-Key {env.TRUSTED_ORIGIN_SECRET}
+	header_down -X-NuevaMente-Client-IP
+	header_down -X-NuevaMente-Origin-Key
+}
+
+https://{$NUEVAMENTE_DOMAIN} {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+		}
+	}
+	log access {
+		output file {$CADDY_LOG_DIR:/var/log/caddy}/access.json {
+			mode 0600
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 168h
+		}
+		format filter {
+			wrap json
+			fields {
+				request delete
+				resp_headers delete
+			}
+		}
+	}
+	# Record safe fields before proxying: aborted SSE can skip late handlers.
+	log_append <proxy_request_id {http.request.uuid}
+	@log_method method GET HEAD POST PUT DELETE CONNECT OPTIONS TRACE PATCH
+	log_append @log_method <method {method}
+	header {
+		-X-NuevaMente-Client-IP
+		-X-NuevaMente-Origin-Key
+		X-Content-Type-Options nosniff
+		Strict-Transport-Security "max-age=31536000"
+	}
+
+	@api path /api /api/*
+	handle @api {
+		log_append <component api
+		reverse_proxy 127.0.0.1:8000 {
+			import origin_headers
+			transport http {
+				versions 1.1
+				dial_timeout 3s
+				response_header_timeout 0
+				compression off
+			}
+		}
+	}
+	handle {
+		log_append <component ui
+		reverse_proxy 127.0.0.1:8501 {
+			import origin_headers
+			transport http {
+				versions 1.1
+				dial_timeout 3s
+				response_header_timeout 60s
+				compression off
+			}
+		}
+	}
+}
