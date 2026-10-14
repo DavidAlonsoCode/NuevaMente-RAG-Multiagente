@@ -7,6 +7,7 @@ from api_client import APIError
 from chat_flow import conversacion_actual, pendiente_del_espacio
 from i18n import t
 
+from components.content_common import texto
 from components.errors import mostrar_error_ui
 
 
@@ -75,14 +76,14 @@ def render_chat(
     )
     for turno in conversacion.turnos:
         with st.chat_message("user"):
-            st.write(turno.pregunta)
+            st.markdown(texto(turno.pregunta))
         if turno.respuesta is not None:
             with st.chat_message("assistant"):
                 respuesta = turno.respuesta
                 if respuesta["estado"] == "fuera_de_alcance":
-                    st.info(respuesta["respuesta"] or t("chat.abstencion", idioma_ui))
+                    st.info(texto(respuesta["respuesta"]) or t("chat.abstencion", idioma_ui))
                 else:
-                    st.write(respuesta["respuesta"])
+                    st.markdown(texto(respuesta["respuesta"]))
                     _fuentes(respuesta, idioma_ui, render_fuentes)
         elif not turno.activo:
             with st.chat_message("assistant"):

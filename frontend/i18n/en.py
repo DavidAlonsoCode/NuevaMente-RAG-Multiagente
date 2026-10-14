@@ -29,6 +29,7 @@ CATALOGO_EN: dict[str, str] = {
     "comun.detalles_tecnicos": "Technical details",
     # ------------------------- navigation -------------------------
     "nav.inicio": "Home",
+    "nav.resultado": "Study material",
     "nav.documentos": "Documents",
     "nav.generar": "Generate",
     "nav.historial": "History",

@@ -8,6 +8,7 @@ import pytest
 import requests
 from api_client import APIClient, APIError
 from chat_flow import Conversacion, TurnoChat, conversacion_actual, pendiente_del_espacio
+from components.content_common import texto
 from i18n import t
 from streamlit.runtime.pages_manager import PagesManager
 from streamlit.testing.v1 import AppTest
@@ -192,7 +193,7 @@ def test_abstencion_y_etiquetas_separan_idiomas(ui, idioma):
     assert api.envios[-1][0]["idioma_salida"] == "pt"
     api.jobs["job1"] = trabajo(status="completed", result=respuesta(api.envios[-1][0], fuera=True))
     app.run()
-    assert not app.exception and any(i.value == "Sin evidencia suficiente." for i in app.info)
+    assert not app.exception and any(i.value == texto("Sin evidencia suficiente.") for i in app.info)
 
 
 def test_otra_configuracion_no_abre_un_segundo_turno_pendiente():
