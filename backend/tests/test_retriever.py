@@ -289,3 +289,41 @@ def test_indice_heredado_ambiguo_exige_reconstruccion(pila):
         RetrieverMMR(indice, configuracion=configuracion()).recuperar(
             "espacio-a", "heredado", "VCN", contexto=contexto(), seccion="VCN"
         )
+
+
+@pytest.mark.parametrize("limite", [1, 15])
+def test_ambito_pequeno_no_depende_del_ranking_aproximado(pila, monkeypatch, limite):
+    indice, proveedor, _ = pila
+    texto = "# Configuración\nNAT para salida privada.\n# Configuración\nRutas hacia destinos autorizados.\n"
+    chunks = [
+        c.como_chunk_interno()
+        for c in trocear(parsear_archivo(texto.encode(), "repetidas.md"), "espacio-a", "repetido")
+    ]
+    indice.indexar("espacio-a", "repetido", chunks, contexto=contexto())
+    llamadas = len(proveedor.entradas)
+
+    def query_incompleta(*args, **kwargs):
+        pytest.fail("Un ámbito completo de un candidato no requiere HNSW")
+
+    monkeypatch.setattr(type(indice._privada), "query", query_incompleta)
+    hits = indice.buscar(
+        "espacio-a", "repetido", "Configuración", contexto=contexto(), seccion="seccion:3", limite=limite
+    )
+    assert len(hits) == 1 and hits[0].chunk == chunks[1]
+    assert hits[0].distancia == pytest.approx(1 - 1 / (1 + 0.33**2) ** 0.5, abs=1e-6)
+    assert len(proveedor.entradas) == llamadas + 1  # Sólo el embedding de consulta.
+
+
+def test_ambito_grande_conserva_busqueda_hnsw_filtrada(pila, monkeypatch):
+    indice, _, _ = pila
+    original, peticiones = type(indice._privada).query, []
+
+    def query(coleccion, **kwargs):
+        peticiones.append(kwargs)
+        return original(coleccion, **kwargs)
+
+    monkeypatch.setattr(type(indice._privada), "query", query)
+    hits = indice.buscar("espacio-a", "doc-a", "VCN", contexto=contexto(), limite=2)
+    assert len(hits) == 2 and len(peticiones) == 1
+    assert peticiones[0]["n_results"] == 2
+    assert {"document_id": "doc-a"} in peticiones[0]["where"]["$and"]
