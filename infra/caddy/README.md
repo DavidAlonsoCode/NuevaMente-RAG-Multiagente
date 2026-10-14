@@ -866,7 +866,7 @@ No concede privilegios root en el host ni garantiza aislar código que ya tenga
 sudo. No cambia sysctl, otros perfiles ni instala helpers setuid.
 
 Solo se prepara en la VM GitHub-hosted efímera de cada job. El bundle completo se
-copia a inodos nuevos bajo `/opt/nm48-playwright-ci/browsers`: root:root,
+copia a inodos nuevos bajo `/nm48-playwright-ci/browsers`: root:root,
 directorios/ejecutables 0555, otros archivos 0444, raíz 0755 y ancestros verificados
 sin escritura de grupo/otros. Se rechazan enlaces y tipos especiales; el perfil
 0644 se crea exclusivamente y se carga con `--add`, nunca reemplazando otro.
@@ -875,6 +875,12 @@ de bytes, no una firma independiente del navegador descargado. La procedencia
 sigue siendo Playwright 1.63.0 verificado por el lock y su descarga oficial HTTPS.
 `PLAYWRIGHT_BROWSERS_PATH` conserva la selección por revisión y la assertion de
 versión; no se usa `NM_BROWSER_EXECUTABLE` ni se cambia `chromium_sandbox=True`.
+Las imágenes usadas en la corrida 38623397761 configuran `/opt` como 0777,
+incompatible con la guardia estricta de ancestros ([AMD64](https://github.com/actions/runner-images/blob/ubuntu24/20261004.327/images/ubuntu/scripts/build/configure-system.sh#L15),
+[ARM64](https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261004.142/images/ubuntu/scripts/build/configure-system.sh#L15)).
+La nueva ubicación evita ese árbol sin modificar `/opt` ni relajar comprobaciones.
+El perfil sigue generándose desde `bundle / relative`, bajo la nueva raíz exacta;
+se conserva el permiso `userns` autorizado. Su funcionamiento continúa pendiente.
 
 El smoke se invoca directamente una sola vez, con la misma guardia de 354
 identidades, assertions y deadlines. Se retiran el inspector temporal y

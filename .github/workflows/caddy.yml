@@ -177,7 +177,7 @@ jobs:
               assert not relative.is_absolute() and ".." not in relative.parts
               check = "EXECUTABLE_ALLOWED_CHARACTERS"
               assert re.fullmatch(r"[A-Za-z0-9_./-]+", relative.as_posix())
-              root = Path("/opt/nm48-playwright-ci")
+              root = Path("/nm48-playwright-ci")
               bundle = root / "browsers"
               profile = Path("/etc/apparmor.d/nm48-chromium-ci")
               phase, check = "ancestor_protection", "ANCESTORS_WALK"
@@ -263,7 +263,7 @@ jobs:
         env:
           CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
           COMPOSE_BIN: ${{ runner.temp }}/caddy-tools/docker-compose
-          PLAYWRIGHT_BROWSERS_PATH: /opt/nm48-playwright-ci/browsers
+          PLAYWRIGHT_BROWSERS_PATH: /nm48-playwright-ci/browsers
         run: |
           test -z "${NM_BROWSER_EXECUTABLE:-}"
           bash -n infra/caddy/install.sh
