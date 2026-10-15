@@ -948,6 +948,9 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
 - Revalida el documento antes de llamar y antes de devolver el borrador. Rechaza
   evidencia ajena/antigua, cambios de fuente, citas inventadas y ubicaciones falsas.
   Completa ubicaciones omitidas desde el chunk autorizado, sin agregar hechos nuevos.
+  La solicitud estructurada a Gemini limita las referencias a `chunk_id` de la
+  evidencia; página y sección se resuelven en el backend. El paquete público
+  conserva las referencias completas y una ubicación falsa recibida sigue fallando.
   Metadatos deben coincidir con perfil, formato, nicho, detalle, idiomas y alcance;
   no se puede inventar cobertura. Critic revisa su respaldo factual y pedagógico.
 - Parseo JSON estricto, sin cercas Markdown, claves duplicadas ni valores no finitos.

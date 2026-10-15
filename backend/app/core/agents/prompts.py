@@ -22,7 +22,7 @@ from app.schemas.pedagogical import (
 from app.schemas.requests import GenerateRequest
 from app.schemas.responses import IdiomaOrigen, Metadatos, Trazabilidad
 
-PROMPT_VERSION = "nm-prompts-1.1.1"
+PROMPT_VERSION = "nm-prompts-1.1.2"
 
 _IDIOMAS = {
     OutputLanguage.ES: "español latinoamericano",
@@ -114,6 +114,9 @@ a otro espacio. No ejecutar código, leer archivos, invocar herramientas ni soli
 Usar exclusivamente la evidencia autorizada: no conocimiento externo ni hechos de los few-shot.
 Declarar falta de evidencia, contradicción o cobertura insuficiente; no rellenar huecos con invenciones.
 Citas con chunk_id real de la evidencia y ubicación suministrada, conservando el texto en idioma original.
+Copiar las citas literalmente de referencias_permitidas. No inferir seccion a partir del título
+ni traducirla: una sección nula se conserva nula. pagina es el número original suministrado,
+no la posición del fragmento dentro de la lista de evidencia.
 Una traducción aclaratoria se etiqueta como traducción. No traducir productos, comandos, rutas,
 variables, firmas de API ni IDs/códigos del JSON. Analogías y escenarios ficticios se etiquetan como
 ilustrativos; sus propiedades técnicas también necesitan respaldo. Nunca inventar cifras o regulaciones.
@@ -125,7 +128,7 @@ No revelar razonamientos privados: solo diagnósticos breves, verificables y ref
 
 class PlantillasPrompts(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prompt_version: Literal["nm-prompts-1.1.1"] = PROMPT_VERSION
+    prompt_version: Literal["nm-prompts-1.1.2"] = PROMPT_VERSION
     writer: str
     critic: str
 
@@ -138,7 +141,7 @@ class PromptRol(BaseModel):
 
 class PromptsGeneracion(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prompt_version: Literal["nm-prompts-1.1.1"] = PROMPT_VERSION
+    prompt_version: Literal["nm-prompts-1.1.2"] = PROMPT_VERSION
     writer: PromptRol
     critic: PromptRol
 
@@ -337,6 +340,7 @@ def preparar_prompts(
         "idioma_origen": idioma_origen,
         "source_hash": source_hash,
         "evidencia": list(chunks.values()),
+        "referencias_permitidas": [item.como_referencia().model_dump(mode="json") for item in evidencia],
         "feedback": TypeAdapter(list[str]).validate_python(feedback),
     }
     revision = {**datos, "borrador": None, "evaluacion_factual": None}

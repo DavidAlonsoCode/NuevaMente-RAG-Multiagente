@@ -3,6 +3,7 @@
 import hashlib
 import inspect
 import json
+import logging
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -35,6 +36,8 @@ from app.jobs.manager import (
 from app.schemas.enums import JobStatus
 from app.schemas.internal import VerificacionVisual
 from app.schemas.responses import EvaluacionCalidad
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -192,6 +195,15 @@ class _SesionRevision:
             schema["properties"]["afirmaciones"].pop("maxItems")
             # Una ubicación es una clave original, nunca una concatenación.
             schema["$defs"]["AfirmacionExtraida"]["properties"]["ubicacion"]["enum"] = list(self.segmentos)
+        elif modelo_salida is RevisionVisual:
+            # El veredicto sigue siendo libre; la identidad de la imagen ya está fijada.
+            schema["properties"]["chunk_id"]["enum"] = [imagen.chunk_id]
+        elif modelo_salida is JuiciosFactuales:
+            propiedades = schema["$defs"]["VeredictoFactual"]["properties"]
+            propiedades["id_afirmacion"]["enum"] = [a["id"] for a in datos["afirmaciones"]]
+            permitidas = sorted({c for a in datos["afirmaciones"] for c in a["citas_permitidas"]})
+            if permitidas:
+                propiedades["referencias"]["items"]["enum"] = permitidas
         cfg = self.dependencias.configuracion
         max_output = cfg.generation_max_output_tokens
         tokens = TokenizadorBPE().contar(sistema + prompt + json.dumps(schema)) + max_output
@@ -536,7 +548,10 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
         return fallo("RATE_LIMITED", "La cuota del modelo de verificación está agotada.")
     except (ReintentableError, GeneracionGeminiError, TimeoutError):
         return fallo("PROVIDER_UNAVAILABLE", "El evaluador no pudo completar la revisión.")
-    except (EvaluadorInvalidoError, ValidationError):
+    except EvaluadorInvalidoError as error:
+        logger.warning("Critic: evaluación inválida: %s", error)
+        return fallo("INVALID_EVALUATION", "El evaluador devolvió una respuesta incompleta o inválida.")
+    except ValidationError:
         return fallo("INVALID_EVALUATION", "El evaluador devolvió una respuesta incompleta o inválida.")
     except (ValueError, TypeError):
         return fallo("INVALID_STATE", "El estado o la evidencia no cumplen el contrato de Critic.")
