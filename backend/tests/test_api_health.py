@@ -39,7 +39,7 @@ def config_desarrollo(**sobrescrituras) -> Configuracion:
     """Config de desarrollo con mocks explícitos, inyectable y aislada."""
     valores = {"app_env": "development", "mock_oci": True, "mock_gemini": True}
     valores.update(sobrescrituras)
-    return Configuracion(**valores)
+    return Configuracion(_env_file=None, **valores)
 
 
 @pytest.fixture

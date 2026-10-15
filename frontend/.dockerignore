@@ -1,9 +1,7 @@
 **
 !Dockerfile
 !requirements.txt
-!app.py
-!api_client.py
-!entrypoint.py
+!*.py
 !components/
 !components/**
 !i18n/
@@ -22,3 +20,5 @@
 **/uploads/
 **/*.db*
 **/*.sqlite*
+tests/
+tests/**

@@ -76,7 +76,30 @@ def backend_http(tmp_path, monkeypatch):
             process.wait(timeout=5)
 
 
+def _podar_selectores_huerfanos(app):
+    """AppTest conserva widgets de una ejecución anterior aunque el rerun ya no los dibuje.
+
+    Cerrar sesión borra su estado. El navegador reemplaza la página; el árbol de
+    prueba no, y el siguiente clic falla al leer un selector que ya no existe.
+    """
+
+    def recorrer(nodo):
+        hijos = getattr(nodo, "children", None)
+        if not isinstance(hijos, dict):
+            return
+        for indice in list(hijos):
+            hijo = hijos[indice]
+            widget_id = getattr(hijo, "id", None)
+            if getattr(hijo, "type", None) in {"selectbox", "radio"} and widget_id not in app.session_state:
+                del hijos[indice]
+            else:
+                recorrer(hijo)
+
+    recorrer(app._tree)
+
+
 def _click(app, key, lang="es"):
+    _podar_selectores_huerfanos(app)
     button = next(button for button in app.button if button.label == t(key, lang))
     button.click().run()
     assert not app.exception
@@ -160,6 +183,9 @@ def test_error_inicial_desconocido_es_amigable(monkeypatch, lang):
 
 @pytest.fixture
 def workspace_ui(monkeypatch):
+    from test_progress_ui import agregado
+
+    monkeypatch.setattr(APIClient, "get_progress", lambda *_: agregado())
     monkeypatch.setattr(APIClient, "get_documents", lambda *_: {"items": [], "next_cursor": None})
     monkeypatch.setattr(
         APIClient,
@@ -179,6 +205,7 @@ def workspace_ui(monkeypatch):
             "recovery_code": "codigo_prueba",
         },
     )
+    monkeypatch.setattr(APIClient, "get_documents", lambda *_args, **_kwargs: {"items": [], "next_cursor": None})
     app = AppTest.from_file(str(APP)).run()
     assert not app.exception
     return app

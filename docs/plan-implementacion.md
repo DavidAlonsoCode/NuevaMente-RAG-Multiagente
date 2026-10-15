@@ -37,7 +37,7 @@ Este plan traduce el documento de decisiones en **60 issues concretos**, organiz
 **Flujo de trabajo del equipo:**
 
 1. Crear los issues en GitHub desde los archivos de `docs/issues/` (título = encabezado del issue, cuerpo = resto).
-2. Cada integrante toma issues de **su carril** respetando la columna **Depende de** (un issue no se inicia si sus dependencias no están mergeadas en `develop`).
+2. Cada integrante toma issues de **su carril** respetando la columna **Depende de** para integración y cierre. Puede adelantar en draft tareas independientes desde contratos vigentes; debe identificar lo preparado y lo pendiente de integrar o validar.
 3. Al completar, marcar los criterios de aceptación y verificar contra **Verificación** del issue.
 
 ---
@@ -58,6 +58,43 @@ Los principios que ordenan este plan (derivados de `decisiones_proyecto.md`):
 Los contratos internos de ejecución están precisados en [contratos-api.md](contratos-api.md#contrato-de-ejecución-de-proveedores-issues-13-y-20): proveedores Gemini síncronos dentro del worker, reintentos y cuotas centralizados en Issue 20 y dobles compatibles. Los endpoints comunes de trabajos también pertenecen a Issue 20. Cada consumidor y sus tests deben conservar este contrato.
 
 H2 verifica indexación y recuperación con fuentes textuales. Una fuente con visión pendiente no pasa a `ready`; Issue 30 completa la ingestión del PDF VCN con diagrama en H3. La revisión de seguridad de Issue 51 aporta sus propias pruebas, que Issue 53 reutiliza sin crear una dependencia inversa.
+
+### 2.1 Prioridad de cierre y alcance operativo — 14 de octubre de 2026
+
+- **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
+  40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
+  microinteracciones y efectos forman parte del acabado visual; deben conservar
+  foco, legibilidad, controles accesibles y movimiento reducido. No relegar la
+  presentación ni recortar funciones de estudio para ahorrar trabajo de infraestructura.
+- **Conservar ingeniería ya integrada**: no reescribir PDF, chat, glosario,
+  cuotas, persistencia ni ciclo de vida. Mantener fidelidad, permisos, límites,
+  idempotencia y protección de secretos.
+- **Acotar trabajo operativo nuevo**: issues 48, 49 y 51 utilizan procedimientos
+  breves y pruebas existentes. La VM de entrega requiere aceptación real; no
+  exige otra VM de laboratorio ni repetir allí toda la suite del repositorio.
+  Los checks de Caddy AMD64/ARM64 ya agregados se conservan; un fallo se corrige,
+  no se oculta mediante skips ni retirando controles.
+- **Compartir cobertura y evidencia**: issues 51–54 reutilizan pruebas y trazan
+  cada criterio a su comprobación. Una misma corrida real puede aportar a 48,
+  53, 54 y 55 si coincide su alcance, versión y configuración. Conservar los
+  14 criterios de E2E; agregar tests sólo para huecos de integración o regresiones.
+- **Preparación antes de despliegue**: 49 puede preparar la precarga, 53 la
+  cobertura y 55 los resultados desde un espacio autorizado antes de disponer
+  de la VM. El smoke de proveedores de 54 puede acreditarse localmente con
+  Gemini y OCI reales; 48 conserva su prueba pública por el proxy.
+  56 puede preparar guion y ensayos desde el inicio. Las dependencias restantes
+  siguen gobernando integración, aceptación y cierre, sin publicar borradores.
+- **Entrega demostrable**: conservar las tres adaptaciones del mismo documento,
+  complementos de demo y los 12 casos con dos revisores de 60; reutilizar casos
+  válidos de 55 en 60. El bloqueo de capacidad Always Free se documenta y no
+  frena preparar UI o validar proveedores; no acredita Compute, no habilita
+  gasto y no convierte una entrega parcial en cumplimiento completo.
+
+El orden de cierre prioriza integrar la pantalla principal (33/34/36/46) y los
+drafts de estudio, verificar pronto proveedores reales (54), preparar resultados
+y revisión humana (55/60), completar seguridad/E2E (51/53) y ensayar/grabar (56).
+Infraestructura (48/49) avanza en paralelo, con evidencias públicas cuando exista
+la VM. Se conserva la trazabilidad y los 60 issues del plan.
 
 ## 3. Carriles de trabajo paralelo
 
@@ -194,7 +231,7 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 | `Issue 51` | Revisión de seguridad y hardening | INF | M | `Issue 31`, `Issue 33`, `Issue 37`, `Issue 39`, `Issue 44`, `Issue 45`, `Issue 48`, `Issue 50` |
 | `Issue 52` | Tests de integración de API con dependencias simuladas | QAD | L | `Issue 31`, `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45` |
 | `Issue 53` | Suite E2E de criterios críticos | QAD | L | `Issue 25`, `Issue 30`, `Issue 33`, `Issue 36`, `Issue 38`, `Issue 40`, `Issue 41`, `Issue 42`, `Issue 46`, `Issue 49`, `Issue 50`, `Issue 51`, `Issue 52`, `Issue 54` |
-| `Issue 54` | Smoke tests reales contra OCI y Gemini | QAD | M | `Issue 14`, `Issue 31`, `Issue 44`, `Issue 45`, `Issue 48`, `Issue 50` |
+| `Issue 54` | Smoke tests reales contra OCI y Gemini | QAD | M | `Issue 14`, `Issue 31`, `Issue 44`, `Issue 45`, `Issue 50` |
 
 ### Fase 6 — Demo y entrega
 
@@ -212,7 +249,7 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 ## 6. Oleadas de paralelismo
 
 El paralelismo ocurre entre integrantes disponibles; dos issues del mismo carril no equivalen a dos personas.
-Se puede adelantar diseño y preparar mocks desde el contrato, pero un issue no se cierra sin sus dependencias y criterios completos.
+Se puede adelantar diseño, componentes y pruebas independientes desde el contrato vigente, declarando lo pendiente de integración. Un issue no se cierra sin sus dependencias y criterios completos; la preparación de evidencia real sigue las etapas de §2.1.
 
 | Oleada | Trabajo que puede avanzar |
 |---|---|

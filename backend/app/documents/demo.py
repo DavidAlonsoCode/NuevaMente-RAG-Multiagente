@@ -10,7 +10,9 @@ import time
 
 from pydantic import ValidationError
 
+from app.core.rag.multimodal import VERSION_PROMPT, chunks_visuales
 from app.core.rag.parser import ParserError, validar_entrada_archivo
+from app.core.rag.raster import VERSION_RASTER, rasterizar_pagina
 from app.core.rag.rebuild import ManifiestoDocumento
 from app.core.rag.vectorstore import DEMO_WORKSPACE_ID, IndiceInconsistenteError, VectorStoreChroma
 from app.documents.cursor import CursorDemo
@@ -135,6 +137,7 @@ class ServicioCatalogoDemo:
             manifest.metadatos.tamano_bytes != len(contenido) or manifest.metadatos.extension != extension
         ):
             raise StorageUnavailable("La metadata demo no corresponde al original")
+        return contenido
 
     @staticmethod
     def _evidencia(manifest):
@@ -180,7 +183,32 @@ class ServicioCatalogoDemo:
             raise ErrorAplicacion(ErrorCode.PROVIDER_UNAVAILABLE, "El índice demo no está disponible.") from error
         c = manifest.cobertura
         secciones = {s.seccion_id: s for s in c.secciones}
+        visuales = [ch for ch in chunks if ch.source_type == "image_description"]
+        if visuales or manifest.interpretaciones_visuales:
+            if manifest.metadatos.extension != "pdf":
+                return []
+            original = self._original(ctx, manifest)
+            for interpretacion in manifest.interpretaciones_visuales:
+                if (
+                    interpretacion.estado == "ilegible"
+                    or not interpretacion.cobertura_completa
+                    or interpretacion.pagina not in c.paginas_procesadas
+                    or (interpretacion.version_prompt, interpretacion.version_raster)
+                    != (VERSION_PROMPT, VERSION_RASTER)
+                ):
+                    return []
+                try:
+                    imagen = rasterizar_pagina(original, interpretacion.pagina, contexto=ctx)
+                except ValueError:
+                    return []
+                if hashlib.sha256(imagen.contenido).hexdigest() != interpretacion.imagen_sha256:
+                    return []
+            if visuales != chunks_visuales(manifest, indice_inicial=len(chunks) - len(visuales)):
+                return []
         for chunk in chunks:
+            if chunk.source_type == "image_description":
+                continue  # Derivado exacto de una interpretación ligada a la página original.
+
             if chunk.source_name != manifest.source_name or chunk.source_type != manifest.metadatos.extension:
                 return []
             if manifest.metadatos.extension == "pdf":

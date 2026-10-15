@@ -1,0 +1,148 @@
+"""La pantalla principal conecta el tutor y el visor sin mezclar contextos."""
+
+import sys
+
+import pytest
+from components.content_common import texto
+from i18n import t
+from streamlit.runtime.pages_manager import PagesManager
+from streamlit.testing.v1 import AppTest
+from test_chat_ui import Cliente, respuesta, trabajo
+from test_glossary_ui import API as GlosarioAPI
+from test_history_ui import API as HistorialAPI
+from test_result import ClienteResultado, paquete, ui
+
+pytestmark = pytest.mark.integration_mock
+
+
+class ClienteEstudio(ClienteResultado, Cliente):
+    def __init__(self):
+        super().__init__()
+        self.glosario = GlosarioAPI()
+
+    def create_glossary(self, token, payload, **kwargs):
+        self.glosario.output["documento_fuente"]["document_id"] = payload["document_id"]
+        for termino in self.glosario.output["terminos"]:
+            termino["referencias"] = [{"chunk_id": "chk_001", "pagina": 2, "seccion": "Conceptos"}]
+        return self.glosario.create_glossary(token, payload, **kwargs)
+
+    def get_glossary(self, token, gid):
+        return self.glosario.get_glossary(token, gid)
+
+
+class ClienteHistorial(HistorialAPI, ClienteResultado):
+    def __init__(self):
+        super().__init__()
+        for fila in self.items:
+            p = paquete(fila["parametros"]["formato_salida"])
+            p["generation_id"] = fila["generation_id"]
+            p["metadatos"]["perfil_aplicado"] = fila["parametros"]["perfil_destinatario"]
+            p["metadatos"]["idioma_salida"] = fila["parametros"]["idioma_salida"]
+            fila["document_id"] = fila["parametros"]["document_id"] = p["documento_fuente"]["document_id"]
+            self.jobs[fila["generation_id"]]["contenido"] = p
+
+    def workspace_status(self, token):
+        return {**super().workspace_status(token), "workspace_id": "ws_test"}
+
+    def get_documents(self, token, params):
+        return {"items": [{"document_id": self.items[0]["document_id"], "titulo": "Redes"}], "next_cursor": None}
+
+
+@pytest.fixture
+def estudio(monkeypatch):
+    from pages import home
+
+    monkeypatch.setitem(sys.modules, "__main__", sys.modules["__main__"])
+    monkeypatch.setattr(PagesManager, "uses_pages_directory", None)
+    monkeypatch.setattr(home, "render_sidebar", lambda *args: None)
+    base = ui()
+    app = AppTest.from_string("""
+import streamlit as st
+from components.session import inicializar_estado_sesion
+from pages import home
+inicializar_estado_sesion()
+home.render(st.session_state.api, st.session_state.idioma_ui)
+""")
+    for key, value in base.session_state.filtered_state.items():
+        app.session_state[key] = value
+    api = ClienteEstudio()
+    app.session_state.api = api
+    app.session_state.generacion_activa = {
+        **base.session_state.activa,
+        "documento_titulo": "Redes",
+        "seccion_titulo": None,
+    }
+    app.session_state.gen_perfil = "ejecutivo"
+    app.session_state.gen_idioma_salida = "pt"
+    return app.run(), api
+
+
+def test_home_conecta_cinco_turnos_con_fuentes_y_parametros_del_resultado(estudio):
+    app, api = estudio
+    assert not app.exception
+    for n in range(5):
+        app.chat_input[0].set_value(f"Pregunta {n}").run()
+        body, key = api.envios[-1]
+        assert body["perfil_destinatario"] == "principiante" and body["idioma_salida"] == "es"
+        result = respuesta(body)
+        result["referencias"] = [{"chunk_id": "chk_001", "pagina": 2, "seccion": "Conceptos"}]
+        api.jobs[api.intenciones[key]] = trabajo(api.intenciones[key], "completed", result)
+        app.run()
+        assert not app.exception
+    # Cinco citas iguales pueden abrirse de manera independiente sin claves duplicadas.
+    fuentes = [b for b in app.button if b.label == "Consultar fuente original"]
+    assert len(fuentes) == 6  # Una del material y cinco del tutor.
+    fuentes[-1].click().run()
+    assert not app.exception
+    assert any("EVIDENCIA" in m.value for m in app.markdown)
+    assert len(api.envios) == 5
+
+
+def test_home_glosario_filtra_y_abre_fuentes_sin_generar_de_nuevo(estudio):
+    app, api = estudio
+    next(b for b in app.button if b.label == "Generar glosario").click().run()
+    assert not app.exception and len(api.glosario.calls) == 1
+    payload = api.glosario.calls[0][0]
+    assert payload["perfil_destinatario"] == "principiante" and payload["idioma_salida"] == "es"
+    fuentes = [b for b in app.button if b.label == "Consultar fuente original"]
+    assert len(fuentes) == 4  # Material y tres términos con la misma cita.
+    fuentes[-1].click().run()
+    assert not app.exception and any("EVIDENCIA" in m.value for m in app.markdown)
+    next(i for i in app.text_input if i.label == t("glosario.buscar")).set_value("VCN").run()
+    assert not app.exception and len(api.glosario.calls) == 1
+
+
+def test_home_solo_registra_estudio_explicito_y_consulta_agregados(estudio):
+    app, _ = estudio
+    assert not app.exception and not app.session_state.filtered_state.get("eventos_progreso")
+    next(b for b in app.button if b.label == t("material.mostrar_respuesta")).click().run()
+    assert not app.exception and len(app.session_state.eventos_progreso) == 1
+    assert any(m.label == t("progreso.flashcards") and m.value == "1" for m in app.metric)
+    next(b for b in app.button if b.label == t("material.ocultar_respuesta")).click().run()
+    next(b for b in app.button if b.label == t("material.mostrar_respuesta")).click().run()
+    assert len(app.session_state.eventos_progreso) == 1
+    concepto = app.session_state.paquete["metadatos"]["conceptos_clave"][0]
+    next(b for b in app.button if b.label == t("progreso.marcar_concepto").format(concepto=concepto)).click().run()
+    assert not app.exception and len(app.session_state.eventos_progreso) == 2
+    assert any(m.label == t("progreso.conceptos") and m.value == "1" for m in app.metric)
+
+
+def test_home_historial_compara_materiales_completos_y_reabre_tarjeta(estudio):
+    app, _ = estudio
+    app.session_state.api = ClienteHistorial()
+    app.session_state.historial_abierto = True
+    app.run()
+    for i, gid in enumerate(("g1", "g2")):
+        next(s for s in app.selectbox if s.label == t("historial.adaptacion_" + str(i))).set_value(gid).run()
+    assert not app.exception
+    for gid in ("g1", "g2"):
+        titulo = app.session_state.api.jobs[gid]["contenido"]["contenido_adaptado"]["titulo"]
+        assert any(m.value == "## " + texto(titulo) for m in app.markdown)
+    assert len([m for m in app.metric if m.label == t("calidad.anclaje")]) == 2
+    app.session_state.historial_detalle = "g1"
+    app.run()
+    next(b for b in app.button if b.label == t("material.mostrar_respuesta")).click().run()
+    assert not app.exception and app.session_state.eventos_progreso
+    fuentes = [b for b in app.button if b.label == "Consultar fuente original"]
+    fuentes[-1].click().run()
+    assert not app.exception and any("EVIDENCIA" in m.value for m in app.markdown)

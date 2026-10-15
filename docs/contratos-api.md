@@ -80,15 +80,26 @@ Los `code` son estables y no se traducen; los `message` se localizan según idio
 
 **Origen detrás de Streamlit/Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. Streamlit transmite ambas cabeceras al backend desde su contexto del servidor. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
 
-En cada `reverse_proxy` de UI y API del despliegue #49, incorporar:
+En cada `reverse_proxy` de UI y API del proxy #48, incorporar:
 
 ```caddyfile
 header_up X-NuevaMente-Client-IP {remote_host}
 header_up X-NuevaMente-Origin-Key {env.TRUSTED_ORIGIN_SECRET}
+header_down -X-NuevaMente-Client-IP
 header_down -X-NuevaMente-Origin-Key
 ```
 
 Esto supone Caddy como entrada pública directa, según la arquitectura vigente. Si se incorpora otro proxy anterior, su cadena de confianza debe definirse explícitamente. La clave nunca se envía al navegador ni se registra. Referencias: [cabeceras de Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers) y [placeholders](https://caddyserver.com/docs/caddyfile/concepts#placeholders). La configuración documentada debe verificarse en el despliegue real; las pruebas locales no acreditan OCI/Caddy públicos.
+
+El [contrato de producción #48](../infra/caddy/README.md) fija una clave de 32
+bytes aleatorios representados como 64 caracteres hexadecimales, cargada desde
+una única `origin.env` privada. `/api` y `/api/*` conservan su prefijo. Se preservan
+`Authorization`, `Idempotency-Key`, `Last-Event-ID`, `X-Request-ID`, `Retry-After`
+y las cabeceras SSE; el proxy retira ambas cabeceras privadas de las respuestas.
+La confianza Uvicorn en `X-Forwarded-*` es independiente: requiere IPs de conexión
+comprobadas desde el contenedor, nunca `*` ni una gateway supuesta. CORS/XSRF de
+Streamlit permanecen activos; la clave solo circula en el contexto del servidor,
+incluido el handshake WebSocket, y nunca debe serializarse en mensajes o páginas.
 
 ### Documentos (issues `Issue 19`, `Issue 11`)
 
@@ -313,6 +324,14 @@ la biblioteca desplegada y Issue 30 completa visión.
   La huella de chunks usa la firma del catálogo de #17; la configuración usa
   `ConfigChunker.huella(parser)`. `huella_documental_demo` liga metadata y cobertura
   exactas, incluyendo fecha, conteos y huella de parser, a esa publicación.
+  Las interpretaciones visuales demo conservan procedencia y tipo
+  `image_description`. El lector verifica el raster de la página original,
+  versiones de prompt/raster, cobertura completa y chunks derivados exactos;
+  una interpretación alterada no habilita fuentes ni `ready`. No agrega visión
+  ni embeddings durante GET. La precarga administrativa de #49 se ejecuta
+  offline con el gestor común y exclusividad de volumen con la API;
+  ver [runbook de precarga](demo-precarga.md). No crea adaptaciones del #55
+  ni habilita la generación demo todavía pendiente en #31/#32.
   Issue 49 debe emitir esta evidencia solo después
   de verificar su publicación, con ETag vigente. H03 únicamente valida y consume
   el bloque: no implementa precarga, ejecución de rebuild, embeddings ni runbook.
@@ -896,7 +915,7 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
 - `core/agents/prompts.py` compone Writer/Critic para los cuatro perfiles, cinco
   formatos, cuatro nichos y tres idiomas desde matrices comunes; el detalle es
   independiente del perfil. `cargar_plantilla(GenerateRequest)` entrega los dos
-  roles y `prompt_version=nm-prompts-1.1.0`, sin usar proveedores.
+  roles y `prompt_version=nm-prompts-1.1.1`, sin usar proveedores.
 - `preparar_prompts(..., workspace_id, source_hash, idioma_origen, evidencia)`
   separa `system_instruction` de `datos_json`. Documento, consultas, feedback y
   borrador nunca se interpolan en el sistema. Rechaza evidencia vacía, ajena,
@@ -1057,6 +1076,11 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
 - `RETRIEVAL_K=5`, `RETRIEVAL_FETCH_K=15`, `RETRIEVAL_LAMBDA_MULT=0.7` y
   `RETRIEVAL_MAX_TOKENS=12000` son configurables. Se exige fetch_k >= k y un
   presupuesto positivo que no supere el límite de 12.000 tokens por borrador.
+- Si el ámbito filtrado contiene como máximo los candidatos solicitados, se leen
+  todos sus vectores con `get` y se ordenan por distancia coseno exacta. No se
+  delega esa selección completa a HNSW, que podría omitir vecinos bajo filtros
+  selectivos. Ámbitos mayores conservan la búsqueda aproximada. Ambos caminos
+  mantienen los filtros previos y usan sólo el embedding ya calculado de consulta.
 - MMR diversifica con los vectores de Chroma y devuelve `EvidenciaRecuperada`;
   score representa relevancia coseno, nunca fidelidad. Se deduplican IDs y textos
   equivalentes por espacios. Procedencia, hash y vectores inválidos son fallo técnico.

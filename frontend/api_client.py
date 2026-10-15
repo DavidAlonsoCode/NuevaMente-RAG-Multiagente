@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import time
-from typing import Any, BinaryIO, Literal, Optional, TypedDict, cast
+from typing import Any, BinaryIO, Literal, NotRequired, Optional, TypedDict, cast, get_args
 from urllib.parse import quote
 
 import requests
@@ -43,6 +43,67 @@ class UploadResponse(TypedDict):
 
 
 ExportFormat = Literal["json", "md", "pdf", "csv", "tsv", "apkg"]
+
+# Valores de máquina del contrato v1 (docs/contratos-api.md, app/schemas/enums.py).
+RecipientProfile = Literal["principiante", "junior_ssr", "lider_tecnico", "ejecutivo"]
+PedagogicalFormat = Literal["tutorial", "flashcards", "quiz", "resumen_ejecutivo", "guion_clase"]
+IndustryNiche = Literal["fintech", "salud", "ecommerce", "general"]
+DetailLevel = Literal["didactico", "practico", "tecnico_profundo"]
+OutputLanguage = Literal["es", "en", "pt"]
+JobStatus = Literal["queued", "running", "completed", "rejected_quality", "failed", "cancelled"]
+DocumentStatus = Literal["processing", "ready", "failed"]
+TipoAlcance = Literal["documento_completo", "seccion"]
+
+PERFILES: tuple[RecipientProfile, ...] = get_args(RecipientProfile)
+FORMATOS: tuple[PedagogicalFormat, ...] = get_args(PedagogicalFormat)
+NICHOS: tuple[IndustryNiche, ...] = get_args(IndustryNiche)
+NIVELES_DETALLE: tuple[DetailLevel, ...] = get_args(DetailLevel)
+IDIOMAS_SALIDA: tuple[OutputLanguage, ...] = get_args(OutputLanguage)
+
+
+class AlcanceSolicitud(TypedDict):
+    tipo: TipoAlcance
+    seccion_id: NotRequired[str]
+
+
+class GenerateRequest(TypedDict):
+    document_id: str
+    perfil_destinatario: RecipientProfile
+    formato_salida: PedagogicalFormat
+    nicho_sector: IndustryNiche
+    nivel_detalle: DetailLevel
+    idioma_salida: OutputLanguage
+    alcance: AlcanceSolicitud
+
+
+class SeccionDocumental(TypedDict):
+    seccion_id: str
+    titulo: str
+    linea_inicio: int
+    linea_fin: int
+
+
+class CoberturaDocumento(TypedDict):
+    paginas_procesadas: list[int]
+    paginas_omitidas: list[int]
+    paginas_visuales_pendientes: list[int]
+    secciones_procesadas: list[SeccionDocumental]
+    secciones_omitidas: list[SeccionDocumental] | None
+    secciones_visuales_pendientes: list[SeccionDocumental] | None
+
+
+class DocumentoResponse(TypedDict):
+    document_id: str
+    titulo: str
+    status: DocumentStatus
+    metadata: dict[str, Any] | None
+    cobertura: CoberturaDocumento | None
+    error: dict[str, Any] | None
+
+
+class DocumentosResponse(TypedDict):
+    items: list[DocumentoResponse]
+    next_cursor: str | None
 
 
 def _identificador_seguro(value: object) -> str | None:
@@ -251,8 +312,23 @@ class APIClient:
             raise APIError("INVALID_RESPONSE", "Admisión incompleta", 502)
         return data
 
+    def create_chat(self, token, payload, *, idempotency_key):
+        return self._solicitar("POST", "/api/chat", json=payload, token=token, idempotency_key=idempotency_key)
+
+    def cancel_job(self, token, job_id):
+        return self._solicitar("POST", f"/api/jobs/{quote(job_id, safe='')}/cancel", token=token)
+
     def get_job(self, token, job_id):
         return self._solicitar("GET", f"/api/jobs/{quote(job_id, safe='')}", token=token)
+
+    def create_glossary(self, token, payload, *, idempotency_key=None):
+        return self._solicitar("POST", "/api/glossaries", token=token, json=payload, idempotency_key=idempotency_key)
+
+    def get_glossary(self, token, glossary_id):
+        return self._solicitar("GET", f"/api/glossaries/{quote(glossary_id, safe='')}", token=token)
+
+    def cancel_glossary(self, token, job_id):
+        self._solicitar("POST", f"/api/jobs/{quote(job_id, safe='')}/cancel", token=token)
 
     def get_demo_documents(self, token, params=None):
         return self._solicitar("GET", "/api/demo/documents", token=token, params=params)
@@ -319,6 +395,20 @@ class APIClient:
         """GET /api/documents/{id}"""
         return self._solicitar("GET", f"/api/documents/{quote(document_id, safe='')}", token=token)
 
+    def get_document_source(self, token: str, document_id: str, chunk_id: str, *, demo: bool = False) -> dict:
+        """La fuente se consulta con Bearer; nunca se entrega al navegador una URL autenticada."""
+        base = "/api/demo/documents" if demo else "/api/documents"
+        ruta = f"{base}/{quote(document_id, safe='')}/sources/{quote(chunk_id, safe='')}"
+        return self._solicitar("GET", ruta, token=token)
+
+    def get_document_source_image(self, token: str, document_id: str, chunk_id: str) -> bytes:
+        """Página rasterizada por el backend, sin seguir URLs recibidas del contenido."""
+        ruta = f"/api/documents/{quote(document_id, safe='')}/sources/{quote(chunk_id, safe='')}/image"
+        contenido = self._solicitar("GET", ruta, token=token, binary=True)
+        if not isinstance(contenido, bytes) or not contenido.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise APIError("INVALID_RESPONSE", "Imagen de fuente inválida.", 502)
+        return contenido
+
     def delete_document(self, token: str, document_id: str) -> None:
         """DELETE /api/documents/{id}"""
         self._solicitar("DELETE", f"/api/documents/{quote(document_id, safe='')}", token=token)
@@ -326,11 +416,32 @@ class APIClient:
     # ------------------------------------------------------------------
     # 3. Generaciones
     # ------------------------------------------------------------------
+    def answer_quiz(self, token, generation_id, payload):
+        """El mismo evento conserva su clave en reintentos de transporte."""
+        return self._solicitar(
+            "POST",
+            f"/api/quizzes/{quote(generation_id, safe='')}/answers",
+            json=payload,
+            token=token,
+            idempotency_key=payload["event_id"],
+        )
+
     def create_generation(
         self, token: str, payload: dict[str, object], *, idempotency_key: str | None = None
     ) -> dict[str, object]:
         """POST /api/generate"""
-        return self._solicitar("POST", "/api/generate", json=payload, token=token, idempotency_key=idempotency_key)
+        data = self._solicitar("POST", "/api/generate", json=payload, token=token, idempotency_key=idempotency_key)
+        generation_id = data.get("generation_id") if isinstance(data, dict) else None
+        if (
+            not isinstance(generation_id, str)
+            or not generation_id
+            or _identificador_seguro(generation_id) != generation_id
+            or data.get("status") not in get_args(JobStatus)
+            or data.get("status_url") != f"/api/generations/{quote(generation_id, safe='')}"
+            or data.get("events_url") != f"/api/generations/{quote(generation_id, safe='')}/events"
+        ):
+            raise APIError("INVALID_RESPONSE", "Admisión de generación incompleta.", 502)
+        return data
 
     def get_generations(self, token: str, params: dict[str, object] | None = None) -> dict[str, object]:
         """GET /api/generations"""
@@ -344,6 +455,15 @@ class APIClient:
         """POST /api/generations/{id}/cancel"""
         self._solicitar("POST", f"/api/generations/{quote(generation_id, safe='')}/cancel", token=token)
 
+    def persist_generation(self, token: str, generation_id: str, *, idempotency_key: str) -> dict:
+        """Reintenta guardar el objeto retenido; no vuelve a generar contenido."""
+        return self._solicitar(
+            "POST",
+            f"/api/generations/{quote(generation_id, safe='')}/persist",
+            token=token,
+            idempotency_key=idempotency_key,
+        )
+
     # ------------------------------------------------------------------
     # 4. Exports
     # ------------------------------------------------------------------
@@ -355,6 +475,14 @@ class APIClient:
             token=token,
             params={"format": fmt},
             binary=True,
+        )
+
+    def get_progress(self, token):
+        return self._solicitar("GET", "/api/progress", token=token)
+
+    def record_progress(self, token, payload):
+        return self._solicitar(
+            "POST", "/api/progress/events", token=token, json=payload, idempotency_key=payload["event_id"]
         )
 
     def workspace_status(self, token: str) -> dict[str, Any]:

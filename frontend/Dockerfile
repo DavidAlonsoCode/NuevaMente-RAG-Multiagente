@@ -16,8 +16,8 @@ COPY i18n/ ./i18n/
 COPY pages/ ./pages/
 
 COPY .streamlit/ .streamlit/
-COPY api_client.py .
-COPY app.py entrypoint.py ./
+# Incluye también los módulos compartidos de flujo importados por los componentes.
+COPY *.py ./
 
 ENV HOME=/tmp \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
