@@ -37,6 +37,22 @@ def paquete(formato="flashcards"):
 
 
 class ClienteResultado:
+    def record_progress(self, token, payload):
+        st.session_state.llamadas.append(("progreso", payload))
+        eventos = st.session_state.setdefault("eventos_progreso", {})
+        eventos.setdefault(payload["event_id"], payload)
+        return {"event_id": payload["event_id"], "version": len(eventos)}
+
+    def get_progress(self, token):
+        from test_progress_ui import agregado
+
+        data = agregado()
+        eventos = st.session_state.get("eventos_progreso", {}).values()
+        data["version"] = len(eventos)
+        data["flashcards_vistas"] = sum(e["tipo"] == "flashcard_vista" for e in eventos)
+        data["conceptos_revisados"] = sum(e["tipo"] == "concepto_revisado" for e in eventos)
+        return data
+
     def answer_quiz(self, token, generation_id, payload):
         st.session_state.llamadas.append(("respuesta", payload))
         pregunta = TODOS_LOS_FORMATOS["quiz"][0]["preguntas"][0]

@@ -9,6 +9,7 @@ from i18n import t
 from components.content_common import badge, clave, lista, texto
 from components.errors import mostrar_error_ui
 from components.flashcard import render_flashcards
+from components.progress import registrar_cara_flashcard, render_marca_concepto
 from components.quality import render_calidad
 from components.quiz import render_quiz
 from components.quiz_interactive import render_quiz_interactivo
@@ -27,6 +28,7 @@ def render_paquete(paquete: dict, idioma: str, *, api_client=None, key_prefix: s
         mostrar_error_ui(APIError("INVALID_RESPONSE", "Material incompatible.", 502), idioma)
         return
     contenido, meta = paquete["contenido_adaptado"], paquete["metadatos"]
+    document_id = paquete["documento_fuente"]["document_id"]
     identidad = clave(key_prefix, paquete["generation_id"])
     st.markdown("## " + texto(contenido["titulo"]))
     badge(t("material.revisado", idioma))
@@ -50,16 +52,39 @@ def render_paquete(paquete: dict, idioma: str, *, api_client=None, key_prefix: s
             st.markdown("**" + t("material." + campo, idioma) + "**")
             if meta[campo]:
                 lista(meta[campo])
+                if campo == "conceptos_clave" and api_client is not None:
+                    for concepto in dict.fromkeys(meta[campo]):
+                        render_marca_concepto(
+                            api_client,
+                            idioma,
+                            document_id=document_id,
+                            concepto=concepto,
+                            generation_id=paquete["generation_id"],
+                            key_prefix=identidad,
+                        )
             else:
                 st.caption(t("material.sin_prerrequisitos", idioma))
-    document_id = paquete["documento_fuente"]["document_id"]
 
     def fuentes(refs, prefijo):
         render_fuentes(document_id, refs, idioma, api_client=api_client, key_prefix=prefijo)
 
     kwargs = {"key_prefix": identidad, "render_sources": fuentes}
     if contenido["tipo"] == "flashcards":
-        render_flashcards(contenido, idioma, generation_id=paquete["generation_id"], **kwargs)
+
+        def revisada(item_id):
+            # El frente permanece visible; el clic acaba de revelar el dorso.
+            for cara in ("frente", "dorso"):
+                registrar_cara_flashcard(
+                    api_client, idioma, generation_id=paquete["generation_id"], flashcard_id=item_id, cara=cara
+                )
+
+        render_flashcards(
+            contenido,
+            idioma,
+            generation_id=paquete["generation_id"],
+            on_review=revisada if api_client is not None else None,
+            **kwargs,
+        )
     elif contenido["tipo"] == "quiz":
         if api_client is not None:
             with st.container(border=True, key="nm_quiz_" + identidad):

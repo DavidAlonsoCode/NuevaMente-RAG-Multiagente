@@ -90,6 +90,9 @@ def test_solo_documentos_ready_y_secciones_reales():
 
 @pytest.fixture
 def ui(monkeypatch):
+    from test_progress_ui import agregado
+
+    monkeypatch.setattr(APIClient, "get_progress", lambda *_: agregado())
     llamadas = []
     respuestas = []
 

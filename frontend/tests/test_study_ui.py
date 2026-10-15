@@ -30,14 +30,16 @@ class ClienteEstudio(ClienteResultado, Cliente):
 
 @pytest.fixture
 def estudio(monkeypatch):
+    from pages import home
+
     monkeypatch.setitem(sys.modules, "__main__", sys.modules["__main__"])
     monkeypatch.setattr(PagesManager, "uses_pages_directory", None)
+    monkeypatch.setattr(home, "render_sidebar", lambda *args: None)
     base = ui()
     app = AppTest.from_string("""
 import streamlit as st
 from components.session import inicializar_estado_sesion
 from pages import home
-home.render_sidebar = lambda *args: None
 inicializar_estado_sesion()
 home.render(st.session_state.api, st.session_state.idioma_ui)
 """)
@@ -88,3 +90,18 @@ def test_home_glosario_filtra_y_abre_fuentes_sin_generar_de_nuevo(estudio):
     assert not app.exception and any("EVIDENCIA" in m.value for m in app.markdown)
     next(i for i in app.text_input if i.label == t("glosario.buscar")).set_value("VCN").run()
     assert not app.exception and len(api.glosario.calls) == 1
+
+
+def test_home_solo_registra_estudio_explicito_y_consulta_agregados(estudio):
+    app, _ = estudio
+    assert not app.exception and not app.session_state.filtered_state.get("eventos_progreso")
+    next(b for b in app.button if b.label == t("material.mostrar_respuesta")).click().run()
+    assert not app.exception and len(app.session_state.eventos_progreso) == 1
+    assert any(m.label == t("progreso.flashcards") and m.value == "1" for m in app.metric)
+    next(b for b in app.button if b.label == t("material.ocultar_respuesta")).click().run()
+    next(b for b in app.button if b.label == t("material.mostrar_respuesta")).click().run()
+    assert len(app.session_state.eventos_progreso) == 1
+    concepto = app.session_state.paquete["metadatos"]["conceptos_clave"][0]
+    next(b for b in app.button if b.label == t("progreso.marcar_concepto").format(concepto=concepto)).click().run()
+    assert not app.exception and len(app.session_state.eventos_progreso) == 2
+    assert any(m.label == t("progreso.conceptos") and m.value == "1" for m in app.metric)

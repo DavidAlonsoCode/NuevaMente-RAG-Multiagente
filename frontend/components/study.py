@@ -7,6 +7,7 @@ from i18n import t
 
 from components.chat import render_chat
 from components.glossary import render_glosario
+from components.progress import render_progreso
 from components.sources import render_fuentes
 
 
@@ -50,6 +51,8 @@ def render_glosario_contexto(api, idioma, parametros):
 def render_herramientas_documento(api, idioma):
     document_id = st.session_state.get("documento_activo_id")
     if not document_id or st.session_state.get("documento_activo_demo"):
+        with st.expander(t("nav.progreso", idioma)):
+            render_progreso(api, idioma)
         return
     parametros = {
         "document_id": document_id,
@@ -57,8 +60,12 @@ def render_herramientas_documento(api, idioma):
         "idioma_salida": st.session_state.get("gen_idioma_salida", "es"),
     }
     with st.expander(t("estudio.herramientas", idioma)):
-        tutor, glosario = st.tabs([t("chat.titulo", idioma), t("nav.glosario", idioma)])
+        tutor, glosario, progreso = st.tabs(
+            [t("chat.titulo", idioma), t("nav.glosario", idioma), t("nav.progreso", idioma)]
+        )
         with tutor:
             render_tutor(api, idioma, parametros)
         with glosario:
             render_glosario_contexto(api, idioma, parametros)
+        with progreso:
+            render_progreso(api, idioma)

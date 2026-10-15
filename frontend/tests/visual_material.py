@@ -90,6 +90,11 @@ def main():
         def cancel_generation(self, *args):
             pass
 
+        def record_progress(self, token, payload):
+            eventos = st.session_state.setdefault("eventos_visuales", {})
+            eventos.setdefault(payload["event_id"], payload)
+            return {"event_id": payload["event_id"], "version": len(eventos)}
+
         def answer_quiz(self, token, gid, payload, **kwargs):
             pregunta = TODOS_LOS_FORMATOS["quiz"][0]["preguntas"][0]
             return {
