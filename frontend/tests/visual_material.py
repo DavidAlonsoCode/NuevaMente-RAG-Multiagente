@@ -90,6 +90,15 @@ def main():
         def cancel_generation(self, *args):
             pass
 
+        def answer_quiz(self, token, gid, payload, **kwargs):
+            pregunta = TODOS_LOS_FORMATOS["quiz"][0]["preguntas"][0]
+            return {
+                "correcta": payload["option_id"] == pregunta["correct_option_id"],
+                "correct_option_id": pregunta["correct_option_id"],
+                "justificacion": pregunta["justificacion"],
+                "referencias": [{**ref, "pagina": 3 if diagrama else 2} for ref in pregunta["referencias"]],
+            }
+
     activa = {
         "generation_id": p["generation_id"],
         "documento_titulo": p["documento_fuente"]["titulo"],

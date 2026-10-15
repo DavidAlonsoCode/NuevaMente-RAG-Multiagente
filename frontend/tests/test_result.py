@@ -37,6 +37,16 @@ def paquete(formato="flashcards"):
 
 
 class ClienteResultado:
+    def answer_quiz(self, token, generation_id, payload):
+        st.session_state.llamadas.append(("respuesta", payload))
+        pregunta = TODOS_LOS_FORMATOS["quiz"][0]["preguntas"][0]
+        return {
+            "correcta": payload["option_id"] == pregunta["correct_option_id"],
+            "correct_option_id": pregunta["correct_option_id"],
+            "justificacion": pregunta["justificacion"],
+            "referencias": pregunta["referencias"],
+        }
+
     def get_generation(self, token, gid):
         st.session_state.llamadas.append(("estado", gid))
         return st.session_state.job
@@ -93,6 +103,7 @@ def ui(formato="flashcards", idioma="es", estado="completed"):
                 "nicho_sector": "general",
                 "nivel_detalle": "didactico",
                 "idioma_salida": "es",
+                "alcance": {"tipo": "documento_completo"},
             },
         },
         "job": {
@@ -171,6 +182,17 @@ def test_quiz_no_expone_canonico_y_conserva_opcion_al_traducir():
     assert "Un rango CIDR" not in textos(app)
 
 
+def test_quiz_integrado_corrige_y_enlaza_fuentes_sin_consultas_duplicadas():
+    app = ui("quiz")
+    assert app.session_state.llamadas == [("estado", "gen_01HX")]
+    app.radio[0].set_value("B").run()
+    boton(app, t("quiz.responder")).click().run()
+    assert not app.exception and any(t("quiz.incorrecto") == e.value for e in app.error)
+    assert texto(TODOS_LOS_FORMATOS["quiz"][0]["preguntas"][0]["justificacion"]) in textos(app)
+    boton(app, t("fuentes.cargar")).click().run()
+    assert texto("EVIDENCIA_ORIGINAL") in textos(app)
+
+
 @pytest.mark.parametrize("estado", ["queued", "running", "rejected_quality", "failed", "cancelled"])
 def test_estados_no_exponen_borradores_ni_guardado(estado):
     app = ui(estado=estado)
@@ -201,7 +223,8 @@ def test_cancelar_y_persistir_no_disparan_generacion_nueva():
 
 
 @pytest.mark.parametrize(
-    "cambio", ["persistencia", "generation_id", "document_id", "formato", "bloqueo", "score", "respuesta_invalida"]
+    "cambio",
+    ["persistencia", "generation_id", "document_id", "formato", "alcance", "bloqueo", "score", "respuesta_invalida"],
 )
 def test_completed_inconsistente_no_publica_material(cambio):
     app = ui()
@@ -214,6 +237,8 @@ def test_completed_inconsistente_no_publica_material(cambio):
         job["contenido"]["documento_fuente"]["document_id"] = "doc_otro"
     elif cambio == "formato":
         job["contenido"]["metadatos"]["formato_generado"] = "quiz"
+    elif cambio == "alcance":
+        job["contenido"]["metadatos"]["alcance"] = {"tipo": "seccion", "seccion_id": "otra"}
     elif cambio == "bloqueo":
         job["contenido"]["evaluacion_calidad"]["razones_bloqueo"] = ["Sin respaldo"]
     elif cambio == "score":

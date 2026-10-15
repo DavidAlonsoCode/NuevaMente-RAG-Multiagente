@@ -11,6 +11,7 @@ from components.errors import mostrar_error_ui
 from components.flashcard import render_flashcards
 from components.quality import render_calidad
 from components.quiz import render_quiz
+from components.quiz_interactive import render_quiz_interactivo
 from components.result_validation import validar_paquete
 from components.script import render_guion
 from components.sources import render_fuentes
@@ -18,7 +19,7 @@ from components.summary import render_resumen
 from components.tutorial import render_tutorial
 
 
-def render_paquete(paquete: dict, idioma: str, *, api_client=None, key_prefix: str = "resultado") -> None:
+def render_paquete(paquete: dict, idioma: str, *, api_client=None, key_prefix: str = "resultado", trabajo=None) -> None:
     """Componente reutilizable por historial/comparación, sin leer controles de la sidebar."""
     try:
         validar_paquete(paquete)
@@ -60,7 +61,22 @@ def render_paquete(paquete: dict, idioma: str, *, api_client=None, key_prefix: s
     if contenido["tipo"] == "flashcards":
         render_flashcards(contenido, idioma, generation_id=paquete["generation_id"], **kwargs)
     elif contenido["tipo"] == "quiz":
-        render_quiz(contenido, idioma, generation_id=paquete["generation_id"], key_prefix=identidad)
+        if api_client is not None:
+            with st.container(border=True, key="nm_quiz_" + identidad):
+                render_quiz_interactivo(
+                    api_client,
+                    idioma,
+                    token=st.session_state.session_token,
+                    workspace_id=st.session_state.workspace_id,
+                    generation_id=paquete["generation_id"],
+                    render_fuentes=lambda doc, refs: render_fuentes(
+                        doc, refs, idioma, api_client=api_client, key_prefix=identidad + ":feedback"
+                    ),
+                    key_prefix=identidad,
+                    recibo=trabajo,
+                )
+        else:
+            render_quiz(contenido, idioma, generation_id=paquete["generation_id"], key_prefix=identidad)
     else:
         {"tutorial": render_tutorial, "resumen_ejecutivo": render_resumen, "guion_clase": render_guion}[
             contenido["tipo"]
@@ -116,11 +132,17 @@ def render_generacion(api_client, generacion: dict, idioma: str) -> None:
                     for salida, entrada in campos.items()
                 ):
                     raise ValueError("Parámetros incompatibles")
+                pedido = generacion["parametros"]["alcance"]
+                alcance = paquete["metadatos"]["alcance"]
+                if alcance["tipo"] != pedido["tipo"] or (
+                    pedido["tipo"] == "seccion" and alcance.get("seccion_id") != pedido["seccion_id"]
+                ):
+                    raise ValueError("Alcance incompatible")
             except ValueError:
                 raise APIError("INVALID_RESPONSE", "Resultado incompatible con la solicitud.", 502) from None
             rotulo = "material.guardado" if persistencia["provider"] == "oci" else "almacenamiento.local_dev"
             st.success(t(rotulo, idioma))
-            render_paquete(paquete, idioma, api_client=api_client)
+            render_paquete(paquete, idioma, api_client=api_client, trabajo=job)
         elif estado in ("queued", "running"):
             st.info(t("generar.enviada", idioma))
             st.info(t("estados.trabajo." + estado, idioma))
