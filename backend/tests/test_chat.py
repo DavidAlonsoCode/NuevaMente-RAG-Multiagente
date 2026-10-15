@@ -107,6 +107,8 @@ def test_respuesta_citada_y_consultable(entorno, idioma):
     schema_enviado = e.entradas_chat[-1][1]["response_json_schema"]
     assert "maxItems" not in schema_enviado["properties"]["referencias"]
     assert BorradorChat.model_json_schema()["properties"]["referencias"]["maxItems"] == 100
+    pedagogia = next(r for r in e.revisiones_chat if r["tarea"] == "pedagogia")
+    assert pedagogia["borrador"]["contenido_adaptado"]["items"][0]["frente"] == e.solicitud_chat["pregunta"]
     assert resultado["evaluacion_calidad"]["anclaje_fuente_score"] == 1
     ref = resultado["referencias"][0]
     fuente = e.cliente.get(f"/api/documents/{e.doc}/sources/{ref['chunk_id']}", headers=e.headers)

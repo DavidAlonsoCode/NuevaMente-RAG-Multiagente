@@ -35,6 +35,7 @@ ESCENARIOS = (
     Escenario("salud-resumen", 2, "ejecutivo", "resumen_ejecutivo", "salud"),
 )
 PREGUNTA_DIAGRAMA = (
-    "Según el diagrama de la página 3, ¿qué relaciones se muestran entre la VCN, "
-    "sus subredes y los gateways? Fundamentá la respuesta en la imagen original."
+    "En el diagrama de la página 3, ¿las subredes 10.0.1.0/24 y 10.0.2.0/24 "
+    "aparecen dentro de la misma VCN 10.0.0.0/16? Respondé sólo esa relación "
+    "visible y citá la imagen original."
 )

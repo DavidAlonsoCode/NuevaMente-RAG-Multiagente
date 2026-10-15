@@ -572,6 +572,9 @@ completed del mismo workspace/documento/hash, acotados por
 `CHAT_HISTORY_TURNS`/`CHAT_HISTORY_MAX_TOKENS`; no es evidencia ni se envía al Critic.
 El resultado usa SQLite común, sin crear artefactos/exportaciones en `outputs/`.
 Su fuente se revalida al entregar el resultado y su retirada purga el historial.
+El adaptador interno conserva la pregunta original para Critic. Su rúbrica
+pedagógica evalúa la cobertura de esa pregunta, manteniendo los controles
+factuales y visuales del grafo compartido.
 Detalles de revisión y adaptador interno: [issue-37-document-chat.md](issue-37-document-chat.md).
 
 Corrección de consistencia junto a #39: chat acepta `Idempotency-Key` (1–128

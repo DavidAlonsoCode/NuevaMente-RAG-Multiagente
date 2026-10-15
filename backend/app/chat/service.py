@@ -100,7 +100,7 @@ class _AdaptadorPreguntaRespuesta:
             raise GeneracionGeminiError("Sin respuesta respaldada")
         datos = json.loads(prompt)
         p = datos["parametros"]
-        titulo, frente, objetivo, _ = _ETIQUETAS[self.solicitud.idioma_salida.value]
+        titulo, _, objetivo, _ = _ETIQUETAS[self.solicitud.idioma_salida.value]
         return json.dumps(
             {
                 "contenido_adaptado": {
@@ -109,7 +109,7 @@ class _AdaptadorPreguntaRespuesta:
                     "items": [
                         {
                             "id": "respuesta",
-                            "frente": frente,
+                            "frente": self.solicitud.pregunta,
                             "dorso": chat.respuesta,
                             "referencias": [r.model_dump(mode="json") for r in chat.referencias],
                         }
