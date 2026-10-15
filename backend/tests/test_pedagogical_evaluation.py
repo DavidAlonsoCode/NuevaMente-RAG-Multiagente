@@ -448,3 +448,42 @@ def test_captura_con_api_grafo_chroma_y_storage_reales_y_gemini_simulado(tmp_pat
     )
     assert len(list((tmp_path / "run/artifacts").glob("*.json"))) == 12
     assert e.doble.llamadas_generacion >= 12
+
+
+def test_prepare_congela_las_tres_fuentes_y_matriz(dataset, tmp_path):
+    from app.evaluation.cli import ROOT
+
+    prepare(dataset, [], tmp_path / "review")
+    for source in dataset.sources.values():
+        assert (tmp_path / "review" / source.path).read_bytes() == (ROOT / source.path).read_bytes()
+    snapshot = json.loads((tmp_path / "review/matriz.json").read_text(encoding="utf-8"))
+    assert snapshot == dataset.model_dump(mode="json")
+    materiales = list((tmp_path / "review/materiales").glob("*.json"))
+    assert len(materiales) == 12
+    for file in materiales:
+        material = json.loads(file.read_text(encoding="utf-8"))
+        assert material["status"] == "pendiente_de_generacion"
+        assert material["source_hash"] and "judge" not in material
+
+
+def test_prepare_no_entrega_fuentes_que_cambiaron(dataset, tmp_path):
+    modificado = dataset.model_copy(deep=True)
+    modificado.sources["vcn"].sha256 = "0" * 64
+    with pytest.raises(ValueError, match="fuente cambió"):
+        prepare(modificado, [], tmp_path / "review")
+    assert not (tmp_path / "review").exists()
+
+
+def test_caso_real_historico_no_cuenta_como_material_v2(dataset, tmp_path):
+    from app.evaluation.cli import ROOT
+
+    archivo = ROOT / "docs/evidencia/issue-60/historico/vcn-v1/es-principiante-r1.json"
+    artifact = EvaluationArtifact.model_validate_json(archivo.read_bytes())
+    validate_artifacts(dataset, [artifact])
+    report = build_report(dataset, [artifact])
+    assert artifact.mode == "real" and artifact.judge.estado_evaluacion == "aprobada"
+    assert report["sample_comparable"] == 0 and report["state"] == "pendiente"
+    assert any("versión anterior" in b for b in report["blockers"])
+    with pytest.raises(ValueError, match="histórico"):
+        prepare(dataset, [artifact], tmp_path / "review")
+    assert not (tmp_path / "review").exists()

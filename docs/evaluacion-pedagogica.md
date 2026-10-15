@@ -86,6 +86,11 @@ empiezan sin notas y sin esa confirmación. El software valida esa declaración
 y la identidad diferenciada; no puede probar por sí solo que una persona las
 completó ni que trabajó de forma independiente.
 
+La carpeta preparada también incluye `matriz.json` y copias de los tres originales
+en `documents/`, comprobadas contra sus hashes antes de escribir materiales.
+Entregar esa carpeta completa, conservando su estructura. Los materiales sin
+generación se identifican como pendientes y no son evaluaciones terminadas.
+
 Escala común para **claridad, adecuación al perfil, cobertura y utilidad**:
 
 | Nota | Criterio |
@@ -124,13 +129,19 @@ resultado bloqueado para mejorar las métricas.
 
 ## Fuentes VCN y evidencia final
 
-El PDF VCN actual tiene errores conocidos: 254 frente a 253 direcciones asignables
-en un /24 de OCI, recreación obligatoria para cambiar CIDR y distinción pública/
-privada atribuida exclusivamente a rutas. Ver #117 y los enlaces oficiales allí.
-La fidelidad a ese PDF puede respaldar un hecho técnicamente incorrecto. Los
-revisores deben registrar errores de fuente y la versión usada. Corregir la fuente
-exige actualizar la matriz y conservar la corrida anterior; no reemplazar el hash
-de evidencia ya anotada. La interpretación del diagrama también debe verificarse.
+La matriz 1.1.0 usa VCN **v2**, corregida en el [PR #132](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/pull/132).
+La trazabilidad está en `documents/redes_vcn_oci.version.json`. El conjunto previo
+se conserva como histórico: no cambiar un hash dentro de un paquete aprobado para
+atribuirlo a la fuente nueva. `previous_hashes` permite auditar esas corridas,
+pero el comparador no las cuenta como material vigente ni prepara una revisión
+con un original distinto. La interpretación del diagrama también debe verificarse.
+
+`historico/vcn-v1/` conserva una adaptación real aprobada en #55 y los bytes exactos
+de su fuente, con un material separado sin la decisión del juez. Su contenido
+repite la definición incorrecta de subred pública de v1. Es un candidato para el
+análisis humano de falsos aprobados; todavía no tiene anotaciones ni adjudicación.
+La fidelidad al documento no garantiza que el propio documento sea técnicamente
+correcto. Ese caso histórico no sustituye uno de los doce casos actuales.
 
 Los archivos de trabajo viven en `.data/eval60/`. Solo se archivan bajo
 `docs/evidencia/issue-60/` muestras públicas, reportes y anotaciones revisadas sin

@@ -70,10 +70,21 @@ def prepare(dataset, artifacts, out):
     out = Path(out)
     if any((out / f"revisor-{name}.json").exists() for name in ("a", "b")):
         raise ValueError("No sobrescribir anotaciones: preparar otra carpeta para la nueva ronda")
+    # Congelar las fuentes que recibirán los revisores, sin depender de un checkout futuro.
+    sources = {}
+    for source in dataset.sources.values():
+        path = (ROOT / source.path).resolve()
+        if not path.is_relative_to(ROOT.resolve()):
+            raise ValueError("La fuente debe estar dentro del repositorio")
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != source.sha256:
+            raise ValueError("La fuente cambió antes de preparar la revisión")
+        sources[source.path] = data
     latest = {}
     for artifact in artifacts:
         if artifact.case_id not in latest or artifact.revision > latest[artifact.case_id].revision:
             latest[artifact.case_id] = artifact
+    materials = {}
     for case in dataset.cases:
         artifact = latest.get(case.case_id)
         if artifact:
@@ -85,8 +96,17 @@ def prepare(dataset, artifacts, out):
                 "parameters": case.parameters.model_dump(mode="json"),
                 "objectives": case.objectives,
                 "source_file": dataset.sources[case.source].path,
+                "source_hash": dataset.sources[case.source].sha256,
             }
-        write_json(out / "materiales" / f"{case.case_id}.json", material)
+        materials[case.case_id] = material
+    for name, data in sources.items():
+        target = out / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("xb") as file:
+            file.write(data)
+    write_json(out / "matriz.json", dataset.model_dump(mode="json"), exclusive=True)
+    for case_id, material in materials.items():
+        write_json(out / "materiales" / f"{case_id}.json", material)
     for name in ("a", "b"):
         review = Review(
             dataset_id=dataset.dataset_id,
