@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "version": "v2",
+  "sha256": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+  "paginas": 10,
+  "anterior": {
+    "revision": "7e455c4e3da30d5f3b33ffd18515eacfb6349507",
+    "sha256_git": "ff45c39cbb82b88cf3fb2c0bd828927dc01735d305fea53a23f5d0be1cc8c660",
+    "sha256_usado_en_corridas_54_55": "f29f930aa861f4069631181286dbcca510779bf61e4b3298c734f1fb02087214"
+  },
+  "diagrama": {
+    "pagina": 3
+  },
+  "seccion_insuficiente": {
+    "pagina": 9,
+    "seccion_id": "pagina:9",
+    "titulo": "15. Costos y límites",
+    "rechazo_real_verificado": false
+  },
+  "referencias_verificacion": [
+    "https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/overview.htm",
+    "https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/edit_vcn_cidr.htm"
+  ]
+}
