@@ -76,9 +76,13 @@ no puede sustituirse por uno parcial.
 
 ## Verificación realizada
 
-Consultar [el registro de la ejecución real](evidencia/issue-55/ejecucion.json)
-y [la captura de las flashcards](evidencia/issue-55/flashcards-reales.png).
-La revisión de interfaz se hizo desde otra sesión anónima usando OCI real.
+Consultar [la verificación con fuentes corregidas](evidencia/issue-55/v2/README.md):
+siete adaptaciones aprobadas recuperadas desde otra sesión, quiz con ambas
+correcciones, imagen original consultable y caso insuficiente rechazado.
+Pagos sigue pendiente; el catálogo declara `completo=false`.
+
+El [primer registro](evidencia/issue-55/ejecucion.json) y sus capturas corresponden
+a VCN v1 y se conservan sólo como evidencia histórica.
 
 La primera preparación, sobre VCN v1, **no completa el issue 55**: A y C se aprobaron; otros
 escenarios fueron rechazados o fallaron técnicamente. El ensayo de tutorial
