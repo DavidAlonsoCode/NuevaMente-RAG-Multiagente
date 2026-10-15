@@ -20,3 +20,5 @@
 **/uploads/
 **/*.db*
 **/*.sqlite*
+tests/
+tests/**
