@@ -1,7 +1,7 @@
 {
-  "fecha_utc": "2026-10-15T16:31:24.706696+00:00",
+  "fecha_utc": "2026-10-15T16:54:45.822502+00:00",
   "proveedores_reales": true,
-  "publicacion_completa": false,
+  "publicacion_completa": true,
   "materiales_verificados": [
     {
       "escenario": "vcn-a",
@@ -52,6 +52,14 @@
       "cita_consultable": true
     },
     {
+      "escenario": "pagos-tutorial",
+      "generation_id": "gen_921008fe06d840c2ab0f5a1f34dde0cc",
+      "status": "completed",
+      "hash": "a536a1c1f9960850cf0e7ffa80b946a0e9de5fde0104343fc98722c45aa90944",
+      "segundos": 154.508,
+      "cita_consultable": true
+    },
+    {
       "escenario": "salud-resumen",
       "generation_id": "gen_f2f5d3f38a124565822054924f82fd39",
       "status": "completed",
@@ -74,30 +82,30 @@
   "acceso_privado_desde_otro_espacio": 404,
   "diagrama_original_consultable": true,
   "llm_durante_lecturas": 0,
-  "oci_solicitudes_antes": 11963,
+  "oci_solicitudes_antes": 12710,
   "oci_despues": {
     "mes": "2026-10",
-    "solicitudes": 12055,
+    "solicitudes": 12811,
     "limite_solicitudes": 20000,
-    "bytes_reservados": 1676173,
+    "bytes_reservados": 1766323,
     "limite_bytes": 1000000000,
     "margen_limpieza": 2000,
     "margen_bytes": 10000000,
     "limite_operaciones_usuario": 18000,
     "operaciones": {
-      "get_bucket": 23,
-      "get_namespace": 23,
-      "get_object": 11569,
-      "get_object_lifecycle_policy": 23,
-      "list_objects": 79,
-      "list_region_subscriptions": 23,
-      "put_object": 135
+      "get_bucket": 26,
+      "get_namespace": 26,
+      "get_object": 12299,
+      "get_object_lifecycle_policy": 26,
+      "list_objects": 85,
+      "list_region_subscriptions": 26,
+      "put_object": 143
     },
     "reservas_inciertas": 0,
     "alerta": false,
     "escrituras_bloqueadas": false
   },
   "vm_publica_verificada": false,
-  "commit_verificado": "91f4dbee79e1765b75ec2987dc30a9b0509eb1d9",
+  "commit_verificado": "aaed384b77361465d70ab71a6cd0b1a39d5e68a7",
   "fuente_pagos_version": "v2"
 }

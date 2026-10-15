@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "etiqueta": "Ejemplo generado previamente",
   "provider": "oci",
-  "publicado_en": "2026-10-15T16:27:50.377705Z",
-  "completo": false,
+  "publicado_en": "2026-10-15T16:54:14.524467Z",
+  "completo": true,
   "items": [
     {
       "escenario": "vcn-a",
@@ -151,7 +151,7 @@
     },
     {
       "escenario": "pagos-tutorial",
-      "generation_id": "gen_41fc16b0b965459bad53edd867eb9f7e",
+      "generation_id": "gen_921008fe06d840c2ab0f5a1f34dde0cc",
       "fuente": "integracion_apis_pagos.md",
       "document_hash": "a536a1c1f9960850cf0e7ffa80b946a0e9de5fde0104343fc98722c45aa90944",
       "parametros": {
@@ -166,12 +166,12 @@
           "seccion_id": null
         }
       },
-      "created_at": "2026-10-15T16:13:06.292407Z",
-      "segundos": 121.432,
-      "status": "rejected_quality",
-      "paquete_sha256": null,
-      "fuente_sha256": null,
-      "diagnostico": "La adaptación no superó la revisión de calidad. No se publica su borrador."
+      "created_at": "2026-10-15T16:50:56.818757Z",
+      "segundos": 154.508,
+      "status": "completed",
+      "paquete_sha256": "f9862a069cb504c85be463fe402268f898f6cc92996c73475962ae74e0baf4c6",
+      "fuente_sha256": "3c768a33e5e7dae473c2c148045524056437c4b946c44601ef7b47c4648bdb25",
+      "diagnostico": null
     },
     {
       "escenario": "salud-resumen",

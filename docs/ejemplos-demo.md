@@ -77,9 +77,11 @@ no puede sustituirse por uno parcial.
 ## Verificación realizada
 
 Consultar [la verificación con fuentes corregidas](evidencia/issue-55/v2/README.md):
-siete adaptaciones aprobadas recuperadas desde otra sesión, quiz con ambas
+ocho adaptaciones aprobadas recuperadas desde otra sesión, quiz con ambas
 correcciones, imagen original consultable y caso insuficiente rechazado.
-Pagos sigue pendiente; el catálogo declara `completo=false`.
+El catálogo declara `completo=true`, con el tutorial de pagos v2 incluido.
+La lectura comprobada usa la API local y OCI real; falta repetirla desde el
+despliegue público para acreditar ese criterio de entrega.
 
 El [primer registro](evidencia/issue-55/ejecucion.json) y sus capturas corresponden
 a VCN v1 y se conservan sólo como evidencia histórica.
@@ -88,8 +90,9 @@ La primera preparación, sobre VCN v1, **no completa el issue 55**: A y C se apr
 escenarios fueron rechazados o fallaron técnicamente. El ensayo de tutorial
 profundo sobre el glosario de pagos fue aprobado, por lo que no demuestra el
 rechazo intencional por evidencia insuficiente. No se alteró su resultado.
-VCN v2 sí aísla una sección débil para ese ensayo. Quedan por obtener los demás aprobados, completar los complementos y
-verificar la publicación en el despliegue público. Los umbrales siguen vigentes.
+VCN v2 sí aísla una sección débil para ese ensayo. La nueva preparación completó
+los ocho aprobados y los complementos; resta verificar la publicación en el
+despliegue público. Los umbrales siguen vigentes.
 
 Los snapshots de resultados no habilitan generar contenido nuevo desde los
 IDs compartidos de la biblioteca documental del #49. Esa integración continúa
