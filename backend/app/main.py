@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -50,7 +50,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.error_i18n import mensaje_localizado
 from app.api.routes import chat, demo_documents, documents, exports, generations, glossary, jobs, progress, workspaces
 from app.config import Configuracion, config
-from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos
+from app.jobs.manager import ControlesOperativos, CuotasProveedor, GestorTrabajos
+from app.jobs.quotas import cuotas_configuradas
+from app.jobs.runtime_lock import exclusividad_runtime
 from app.jobs.store import RegistroOperativo
 from app.schemas.errors import ErrorAplicacion, ErrorBody, ErrorCode, ErrorResponse
 from app.session.manifests import SincronizadorManifiestos, sincronizar_pendientes
@@ -136,25 +138,7 @@ def crear_app(
     ajustes = configuracion or config
     ajustes.validar_critico()
     if cuotas_proveedor is None:
-        cuotas = {}
-        if ajustes.embedding_quota_rpm is not None:
-            cuotas[ajustes.gemini_embedding_model] = CuotasModelo(
-                ajustes.embedding_quota_rpm, ajustes.embedding_quota_tpm, ajustes.embedding_quota_rpd
-            )
-        if ajustes.vision_quota_rpm is not None:
-            limites_vision = CuotasModelo(ajustes.vision_quota_rpm, ajustes.vision_quota_tpm, ajustes.vision_quota_rpd)
-            if ajustes.gemini_generation_model in cuotas and cuotas[ajustes.gemini_generation_model] != limites_vision:
-                raise ValueError("Un modelo compartido requiere los mismos límites de cuota")
-            cuotas[ajustes.gemini_generation_model] = limites_vision
-        for nombre, modelo in (
-            ("generation", ajustes.gemini_generation_model),
-            ("verification", ajustes.gemini_verification_model),
-        ):
-            if getattr(ajustes, nombre + "_quota_rpm") is not None:
-                limites = CuotasModelo(*(getattr(ajustes, nombre + "_quota_" + v) for v in ("rpm", "tpm", "rpd")))
-                if modelo in cuotas and cuotas[modelo] != limites:
-                    raise ValueError("Un modelo compartido requiere los mismos límites de cuota")
-                cuotas[modelo] = limites
+        cuotas = cuotas_configuradas(ajustes)
         cuotas_proveedor = CuotasProveedor(cuotas) if cuotas else None
     if (proveedor_embeddings is not None or proveedor_vision is not None) and cuotas_proveedor is None:
         raise ValueError("El proveedor documental requiere las cuotas compartidas explícitas")
@@ -167,7 +151,9 @@ def crear_app(
         recursos = None
         sincronizador = None
         proveedores_texto = []
+        guardia = ExitStack()
         try:
+            guardia.enter_context(exclusividad_runtime(Path(ajustes.data_dir)))
             restaurar_registro(app.state.db, app.state.storage_provider)
             sincronizar_pendientes(app.state.db, app.state.storage_provider)
             controles = ControlesOperativos(
@@ -315,7 +301,10 @@ def crear_app(
                     if callable(cerrar_storage):
                         cerrar_storage()
                 finally:
-                    app.state.db.cerrar()
+                    try:
+                        app.state.db.cerrar()
+                    finally:
+                        guardia.close()
 
     app = FastAPI(
         title="NuevaMente API",
