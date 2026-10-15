@@ -12,15 +12,20 @@ credenciales existentes y ambos mocks desactivados:
 
 ```powershell
 $env:PYTHONPATH = "backend"
+$env:MOCK_OCI = "0"
+$env:MOCK_GEMINI = "0"
 .venv\Scripts\python.exe -m app.demo.prepare --check
-.venv\Scripts\python.exe -m app.demo.prepare
+.venv\Scripts\python.exe -m app.demo.prepare --data-dir .data/issue55-v2
 ```
 
 `--check` sólo comprueba los tres archivos y la matriz, sin proveedores. La
 ejecución real ingiere esos originales mediante el worker y solicita las tres
 adaptaciones oficiales del mismo VCN, sus complementos y casos de pagos/salud.
 No crea infraestructura ni aumenta presupuestos. Conserva el presupuesto OCI del
-`DATA_DIR` habitual; reserva `.data/issue55-real` para el registro de preparación.
+`DATA_DIR` habitual; reserva `.data/issue55-v2` para el registro de preparación.
+El presupuesto preventivo vigente es 20.000 solicitudes/mes, con 2.000 reservadas
+para limpieza. No equivale al cupo de Oracle ni acredita el consumo externo de
+la tenancy. No se reinicia el contador al preparar otra versión.
 
 El checkpoint conserva IDs y mediciones, nunca tokens, API keys ni códigos de
 recuperación. Una reanudación utiliza las mismas claves de idempotencia. No
@@ -29,8 +34,29 @@ una interrupción del proceso puede recuperarse ese intento explícitamente:
 
 ```powershell
 .venv\Scripts\python.exe -m app.demo.prepare --generate-only --solo vcn-a --recuperar-interrumpidos
-.venv\Scripts\python.exe -m app.demo.prepare --publish-only
+.venv\Scripts\python.exe -m app.demo.prepare --data-dir .data/issue55-v2 --publish-only
 ```
+
+La preparación comprueba el hash de cada documento antes de contactar a los
+proveedores. Un checkpoint de v1 se conserva como histórico y no se reutiliza
+con el PDF v2; usar un directorio nuevo. Los Markdown conservan LF y el PDF sus
+bytes binarios para que Windows y Linux identifiquen la misma fuente.
+
+`--solo` permite preparar por separado `diagrama`, `quiz-feedback` y
+`evidencia-insuficiente`. Este último apunta a «15. Costos y límites», página 9
+de VCN v2, aislada del glosario. No se fuerza un rechazo: cuenta lo que resuelve
+el grafo con los umbrales vigentes.
+
+Después de corregir una causa concreta puede pedirse una nueva revisión acotada:
+
+```powershell
+.venv\Scripts\python.exe -m app.demo.prepare --data-dir .data/issue55-v2 --generate-only --solo vcn-b --revision-corregida citas-1-1-2
+```
+
+La etiqueta conserva el intento anterior y fija una clave idempotente diferente.
+Repetir la misma orden recupera ese intento; no vuelve a generar. Los escenarios
+ya aprobados se conservan. No usarlo para repetir automáticamente un pipeline por
+un fallo transitorio. Los fallos del evaluador siguen siendo fallos técnicos.
 
 Los tres originales se limitan a los nombres de `documents/`. La publicación
 verifica sus hashes, las fuentes y los paquetes canónicos aprobados. Copia bytes
@@ -51,12 +77,11 @@ Consultar [el registro de la ejecución real](evidencia/issue-55/ejecucion.json)
 y [la captura de las flashcards](evidencia/issue-55/flashcards-reales.png).
 La revisión de interfaz se hizo desde otra sesión anónima usando OCI real.
 
-La primera preparación **no completa el issue 55**: A y C se aprobaron; otros
+La primera preparación, sobre VCN v1, **no completa el issue 55**: A y C se aprobaron; otros
 escenarios fueron rechazados o fallaron técnicamente. El ensayo de tutorial
 profundo sobre el glosario de pagos fue aprobado, por lo que no demuestra el
 rechazo intencional por evidencia insuficiente. No se alteró su resultado.
-Los documentos actuales no identifican una sección débil diseñada para ese
-ensayo. Quedan por obtener los demás aprobados, completar los complementos y
+VCN v2 sí aísla una sección débil para ese ensayo. Quedan por obtener los demás aprobados, completar los complementos y
 verificar la publicación en el despliegue público. Los umbrales siguen vigentes.
 
 Los snapshots de resultados no habilitan generar contenido nuevo desde los
