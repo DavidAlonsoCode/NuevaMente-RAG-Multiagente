@@ -104,6 +104,17 @@ Es una red bridge con salida: `internal: true` bloquearía Gemini y OCI. Los
 puertos publicados usan solo `127.0.0.1`; HTTPS y la exposición externa mediante
 Caddy corresponden al #48. Fuera del host no se publica directamente la API/UI.
 
+Para el contrato de producción #48 se combinan **base + OCI + producción**, en
+ese orden, con Compose >= 2.24.4 y un `--env-file` explícito basado en
+`.env.production.example`. El último overlay reemplaza `env_file`: backend carga
+solo `backend.env` y la fuente canónica `origin.env`; frontend no carga ninguno.
+Conserva salida a proveedores, restricciones, un worker y bindings loopback.
+El volumen de producción tiene nombre estable `nuevamente_backend_data`; una
+instalación con datos previos requiere comprobar su volumen antes de desplegar.
+Las IPs de confianza y el hostname son requisitos explícitos, sin defaults.
+Ver [configuración, permisos y validaciones](../infra/caddy/README.md). Esta etapa
+define el contrato; no instala Caddy ni acredita tráfico público.
+
 Compose espera el health del backend y `frontend/entrypoint.py` comprueba además
 activamente `/api/health` antes de iniciar Streamlit, con un plazo de 60 segundos.
 Si se vence, el proceso termina con error y la política `unless-stopped` permite
