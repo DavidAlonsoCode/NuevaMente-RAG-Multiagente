@@ -187,7 +187,7 @@ graph TD
 **Objetivo**: presupuestos propios, alertas y retención/borrado completos para controlar consumo dentro de la asignación gratuita verificada.
 
 **Tareas**:
-- Presupuestos de aplicación: ≤1 GB total de objetos, ≤5.000 solicitudes mensuales, ≤5 documentos y ≤20 generaciones por espacio (§8.4); reservar capacidad antes de aceptar archivo/exportación.
+- Presupuestos de aplicación: ≤1 GB total de objetos, ≤20.000 solicitudes mensuales, ≤5 documentos y ≤20 generaciones por espacio (§8.4); reservar capacidad antes de aceptar archivo/exportación. El límite de solicitudes es preventivo, conserva el consumo previo y reserva 10% para limpieza.
 - Alerta al 80% del presupuesto y rechazo de nuevas escrituras al llegar al límite, con mensaje claro en la UI.
 - Contador de solicitudes de storage (por tipo) persistido; budget de regla en OCI si la tenancy lo permite.
 - Ciclo de vida §8.5: expiración de espacios a 30 días de inactividad (fecha visible en la UI), limpieza de temporales al terminar/cancelar, resultado aprobado retenido ≤24 h, borrado físico agenda-do con reintentos visibles.

@@ -67,6 +67,24 @@ def test_80_capacidad_limite_y_limpieza_aun_bloqueadas_nuevas_escrituras(tmp_pat
     assert nuevo.resumen() == resumen
 
 
+def test_ampliar_presupuesto_conserva_consumo_y_margen(tmp_path):
+    ruta = tmp_path / "budget"
+    anterior = PresupuestoOCI(ruta, solicitudes=5000)
+    anterior.reservar_solicitud("get_object")
+    nuevo = PresupuestoOCI(ruta)
+    resumen = nuevo.resumen()
+    assert resumen["solicitudes"] == 1
+    assert resumen["operaciones"] == {"get_object": 1}
+    assert resumen["limite_solicitudes"] == 20000
+    assert resumen["limite_operaciones_usuario"] == 18000
+    assert resumen["margen_limpieza"] == 2000
+    assert Configuracion(_env_file=None).oci_max_requests_per_month == 20000
+    with pytest.raises(ValueError):
+        PresupuestoOCI(ruta, solicitudes=20001)
+    with pytest.raises(ValueError):
+        Configuracion(_env_file=None, oci_max_requests_per_month=20001)
+
+
 def test_reservas_concurrentes_no_sobrevenden_y_reemplazo_libera_bytes(tmp_path):
     ledger = PresupuestoOCI(tmp_path / "budget", bytes_maximos=10)
 

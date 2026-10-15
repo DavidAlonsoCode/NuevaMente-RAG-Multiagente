@@ -482,7 +482,7 @@ Verificación: `pytest backend/tests/test_quiz_progress.py backend/tests/test_ap
 - `OCI_ALWAYS_FREE_CONFIRMED=1` declara que el operador verificó asignación/consumo
   agregado de la tenancy. No verifica facturación automáticamente. Un ledger SQLite
   en DATA_DIR reserva antes de cada intento, incluidos fallidos, con máximos iniciales
-  de 5.000 solicitudes/mes y 1 GB; conserva reservas de escrituras inciertas. Issue 50
+  de 20.000 solicitudes/mes y 1 GB; conserva reservas de escrituras inciertas. Issue 50
   completa auditoría agregada/conciliación/retención. `StorageBudgetExceeded` es un
   `StorageUnavailable`: no admite enviar otra solicitud por encima del presupuesto.
   En HTTP responde `503 / STORAGE_UNAVAILABLE`; en el worker termina `failed` con

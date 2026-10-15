@@ -81,7 +81,7 @@ elegir el archivo que recibe el backend; `--env-file` por sí solo no lo reempla
 gratuita disponible; no es una comprobación automática de la facturación por el SDK.
 Si otros recursos consumen parte de la asignación, reducir los presupuestos.
 
-La configuración usa inicialmente 1 GB y 5.000 solicitudes mensuales del proyecto,
+La configuración usa inicialmente 1 GB y 20.000 solicitudes mensuales del proyecto,
 por debajo de las asignaciones documentadas; no autoriza consumir el resto de la
 cuenta. OCI budgets/alertas por sí solos no cortan el gasto. La auditoría agregada,
 retención y cuotas de infraestructura se completan en Issue 50.
