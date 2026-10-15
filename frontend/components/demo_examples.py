@@ -1,7 +1,5 @@
 """Biblioteca de resultados curados: los renderizadores del material son compartidos."""
 
-from urllib.parse import quote
-
 import streamlit as st
 from api_client import APIError
 from i18n import t
@@ -17,19 +15,16 @@ class ClienteEjemplo:
 
     def __init__(self, api, generation_id, document_id):
         self.api, self.gid, self.doc = api, generation_id, document_id
-        self.base = "/api/demo/generations/" + quote(generation_id, safe="")
 
     def get_document_source(self, token, document_id, chunk_id, *, demo=False):
         if document_id != self.doc:
             raise APIError("INVALID_RESPONSE", "Fuente ajena al ejemplo.", 502)
-        return self.api._solicitar("GET", self.base + "/sources/" + quote(chunk_id, safe=""), token=token)
+        return self.api.get_demo_generation_source(token, self.gid, chunk_id)
 
     def get_document_source_image(self, token, document_id, chunk_id):
         if document_id != self.doc:
             raise APIError("INVALID_RESPONSE", "Fuente ajena al ejemplo.", 502)
-        contenido = self.api._solicitar(
-            "GET", self.base + "/sources/" + quote(chunk_id, safe="") + "/image", token=token, binary=True
-        )
+        contenido = self.api.get_demo_generation_source(token, self.gid, chunk_id, image=True)
         if not isinstance(contenido, bytes) or not contenido.startswith(b"\x89PNG\r\n\x1a\n"):
             raise APIError("INVALID_RESPONSE", "Imagen incompatible.", 502)
         return contenido
@@ -37,13 +32,13 @@ class ClienteEjemplo:
     def answer_quiz(self, token, generation_id, payload):
         if generation_id != self.gid:
             raise APIError("INVALID_RESPONSE", "Quiz ajeno al ejemplo.", 502)
-        return self.api._solicitar("POST", self.base + "/answers", token=token, json=payload)
+        return self.api.answer_demo_quiz(token, self.gid, payload)
 
 
 def render_catalogo(api, idioma):
     st.subheader(t("demo.ejemplos", idioma))
     try:
-        catalogo = api._solicitar("GET", "/api/demo/generations", token=st.session_state.session_token)
+        catalogo = api.get_demo_generations(st.session_state.session_token)
         if catalogo is None or not catalogo.get("items"):
             st.info(t("demo.vacio", idioma))
             return
@@ -88,14 +83,14 @@ def render_ejemplo(api, idioma):
         st.rerun()
     gid, token = st.session_state.ejemplo_demo_id, st.session_state.session_token
     try:
-        catalogo = api._solicitar("GET", "/api/demo/generations", token=token)
+        catalogo = api.get_demo_generations(token)
         item = next(
             (i for i in (catalogo or {}).get("items", []) if i["generation_id"] == gid and i["status"] == "completed"),
             None,
         )
         if item is None:
             raise APIError("NOT_FOUND", "Ejemplo no encontrado.", 404)
-        paquete = api._solicitar("GET", "/api/demo/generations/" + quote(gid, safe=""), token=token)
+        paquete = api.get_demo_generation(token, gid)
         if (
             paquete.get("generation_id") != gid
             or paquete["documento_fuente"]["document_id"] != item["parametros"]["document_id"]

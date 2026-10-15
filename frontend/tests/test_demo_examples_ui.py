@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import pytest
 import streamlit as st
+from api_client import APIClient
 from i18n import t
 from streamlit.testing.v1 import AppTest
 from test_result import ClienteResultado, paquete
@@ -21,7 +22,7 @@ else:
 """
 
 
-class ClienteDemo:
+class ClienteDemo(APIClient):
     def _solicitar(self, metodo, ruta, **kwargs):
         st.session_state.rutas_demo.append((metodo, ruta))
         if ruta == "/api/demo/generations":
