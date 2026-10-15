@@ -424,5 +424,12 @@ CATALOGO_PT.update(
         "calidad.limitaciones": "Notas e limitações",
         "calidad.limites": "A revisão compara o material com esta fonte; não certifica a exatidão do documento original nem acrescenta evidência externa.",
         "calidad.referencias": "Trechos citados: {total}. Consulte-os em Ver a fonte.",
+        "demo.ejemplos": "Explore exemplos preparados",
+        "demo.vacio": "Ainda não há exemplos publicados.",
+        "demo.ayuda": "Um documento, diferentes formas de aprender. Explore o material, pratique e consulte suas fontes.",
+        "demo.tiempo": "Preparação: {segundos} s",
+        "demo.abrir": "Explorar exemplo",
+        "demo.practica": "A prática destes exemplos não modifica seu progresso pessoal.",
+        "demo.diagrama": "Como o sistema interpretou o diagrama",
     }
 )

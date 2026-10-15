@@ -338,6 +338,7 @@ def _enviar(api_client: APIClient, pendiente: GeneracionPendiente, idioma: str) 
         "seccion_titulo": pendiente["seccion_titulo"],
     }
     st.session_state[CLAVE_ACTIVA] = activa
+    st.session_state.pop("ejemplo_demo_id", None)
     st.session_state.mostrando_documentos = False
     st.session_state[CLAVE_PENDIENTE] = None
     st.session_state[CLAVE_ULTIMO_INTENTO] = None

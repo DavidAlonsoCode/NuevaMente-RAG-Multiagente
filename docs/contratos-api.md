@@ -1089,6 +1089,29 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
   Estas pruebas con Chroma nativo y embeddings simulados no acreditan Gemini real.
 
 
+### Ejemplos generados previamente (Issue 55, extensión HTTP)
+
+- `GET /api/demo/generations` devuelve `CatalogoEjemplos`: etiqueta explícita,
+  proveedor, fecha de publicación, completitud e inventario finito curado (máximo
+  doce entradas; sin paginación). Cada entrada conserva fuente/hash, fecha,
+  parámetros, tiempo real y estado. `rejected_quality` sólo contiene diagnóstico.
+- `GET /api/demo/generations/{id}` devuelve la proyección estudiante del paquete
+  aprobado. No revela claves ni justificaciones iniciales del quiz.
+- `GET /api/demo/generations/{id}/sources/{chunk_id}` conserva la forma de
+  `FuenteDocumentoResponse`; `/image` entrega el PNG original verificado.
+- `POST /api/demo/generations/{id}/answers` recibe `QuizAnswerRequest` y devuelve
+  `QuizAnswerResponse`. Es una práctica sin persistencia de progreso privado;
+  repetir la respuesta devuelve la misma corrección, sin LLM ni escrituras.
+- Todas requieren sesión válida, sin renovar actividad. No aceptan workspace_id.
+  Sólo consultan snapshots publicados explícitamente bajo `demo/examples/`;
+  nunca utilizan el token del preparador ni leen recursos privados por fallback.
+  Ausente/ajeno/no aprobado: 404; sesión inválida: 401; OCI o integridad: 503.
+- Publicación administrativa: exclusivamente los tres originales del repositorio,
+  paquetes realmente aprobados y persistidos, con huellas verificadas. Publica el
+  catálogo al final, después de confirmar los objetos. Las mediciones corresponden
+  a la preparación, no al tiempo de apertura en la interfaz. `provider=mock` no
+  acredita entrega real. Biblioteca demo → generación nueva continúa fuera de este alcance.
+
 ### Researcher y cobertura (Issue 27, contrato interno)
 
 - `VectorStoreChroma.listar_chunks(..., contexto, source_hash)` devuelve el

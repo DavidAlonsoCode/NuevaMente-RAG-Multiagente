@@ -424,5 +424,12 @@ CATALOGO_EN.update(
         "calidad.limitaciones": "Notes and limitations",
         "calidad.limites": "Review checks this material against its source; it does not certify the original document's accuracy or add external evidence.",
         "calidad.referencias": "Cited excerpts: {total}. Open View source to inspect them.",
+        "demo.ejemplos": "Explore prepared examples",
+        "demo.vacio": "No examples have been published yet.",
+        "demo.ayuda": "One document, different ways to learn. Explore the material, practise and inspect its sources.",
+        "demo.tiempo": "Preparation: {segundos} s",
+        "demo.abrir": "Explore example",
+        "demo.practica": "Practising with these examples does not change your personal progress.",
+        "demo.diagrama": "How the system interpreted the diagram",
     }
 )

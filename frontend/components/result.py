@@ -20,7 +20,15 @@ from components.summary import render_resumen
 from components.tutorial import render_tutorial
 
 
-def render_paquete(paquete: dict, idioma: str, *, api_client=None, key_prefix: str = "resultado", trabajo=None) -> None:
+def render_paquete(
+    paquete: dict,
+    idioma: str,
+    *,
+    api_client=None,
+    key_prefix: str = "resultado",
+    trabajo=None,
+    registrar_estudio: bool = True,
+) -> None:
     """Componente reutilizable por historial/comparación, sin leer controles de la sidebar."""
     try:
         validar_paquete(paquete)
@@ -52,7 +60,7 @@ def render_paquete(paquete: dict, idioma: str, *, api_client=None, key_prefix: s
             st.markdown("**" + t("material." + campo, idioma) + "**")
             if meta[campo]:
                 lista(meta[campo])
-                if campo == "conceptos_clave" and api_client is not None:
+                if campo == "conceptos_clave" and api_client is not None and registrar_estudio:
                     for concepto in dict.fromkeys(meta[campo]):
                         render_marca_concepto(
                             api_client,
@@ -82,7 +90,7 @@ def render_paquete(paquete: dict, idioma: str, *, api_client=None, key_prefix: s
             contenido,
             idioma,
             generation_id=paquete["generation_id"],
-            on_review=revisada if api_client is not None else None,
+            on_review=revisada if api_client is not None and registrar_estudio else None,
             **kwargs,
         )
     elif contenido["tipo"] == "quiz":
