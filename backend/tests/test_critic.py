@@ -159,14 +159,13 @@ def test_schema_descomposicion_compatible_con_gemini_conserva_el_contrato(entorn
     assert pedagogia["properties"]["feedback"]["maxItems"] == 20
     juicio = doble.entradas_verificacion[1]["response_json_schema"]
     afirmaciones = json.loads(doble.entradas_verificacion[1]["prompt"])["afirmaciones"]
-    propiedades = juicio["$defs"]["VeredictoFactual"]["properties"]
+    con_prueba, sin_prueba = juicio["$defs"]["VeredictoFactual"]["anyOf"]
+    propiedades = con_prueba["properties"]
     assert propiedades["id_afirmacion"]["enum"] == [a["id"] for a in afirmaciones]
     assert propiedades["referencias"]["items"]["enum"] == ["ch_1"]
-    assert juicio["$defs"]["VeredictoFactual"]["properties"]["estado"]["enum"] == [
-        "respaldada",
-        "contradicha",
-        "sin_evidencia",
-    ]
+    assert propiedades["estado"]["enum"] == ["respaldada", "contradicha"]
+    assert propiedades["referencias"]["minItems"] == 1
+    assert sin_prueba["properties"]["estado"]["enum"] == ["sin_evidencia"]
 
 
 @pytest.mark.parametrize("exceso", ["texto", "afirmaciones"])

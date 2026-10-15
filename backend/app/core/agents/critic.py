@@ -4,6 +4,7 @@ import hashlib
 import inspect
 import json
 import logging
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -204,6 +205,12 @@ class _SesionRevision:
             permitidas = sorted({c for a in datos["afirmaciones"] for c in a["citas_permitidas"]})
             if permitidas:
                 propiedades["referencias"]["items"]["enum"] = permitidas
+            con_prueba = deepcopy(schema["$defs"]["VeredictoFactual"])
+            con_prueba["properties"]["estado"]["enum"] = ["respaldada", "contradicha"]
+            con_prueba["properties"]["referencias"]["minItems"] = 1
+            sin_prueba = deepcopy(schema["$defs"]["VeredictoFactual"])
+            sin_prueba["properties"]["estado"]["enum"] = ["sin_evidencia"]
+            schema["$defs"]["VeredictoFactual"] = {"anyOf": [con_prueba, sin_prueba]}
         cfg = self.dependencias.configuracion
         max_output = cfg.generation_max_output_tokens
         tokens = TokenizadorBPE().contar(sistema + prompt + json.dumps(schema)) + max_output
@@ -283,10 +290,10 @@ class _SesionRevision:
                 raise EvaluadorInvalidoError("El juez no cubrió exactamente todas las afirmaciones")
             juicios = []
             for juicio in respuesta.juicios:
-                if set(juicio.referencias) - set(self.citas[juicio.id_afirmacion]) or (
-                    juicio.estado != "sin_evidencia" and not juicio.referencias
-                ):
-                    raise EvaluadorInvalidoError("El juicio no incluye citas válidas de la afirmación")
+                if set(juicio.referencias) - set(self.citas[juicio.id_afirmacion]):
+                    raise EvaluadorInvalidoError("El juicio usó citas fuera de las declaradas para la afirmación")
+                if juicio.estado != "sin_evidencia" and not juicio.referencias:
+                    raise EvaluadorInvalidoError("El juicio afirmó respaldo o contradicción sin citar evidencia")
                 if juicio.estado == "sin_evidencia":
                     self.solicitudes.append(f"Ampliar evidencia para {juicio.id_afirmacion}: {juicio.motivo}")
                 juicios.append(
@@ -503,6 +510,9 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
             feedback.append("Aportar/verificar las imágenes originales necesarias; no usar la descripción como prueba.")
         razones = list(dict.fromkeys(razones))
         aprobada = not razones
+        if not aprobada:
+            # Sólo categorías deterministas: jamás afirmaciones, borradores o feedback del LLM.
+            logger.warning("Critic: revisión %s bloqueada por %s", estado.intento, ",".join(razones))
         evaluacion = EvaluacionCalidad(
             anclaje_fuente_score=factual.score,
             cantidad_afirmaciones=factual.total,
