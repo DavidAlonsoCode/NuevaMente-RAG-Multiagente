@@ -104,6 +104,9 @@ def test_respuesta_citada_y_consultable(entorno, idioma):
     assert recibo["job_id"] and recibo["cancel_url"]
     resultado = esperar(e, recibo)["result"]
     assert resultado["estado"] == "respondida" and resultado["idioma_salida"] == idioma
+    schema_enviado = e.entradas_chat[-1][1]["response_json_schema"]
+    assert "maxItems" not in schema_enviado["properties"]["referencias"]
+    assert BorradorChat.model_json_schema()["properties"]["referencias"]["maxItems"] == 100
     assert resultado["evaluacion_calidad"]["anclaje_fuente_score"] == 1
     ref = resultado["referencias"][0]
     fuente = e.cliente.get(f"/api/documents/{e.doc}/sources/{ref['chunk_id']}", headers=e.headers)

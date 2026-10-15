@@ -83,7 +83,10 @@ class _AdaptadorPreguntaRespuesta:
     def preparar(self, sistema, prompt, schema):
         datos = json.loads(prompt)
         datos.update(pregunta=self.solicitud.pregunta, historial_no_es_fuente=self.historial)
-        return sistema + _INSTRUCCION, json.dumps(datos, ensure_ascii=False), BorradorChat.model_json_schema()
+        schema_chat = BorradorChat.model_json_schema()
+        # Evitar una gramática expandida a 100 citas; Pydantic conserva el límite.
+        schema_chat["properties"]["referencias"].pop("maxItems")
+        return sistema + _INSTRUCCION, json.dumps(datos, ensure_ascii=False), schema_chat
 
     def generar_sync(self, prompt, **kwargs):
         self.abstencion = False

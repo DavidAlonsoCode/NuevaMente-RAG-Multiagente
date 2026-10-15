@@ -143,7 +143,12 @@ _TAREAS = {
     "el veredicto y estén entre las citas_permitidas de esa afirmación. Sin prueba usar sin_evidencia. "
     "Conservar números, unidades, negaciones y condiciones. No usar conocimiento externo.",
     "pedagogia": "Revisar el borrador COMPLETO y metadatos: claridad, perfil, objetivos, coherencia, conceptos, "
-    "prerrequisitos, estimación didáctica y alcance. Detectar afirmaciones factuales omitidas por la "
+    "prerrequisitos, estimación didáctica, alcance y nivel_detalle solicitado. No aceptar que Writer rebaje "
+    "sus objetivos para simular el cumplimiento del perfil o profundidad. Los resultados esperados y "
+    "verificaciones deben poder alcanzarse con la evidencia suministrada: no dar por enseñados límites, "
+    "procedimientos ni decisiones que la fuente no desarrolla. Un tutorial técnico profundo no se cumple "
+    "con invitar a leer o consultar otras fuentes sin enseñar acciones o decisiones respaldadas. Si falta "
+    "esa evidencia, marcar cobertura parcial y solicitarla, sin inventar contenido. Detectar afirmaciones factuales omitidas por la "
     "descomposición, contradicciones y ejemplos no etiquetados. Una calidad media puede ser usable; "
     "baja o cobertura parcial bloquean. Dar feedback preciso y solicitudes de evidencia cuando falte contexto.",
     "quiz": "Para CADA opción de CADA pregunta, juzgar si responde de manera defendible al enunciado contra "

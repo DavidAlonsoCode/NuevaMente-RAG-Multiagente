@@ -33,7 +33,7 @@ repite automáticamente pipelines fallidos o rechazados. Sólo después de resol
 una interrupción del proceso puede recuperarse ese intento explícitamente:
 
 ```powershell
-.venv\Scripts\python.exe -m app.demo.prepare --generate-only --solo vcn-a --recuperar-interrumpidos
+.venv\Scripts\python.exe -m app.demo.prepare --data-dir .data/issue55-v2 --generate-only --solo vcn-a --recuperar-interrumpidos
 .venv\Scripts\python.exe -m app.demo.prepare --data-dir .data/issue55-v2 --publish-only
 ```
 
@@ -41,6 +41,9 @@ La preparación comprueba el hash de cada documento antes de contactar a los
 proveedores. Un checkpoint de v1 se conserva como histórico y no se reutiliza
 con el PDF v2; usar un directorio nuevo. Los Markdown conservan LF y el PDF sus
 bytes binarios para que Windows y Linux identifiquen la misma fuente.
+La fuente de pagos v2 corrige el número de cabeceras del protocolo ficticio y
+aclara que su helper prepara una firma sin ejecutar una llamada HTTP; su hash y
+el de la versión anterior están en `documents/integracion_apis_pagos.version.json`.
 
 `--solo` permite preparar por separado `diagrama`, `quiz-feedback` y
 `evidencia-insuficiente`. Este último apunta a «15. Costos y límites», página 9

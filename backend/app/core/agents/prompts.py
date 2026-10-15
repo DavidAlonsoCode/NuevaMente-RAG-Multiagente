@@ -22,7 +22,7 @@ from app.schemas.pedagogical import (
 from app.schemas.requests import GenerateRequest
 from app.schemas.responses import IdiomaOrigen, Metadatos, Trazabilidad
 
-PROMPT_VERSION = "nm-prompts-1.1.2"
+PROMPT_VERSION = "nm-prompts-1.1.3"
 
 _IDIOMAS = {
     OutputLanguage.ES: "español latinoamericano",
@@ -128,7 +128,7 @@ No revelar razonamientos privados: solo diagnósticos breves, verificables y ref
 
 class PlantillasPrompts(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prompt_version: Literal["nm-prompts-1.1.2"] = PROMPT_VERSION
+    prompt_version: Literal["nm-prompts-1.1.3"] = PROMPT_VERSION
     writer: str
     critic: str
 
@@ -141,7 +141,7 @@ class PromptRol(BaseModel):
 
 class PromptsGeneracion(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prompt_version: Literal["nm-prompts-1.1.2"] = PROMPT_VERSION
+    prompt_version: Literal["nm-prompts-1.1.3"] = PROMPT_VERSION
     writer: PromptRol
     critic: PromptRol
 
