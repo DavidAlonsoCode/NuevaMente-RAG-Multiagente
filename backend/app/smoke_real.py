@@ -225,6 +225,10 @@ def main(argv=None):
                 ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
             ).stdout.strip()
             informe["revision"] = revision
+            informe["codigo_smoke_sha256"] = sha256(Path(__file__).read_bytes())
+            informe["arbol_modificado"] = (
+                subprocess.run(["git", "diff", "--quiet"], capture_output=True).returncode != 0
+            )
             _json(args.output_dir / "informe.json", informe)
             print(
                 json.dumps(
