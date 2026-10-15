@@ -574,12 +574,39 @@ class VectorStoreChroma:
                 filtro["$and"].append({"orden": {"$in": [m["orden"] for m in coincidencias_tipo]}})
         vector = self.embeddings.embed_query(consulta, contexto=contexto)
         contexto.chequear()
-        datos = coleccion.query(
-            query_embeddings=[vector],
-            n_results=min(limite, cantidad),
-            where=filtro,
-            include=["metadatas", "distances", "embeddings"],
-        )
+        if cantidad <= limite:
+            # Se necesitan TODOS los candidatos del ámbito, no una aproximación.
+            # HNSW puede omitir vecinos bajo filtros muy selectivos; get conserva
+            # espacio/documento/versión/sección/tipo antes de ordenar por coseno.
+            exactos = coleccion.get(where=filtro, include=["metadatas", "embeddings"])
+            if len(exactos["ids"]) != cantidad:
+                raise IndiceInconsistenteError("Faltan candidatos del ámbito filtrado")
+            norma_query = math.hypot(*vector)
+            if not norma_query or not math.isfinite(norma_query):
+                raise IndiceInconsistenteError("El vector de consulta no permite comparar por coseno")
+            filas = []
+            for metadata, embedding in zip(exactos["metadatas"], exactos["embeddings"], strict=True):
+                contexto.chequear()
+                norma = math.hypot(*embedding)
+                if len(embedding) != len(vector) or not norma or not math.isfinite(norma):
+                    raise IndiceInconsistenteError("El índice contiene un vector incompatible")
+                distancia = 1.0 - sum(
+                    (float(a) / norma_query) * (float(b) / norma) for a, b in zip(vector, embedding, strict=True)
+                )
+                filas.append((metadata, max(0.0, min(2.0, distancia)), embedding))
+            filas.sort(key=lambda f: (f[1], f[0]["orden"]))
+            datos = {
+                "metadatas": [[f[0] for f in filas]],
+                "distances": [[f[1] for f in filas]],
+                "embeddings": [[f[2] for f in filas]],
+            }
+        else:
+            datos = coleccion.query(
+                query_embeddings=[vector],
+                n_results=limite,
+                where=filtro,
+                include=["metadatas", "distances", "embeddings"],
+            )
         resultado = []
         for metadata, distancia, embedding in zip(
             datos["metadatas"][0], datos["distances"][0], datos["embeddings"][0], strict=True

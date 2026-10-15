@@ -1057,6 +1057,11 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
 - `RETRIEVAL_K=5`, `RETRIEVAL_FETCH_K=15`, `RETRIEVAL_LAMBDA_MULT=0.7` y
   `RETRIEVAL_MAX_TOKENS=12000` son configurables. Se exige fetch_k >= k y un
   presupuesto positivo que no supere el límite de 12.000 tokens por borrador.
+- Si el ámbito filtrado contiene como máximo los candidatos solicitados, se leen
+  todos sus vectores con `get` y se ordenan por distancia coseno exacta. No se
+  delega esa selección completa a HNSW, que podría omitir vecinos bajo filtros
+  selectivos. Ámbitos mayores conservan la búsqueda aproximada. Ambos caminos
+  mantienen los filtros previos y usan sólo el embedding ya calculado de consulta.
 - MMR diversifica con los vectores de Chroma y devuelve `EvidenciaRecuperada`;
   score representa relevancia coseno, nunca fidelidad. Se deduplican IDs y textos
   equivalentes por espacios. Procedencia, hash y vectores inválidos son fallo técnico.

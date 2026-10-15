@@ -3,16 +3,29 @@
 import sys
 
 import pytest
+from i18n import t
 from streamlit.runtime.pages_manager import PagesManager
 from streamlit.testing.v1 import AppTest
 from test_chat_ui import Cliente, respuesta, trabajo
+from test_glossary_ui import API as GlosarioAPI
 from test_result import ClienteResultado, ui
 
 pytestmark = pytest.mark.integration_mock
 
 
 class ClienteEstudio(ClienteResultado, Cliente):
-    pass
+    def __init__(self):
+        super().__init__()
+        self.glosario = GlosarioAPI()
+
+    def create_glossary(self, token, payload, **kwargs):
+        self.glosario.output["documento_fuente"]["document_id"] = payload["document_id"]
+        for termino in self.glosario.output["terminos"]:
+            termino["referencias"] = [{"chunk_id": "chk_001", "pagina": 2, "seccion": "Conceptos"}]
+        return self.glosario.create_glossary(token, payload, **kwargs)
+
+    def get_glossary(self, token, gid):
+        return self.glosario.get_glossary(token, gid)
 
 
 @pytest.fixture
@@ -61,3 +74,17 @@ def test_home_conecta_cinco_turnos_con_fuentes_y_parametros_del_resultado(estudi
     assert not app.exception
     assert any("EVIDENCIA" in m.value for m in app.markdown)
     assert len(api.envios) == 5
+
+
+def test_home_glosario_filtra_y_abre_fuentes_sin_generar_de_nuevo(estudio):
+    app, api = estudio
+    next(b for b in app.button if b.label == "Generar glosario").click().run()
+    assert not app.exception and len(api.glosario.calls) == 1
+    payload = api.glosario.calls[0][0]
+    assert payload["perfil_destinatario"] == "principiante" and payload["idioma_salida"] == "es"
+    fuentes = [b for b in app.button if b.label == "Consultar fuente original"]
+    assert len(fuentes) == 4  # Material y tres términos con la misma cita.
+    fuentes[-1].click().run()
+    assert not app.exception and any("EVIDENCIA" in m.value for m in app.markdown)
+    next(i for i in app.text_input if i.label == t("glosario.buscar")).set_value("VCN").run()
+    assert not app.exception and len(api.glosario.calls) == 1

@@ -321,6 +321,15 @@ class APIClient:
     def get_job(self, token, job_id):
         return self._solicitar("GET", f"/api/jobs/{quote(job_id, safe='')}", token=token)
 
+    def create_glossary(self, token, payload, *, idempotency_key=None):
+        return self._solicitar("POST", "/api/glossaries", token=token, json=payload, idempotency_key=idempotency_key)
+
+    def get_glossary(self, token, glossary_id):
+        return self._solicitar("GET", f"/api/glossaries/{quote(glossary_id, safe='')}", token=token)
+
+    def cancel_glossary(self, token, job_id):
+        self._solicitar("POST", f"/api/jobs/{quote(job_id, safe='')}/cancel", token=token)
+
     def get_demo_documents(self, token, params=None):
         return self._solicitar("GET", "/api/demo/documents", token=token, params=params)
 
