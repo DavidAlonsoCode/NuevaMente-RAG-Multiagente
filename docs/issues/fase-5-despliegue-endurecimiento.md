@@ -296,7 +296,7 @@ proveedores dobles con integración real ni retirar pruebas para obtener CI verd
 **Tareas**:
 - Script manual/documentado: (1) subir original real a OCI y leerlo; (2) ejecutar una generación completa con Gemini real; (3) recuperar el paquete JSON desde OCI; (4) exportar y abrir MD/PDF/APKG.
 - Registro del consumo de solicitudes de storage generadas (insumo del presupuesto `Issue 50`).
-- Fotos/capturas de la cons OCI mostrando los objetos escritos (prefijos §8.3).
+- Evidencia de objetos OCI por lectura y hashes; captura de consola OCI trasladada a #133 (prefijos §8.3).
 - Marcado `integration_real`; nunca en PRs de terceros (§12.3).
 
 - La corrida real usa los mismos adaptadores síncronos y controles del worker que producción; verificar timeout, contador de solicitudes y ausencia de retries adicionales del SDK. No sirve como evidencia un cliente aislado que eluda el gestor.
@@ -311,8 +311,10 @@ identificando versión, configuración y resultado; no repetir llamadas reales
 por cada issue ni sustituirlas por clientes que eludan el gestor.
 
 **Criterios de aceptación**:
-- [ ] Una corrida completa real queda documentada con evidencia (JSON de respuesta + objeto en OCI + captura).
-- [ ] El registro de solicitudes consumidas queda asentado.
-- [ ] Ninguna credencial en el material de evidencia.
+- [x] Corrida real documentada con JSON, original/canónico verificados en OCI y exportaciones abiertas; se permite reutilizar una generación previa identificada del worker normal.
+- [x] El registro de solicitudes consumidas queda asentado, separando preparación y fase medida.
+- [x] Ninguna credencial en el material de evidencia.
 
-**Verificación**: ejecución presenciada por ≥2 integrantes; artefactos en `docs/evidencia/`.
+**Verificación**: informe, hashes y artefactos versionados en [evidencia #54](../evidencia/issue-54/README.md), con API local y proveedores reales.
+
+**Evidencia externa diferida — 15/10/2026**: por decisión del responsable del proyecto, la captura de consola OCI y la constancia de al menos dos integrantes se trasladan al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). Permanecen pendientes; integrar o cerrar #54 acredita el smoke automatizado real registrado, no esa revisión humana ni una VM pública. El seguimiento debe completarse para aceptar la entrega.
