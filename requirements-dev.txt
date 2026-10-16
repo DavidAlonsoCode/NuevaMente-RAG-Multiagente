@@ -20,6 +20,9 @@ ruff==0.16.8
 # define donde estan los tests y que rutas de import agregar.
 pytest==9.1.1
 
+# Validación estructural offline del snapshot OpenAPI 3.1 (issue #59, Python 3.11).
+openapi-spec-validator==0.9.0
+
 # Generador del documento demo PDF (documents/generar_pdf_vcn.py, issue #05).
 # También exportador PDF del backend (#44); mantener ambas versiones alineadas.
 reportlab==5.0.1
