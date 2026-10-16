@@ -68,8 +68,9 @@ No se repite IA por cada issue. La apertura estructural del APKG verifica cuatro
 notas y cuatro tarjetas; la importación manual en Anki Desktop es una revisión
 humana adicional.
 
-Para cerrar #54, dos integrantes deben presenciar/revisar la ejecución y dejar
-constancia; también falta una captura real de la consola OCI mostrando los
-objetos. No hay una sesión de consola OCI disponible en el navegador conectado,
+La aceptación final del #133 conserva la constancia de dos integrantes que
+presencien/revisen la ejecución y la captura real de consola OCI mostrando los
+objetos. El ajuste autorizado del 15/10 permite cerrar #54 con la evidencia
+automatizada real registrada; estas comprobaciones externas siguen pendientes. No hay una sesión de consola OCI disponible en el navegador conectado,
 por lo que no se fabrica esa captura ni se sustituye por una imagen simulada.
 La inspección visual del PDF y sus cuatro páginas sí fue realizada.

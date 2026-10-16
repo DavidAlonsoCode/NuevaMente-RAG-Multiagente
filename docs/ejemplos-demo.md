@@ -81,7 +81,8 @@ ocho adaptaciones aprobadas recuperadas desde otra sesión, quiz con ambas
 correcciones, imagen original consultable y caso insuficiente rechazado.
 El catálogo declara `completo=true`, con el tutorial de pagos v2 incluido.
 La lectura comprobada usa la API local y OCI real; falta repetirla desde el
-despliegue público para acreditar ese criterio de entrega.
+despliegue público para acreditar ese criterio de entrega, ahora seguido en
+[#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
 
 El [primer registro](evidencia/issue-55/ejecucion.json) y sus capturas corresponden
 a VCN v1 y se conservan sólo como evidencia histórica.
