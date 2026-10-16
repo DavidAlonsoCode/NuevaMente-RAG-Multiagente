@@ -144,11 +144,19 @@ def test_generation_sse_reconnection_recovery_and_cooperative_cancel():
                 generate_from_browser(page)
                 expect(page.get_by_text("Etapa: Redactando el material", exact=True)).to_be_visible(timeout=30000)
                 expect(page.get_by_text("Redacción pedagógica 1 de hasta 3", exact=True)).to_be_visible()
+
                 # Cambiar idioma cierra la suscripción anterior y la retoma con
                 # su cursor, sin perder el trabajo ni su idioma de contenido.
-                page.get_by_label("Idioma de la interfaz", exact=True).select_option("en")
+                def resumed(value):
+                    path = urlsplit(value.url).path
+                    cursor = value.headers.get("last-event-id", "0")
+                    return path.startswith("/api/generations/") and path.endswith("/events") and int(cursor) > 0
+
+                with page.expect_request(resumed):
+                    page.get_by_label("Idioma de la interfaz", exact=True).select_option("en")
                 expect(page.get_by_text("Stage: Writing the material", exact=True)).to_be_visible()
-                page.get_by_label("Interface language", exact=True).select_option("es")
+                with page.expect_request(resumed):
+                    page.get_by_label("Interface language", exact=True).select_option("es")
                 expect(page.get_by_text("Etapa: Redactando el material", exact=True)).to_be_visible()
                 page.reload()
                 page.get_by_role("button", name="Ya guardé mi código", exact=True).click()

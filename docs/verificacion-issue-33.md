@@ -47,11 +47,15 @@ y LangGraph son los del proyecto. Con una demora de seis segundos por redacción
   Reaparecieron el trabajo activo, su fuente y Writer/redacción 1. La base de
   prueba conservó tres generaciones tras tres admisiones: una cancelada y dos
   completadas; recuperar no añadió una cuarta generación.
+- Con `--reject-quality`, la interfaz mostró el diagnóstico y las acciones
+  después del rechazo, sin material ni errores de consola. Acotar llevó el foco
+  al selector de sección. A 320 px no hubo desbordamiento horizontal.
 
 Capturas sin código de recuperación:
 
 - [Cancelación confirmada](evidencia/issue-33/cancelado-simulado.jpg).
 - [Trabajo activo recuperado](evidencia/issue-33/recuperado-simulado.jpg).
+- [Rechazo de calidad](evidencia/issue-33/rechazado-simulado.jpg).
 
 La CI añade navegador con Caddy/TLS locales para reconectar al cambiar idioma,
 comprobar cursor, refrescar/recuperar, cancelar con proveedor en vuelo y
