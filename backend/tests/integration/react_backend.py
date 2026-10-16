@@ -1,6 +1,7 @@
 """Servidor de verificación local de React; proveedores dobles, datos descartables."""
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,9 @@ def main():
         parser.error("Usar una carpeta de prueba nueva dentro de .data, nunca .data directamente")
     if directory.exists():
         parser.error("La carpeta de prueba debe ser nueva para no abrir datos existentes")
+    directory.mkdir(parents=True)
+    os.chdir(directory)
+    os.environ.update(APP_ENV="test", MOCK_OCI="1", MOCK_GEMINI="1", DATA_DIR=str(directory))
 
     def solo_loopback(event, values):
         if event == "socket.getaddrinfo" and values[0] not in {"localhost", "127.0.0.1", "::1", None}:
@@ -25,6 +29,10 @@ def main():
     sys.path[:0] = [str(root / "backend"), str(root / "backend/tests")]
     import uvicorn
     from app.config import Configuracion
+
+    # app.main también construye la app ASGI global al importarse. Aislarla
+    # antes del import evita cargar .env o crear clientes reales en esa app.
+    Configuracion.model_config["env_file"] = None
     from app.jobs.manager import CuotasModelo, CuotasProveedor
     from app.main import crear_app
     from test_api_generate import DobleEducativo

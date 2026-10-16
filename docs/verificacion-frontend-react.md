@@ -60,6 +60,13 @@ pasaron: 53 pruebas de jobs, generación, salud, chat e historial, y 192 de
 recuperación documental, errores HTTP y regresiones. Ninguna de estas corridas
 consumió proveedores reales.
 
+Tras incorporar develop `b95c0ec`, la corrida dirigida de gateway, jobs,
+OpenAPI/referencia HTTP, despliegue y plazos Caddy dio **280 aprobadas y 3
+fallidas**. El ejemplo curl falló porque Git Bash no recibió el directorio de
+`jq` en su PATH; pasó al configurar ese entorno desde el proceso Python. Los
+dos casos TLS pasaron aislados sin cambios ni ampliación de plazos. TypeScript,
+las 18 regresiones React, Ruff y OpenAPI sin drift también pasaron.
+
 ## Navegador y evidencias
 
 Se utilizó `backend.tests.integration.react_backend` con directorio nuevo en

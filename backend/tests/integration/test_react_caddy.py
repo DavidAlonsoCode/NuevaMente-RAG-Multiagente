@@ -57,7 +57,8 @@ def test_react_browser_upload_through_caddy_without_external_requests():
                     "Las subredes organizan las direcciones de los recursos. "
                     "Las reglas de seguridad controlan el tráfico permitido."
                 )
-                page.get_by_role("checkbox").check()
+                form = page.locator(".nm-card").filter(has=page.get_by_label("Título del texto", exact=True))
+                form.get_by_role("checkbox").check()
                 page.get_by_role("button", name="Cargar como documento de texto", exact=True).last.click()
                 expect(page.get_by_text("Listo", exact=True).first).to_be_visible(timeout=30000)
                 expect(page.get_by_text("Prueba React por HTTPS local", exact=True).first).to_be_visible()
