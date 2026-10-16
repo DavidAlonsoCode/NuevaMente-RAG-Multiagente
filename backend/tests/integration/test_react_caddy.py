@@ -46,13 +46,17 @@ def test_react_browser_upload_through_caddy_without_external_requests():
                         return
                     status = re.search(r"status of (\d{3})", message.text)
                     network = re.search(r"net::(ERR_[A-Z_]+)", message.text)
+                    if "Content Security Policy" in message.text:
+                        # Los mensajes CSP describen recursos/directivas estáticos.
+                        # Omitir URLs para que el diagnóstico no publique contexto.
+                        detail = re.sub(r"(?:https?|blob|data):[^\s'\"]+", "[resource]", message.text)
+                        errors.append("console-csp:" + detail[:400])
+                        return
                     errors.append(
                         "console-http-" + status[1]
                         if status
                         else network[1]
                         if network
-                        else "console-csp"
-                        if "Content Security Policy" in message.text
                         else "console-other"
                     )
 
