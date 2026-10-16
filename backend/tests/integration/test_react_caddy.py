@@ -52,13 +52,7 @@ def test_react_browser_upload_through_caddy_without_external_requests():
                         detail = re.sub(r"(?:https?|blob|data):[^\s'\"]+", "[resource]", message.text)
                         errors.append("console-csp:" + detail[:400])
                         return
-                    errors.append(
-                        "console-http-" + status[1]
-                        if status
-                        else network[1]
-                        if network
-                        else "console-other"
-                    )
+                    errors.append("console-http-" + status[1] if status else network[1] if network else "console-other")
 
                 page.on("console", console)
 
