@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { BookOpen, Eye, EyeOff, Image as ImageIcon } from 'lucide-react';
 import { APIClient, APIError } from '../api/client';
 import { OutputLanguage, Referencia } from '../api/types';
@@ -6,7 +6,7 @@ import { validarFuente } from '../flows/validators';
 import { t } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
 
-export const SourcesDrawer: React.FC<{
+const SourcesDrawerView: React.FC<{
   documentId: string;
   referencias: Referencia[];
   idioma: OutputLanguage;
@@ -20,6 +20,12 @@ export const SourcesDrawer: React.FC<{
   const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, APIError | null>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const urls = useRef(new Set<string>());
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; urls.current.forEach((url) => URL.revokeObjectURL(url)); };
+  }, []);
 
   // Deduplicar por chunk_id preservando orden
   const uniqueRefs: Referencia[] = [];
@@ -46,6 +52,7 @@ export const SourcesDrawer: React.FC<{
     setErrors((prev) => ({ ...prev, [cid]: null }));
     try {
       const fuente = await apiClient.getDocumentSource(token, documentId, cid, { demo });
+      if (!active.current) return;
       validarFuente(fuente, ref, documentId);
       setLoadedSources((prev) => ({ ...prev, [cid]: fuente }));
 
@@ -53,10 +60,12 @@ export const SourcesDrawer: React.FC<{
         fuente.source_type === 'image_description' || Boolean(fuente.interpretacion_modelo);
       if (esInterpretacion && !demo) {
         const pngBytes = await apiClient.getDocumentSourceImage(token, documentId, cid);
+        if (!active.current) return;
         const blob = new Blob([pngBytes], { type: 'image/png' });
         const objUrl = URL.createObjectURL(blob);
+        urls.current.add(objUrl);
         setLoadedImages((prev) => {
-          if (prev[cid]) URL.revokeObjectURL(prev[cid]);
+          if (prev[cid]) { URL.revokeObjectURL(prev[cid]); urls.current.delete(prev[cid]); }
           return { ...prev, [cid]: objUrl };
         });
       }
@@ -184,3 +193,6 @@ export const SourcesDrawer: React.FC<{
     </div>
   );
 };
+
+export const SourcesDrawer: React.FC<React.ComponentProps<typeof SourcesDrawerView>> = (props) =>
+  <SourcesDrawerView key={`${props.token}:${props.documentId}:${props.demo}`} {...props} />;

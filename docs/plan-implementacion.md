@@ -61,6 +61,11 @@ H2 verifica indexación y recuperación con fuentes textuales. Una fuente con vi
 
 ### 2.1 Prioridad de cierre y alcance operativo — 14 de octubre de 2026
 
+Actualización del 15/10: el rediseño autorizado migra la presentación a React,
+TypeScript y Vite, preservando los 60 issues, contratos y criterios. La nueva
+interfaz requiere sus propias pruebas; las pruebas Streamlit conservadas no
+equivalen a validación de React. Ver [guía del frontend](../frontend/README.md).
+
 - **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
   40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
   microinteracciones y efectos forman parte del acabado visual; deben conservar

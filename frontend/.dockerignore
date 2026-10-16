@@ -1,3 +1,7 @@
-node_modules
-dist
-.git
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+src/**/*.test.ts
+src/**/*.test.tsx

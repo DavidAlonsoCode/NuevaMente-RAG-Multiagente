@@ -29,4 +29,4 @@ path = Path(os.environ["NM_UI_AUDIT"])
 with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as file:
     json.dump(audit, file)
 # No st.write of headers, digest, APIClient or this audit. No secret session_state.
-runpy.run_path(str(Path(__file__).resolve().parents[3] / "frontend/app.py"), run_name="__main__")
+runpy.run_path(str(Path(__file__).resolve().parents[3] / "frontend_streamlit_viejo/app.py"), run_name="__main__")

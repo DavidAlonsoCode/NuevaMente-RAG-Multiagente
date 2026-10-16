@@ -33,7 +33,7 @@ def private_write(path, content):
 def clean_environment():
     allowed = {"PATH", "SYSTEMROOT", "TEMP", "TMP", "HOME", "PLAYWRIGHT_BROWSERS_PATH", "NM_BROWSER_EXECUTABLE"}
     env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
-    paths = [str(ROOT / "backend"), str(ROOT / "backend/tests"), str(ROOT / "frontend")]
+    paths = [str(ROOT / "backend"), str(ROOT / "backend/tests"), str(ROOT / "frontend_streamlit_viejo")]
     tools = os.environ.get("NM_TEST_TOOLS_PYTHONPATH")
     if tools:
         paths.insert(0, tools)

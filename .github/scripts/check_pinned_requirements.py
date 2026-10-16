@@ -29,7 +29,7 @@ ESPECIFICADORES_FLOTANTES = (">=", "<=", "~=", "===", "!=", ">", "<")
 # Archivos que el proyecto administra cuando el llamador no indica ninguno.
 REQUISITOS_POR_DEFECTO = (
     "backend/requirements.txt",
-    "frontend/requirements.txt",
+    "frontend_streamlit_viejo/requirements.txt",
     "requirements-dev.txt",
 )
 

@@ -1,0 +1,63 @@
+"""Servidor de verificación local de React; proveedores dobles, datos descartables."""
+
+import argparse
+import sys
+from pathlib import Path
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-dir", required=True)
+    parser.add_argument("--port", type=int, default=18080)
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[3]
+    directory = Path(args.data_dir).resolve()
+    if not directory.is_relative_to(root / ".data") or directory == root / ".data":
+        parser.error("Usar una carpeta de prueba nueva dentro de .data, nunca .data directamente")
+    if directory.exists():
+        parser.error("La carpeta de prueba debe ser nueva para no abrir datos existentes")
+
+    def solo_loopback(event, values):
+        if event == "socket.getaddrinfo" and values[0] not in {"localhost", "127.0.0.1", "::1", None}:
+            raise PermissionError("La verificación no permite proveedores externos")
+
+    sys.addaudithook(solo_loopback)
+    sys.path[:0] = [str(root / "backend"), str(root / "backend/tests")]
+    import uvicorn
+    from app.config import Configuracion
+    from app.jobs.manager import CuotasModelo, CuotasProveedor
+    from app.main import crear_app
+    from test_api_generate import DobleEducativo
+
+    cfg = Configuracion(
+        _env_file=None,
+        app_env="test",
+        mock_oci=True,
+        mock_gemini=True,
+        data_dir=str(directory),
+        embedding_dimensions=16,
+        google_api_key="synthetic-test-only",
+    )
+    provider = DobleEducativo(16)
+    quotas = CuotasProveedor(
+        {
+            model: CuotasModelo(1000, 10_000_000, 1000)
+            for model in {
+                cfg.gemini_embedding_model,
+                cfg.gemini_generation_model,
+                cfg.gemini_verification_model,
+            }
+        }
+    )
+    app = crear_app(
+        cfg,
+        proveedor_embeddings=provider,
+        proveedor_generacion=provider,
+        proveedor_verificacion=provider,
+        cuotas_proveedor=quotas,
+    )
+    uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)
+
+
+if __name__ == "__main__":
+    main()

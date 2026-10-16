@@ -35,6 +35,8 @@ import {
 } from './api/types';
 import { OraclePillLogo, OracleWaveCircuitBackdrop } from './assets/OracleVisuals';
 import { ErrorBanner } from './components/ErrorBanner';
+import { DocumentStatus } from './components/DocumentStatus';
+import { RecentGenerations } from './components/RecentGenerations';
 import { PackageViewer } from './components/FormatRenderers';
 import { SourcesDrawer } from './components/SourcesDrawer';
 import {
@@ -45,15 +47,18 @@ import {
 } from './components/StudyAndHistoryViews';
 import {
   DOCUMENTOS_DEMO,
+  claveCarga,
   formatearTamano,
   formatosExportables,
   generarEventIdProgreso,
   validarArchivo,
   validarGeneracionCompletada,
   validarPaquete,
+  validarRespuestaChat,
   validarTextoPegado,
 } from './flows/validators';
 import { CATALOGOS, IDIOMA_POR_DEFECTO, t } from './i18n';
+import { clearStudyState } from './flows/studyState';
 
 interface GeneracionActivaUI {
   generation_id: string;
@@ -73,12 +78,8 @@ export const App: React.FC = () => {
   });
 
   // Sesión y Workspace (recovery_code vive SOLO en memoria efímera)
-  const [sessionToken, setSessionToken] = useState<string | null>(() =>
-    sessionStorage.getItem('nm_session_token')
-  );
-  const [workspaceId, setWorkspaceId] = useState<string | null>(() =>
-    sessionStorage.getItem('nm_workspace_id')
-  );
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [mostrandoRecuperacion, setMostrandoRecuperacion] = useState(false);
   const [errorSesionInvalida, setErrorSesionInvalida] = useState(false);
@@ -89,6 +90,8 @@ export const App: React.FC = () => {
   // Documentos y Demo
   const [documentos, setDocumentos] = useState<DocumentoResponse[]>([]);
   const [trabajosDoc, setTrabajosDoc] = useState<Record<string, any>>({});
+  const trabajosDocRef = useRef(trabajosDoc);
+  trabajosDocRef.current = trabajosDoc;
   const [docActivoId, setDocActivoId] = useState<string | null>(null);
   const [docActivoDemo, setDocActivoDemo] = useState(false);
   const [vistaOnboarding, setVistaOnboarding] = useState<'upload' | 'texto' | 'demo'>('upload');
@@ -116,6 +119,8 @@ export const App: React.FC = () => {
 
   // Navegación Principal y Generación Activa
   const [generacionActiva, setGeneracionActiva] = useState<GeneracionActivaUI | null>(null);
+  const activeGenRef = useRef(generacionActiva?.generation_id);
+  activeGenRef.current = generacionActiva?.generation_id;
   const [activeJobData, setActiveJobData] = useState<any | null>(null);
   const [mostrandoDocumentos, setMostrandoDocumentos] = useState(false);
   const [activeTab, setActiveTab] = useState<'resultado' | 'tutor' | 'glosario' | 'progreso'>('resultado');
@@ -130,19 +135,40 @@ export const App: React.FC = () => {
   >([]);
 
   const api = useMemo(() => new APIClient({ idiomaUi }), [idiomaUi]);
+  const authRef = useRef(sessionToken);
+  authRef.current = sessionToken;
+
+  useEffect(() => {
+    if (!confirmModalPending && !accionConfirmar) return;
+    const modal = document.querySelector<HTMLElement>('[role="dialog"]');
+    if (!modal) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const controls = () => [...modal.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href]')];
+    controls().at(-1)?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); setConfirmModalPending(null); setAccionConfirmar(null); }
+      if (event.key === 'Tab') {
+        const items = controls();
+        if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1)?.focus(); }
+        if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0]?.focus(); }
+      }
+    };
+    document.addEventListener('keydown', trap);
+    return () => { document.removeEventListener('keydown', trap); if (previous?.isConnected) previous.focus(); };
+  }, [Boolean(confirmModalPending), accionConfirmar]);
 
   useEffect(() => {
     sessionStorage.setItem('nm_idioma_ui', idiomaUi);
   }, [idiomaUi]);
 
   useEffect(() => {
-    if (sessionToken) sessionStorage.setItem('nm_session_token', sessionToken);
-    else sessionStorage.removeItem('nm_session_token');
-    if (workspaceId) sessionStorage.setItem('nm_workspace_id', workspaceId);
-    else sessionStorage.removeItem('nm_workspace_id');
-  }, [sessionToken, workspaceId]);
+    sessionStorage.removeItem('nm_session_token');
+    sessionStorage.removeItem('nm_workspace_id');
+  }, []);
 
   const limpiarSesionLocal = useCallback(() => {
+    creacionPendiente.current = null;
+    clearStudyState();
     setSessionToken(null);
     setWorkspaceId(null);
     setRecoveryCode(null);
@@ -167,15 +193,20 @@ export const App: React.FC = () => {
   }, [limpiarSesionLocal]);
 
   // Creación automática de espacio anónimo
+  const creacionPendiente = useRef<Promise<any> | null>(null);
   const inicializarEspacio = useCallback(async () => {
     if (sessionToken || mostrandoRecuperacion) return;
     setInitError(null);
+    const pending = creacionPendiente.current ??= api.createWorkspace();
     try {
-      const res = await api.createWorkspace();
+      const res = await pending;
+      if (creacionPendiente.current !== pending) return;
       setSessionToken(res.token);
       setWorkspaceId(res.workspace_id);
       setRecoveryCode(res.recovery_code);
     } catch (err) {
+      if (creacionPendiente.current !== pending) return;
+      creacionPendiente.current = null;
       if (err instanceof APIError) setInitError(err);
     }
   }, [api, sessionToken, mostrandoRecuperacion]);
@@ -192,9 +223,21 @@ export const App: React.FC = () => {
         api.getDocuments(sessionToken, { limit: 100 }),
         api.workspaceStatus(sessionToken),
       ]);
+      if (authRef.current !== sessionToken) return;
       const docs: DocumentoResponse[] = docsPage?.items || [];
       setDocumentos(docs);
       setWsStatus(statusRes);
+      await Promise.all(Object.entries(trabajosDocRef.current).map(async ([docId, seg]) => {
+        if (!docs.some((doc) => doc.document_id === docId && doc.status === 'processing')) return;
+        const [job, progreso] = await Promise.all([
+          api.getJob(sessionToken, seg.jobId), api.readJobProgress(sessionToken, seg.jobId, seg.cursor),
+        ]);
+        if (authRef.current !== sessionToken) return;
+        setTrabajosDoc((prev) => ({ ...prev, [docId]: {
+          ...seg, estado: job.status, progreso: progreso?.data ?? seg.progreso,
+          cursor: progreso?.id ?? seg.cursor,
+        } }));
+      }));
 
       if (!docActivoDemo) {
         const actual = docs.find((d) => d.document_id === docActivoId && d.status === 'ready');
@@ -204,6 +247,7 @@ export const App: React.FC = () => {
         }
       }
     } catch (err) {
+      if (authRef.current !== sessionToken) return;
       if (err instanceof APIError) {
         if (err.statusCode === 401) manejarSesionInvalida();
         else setGlobalError(err);
@@ -218,16 +262,14 @@ export const App: React.FC = () => {
   // Sondeo de documentos en procesamiento cada 2s
   useEffect(() => {
     if (!sessionToken) return;
-    const hayProcesando = documentos.some(
-      (d) =>
-        d.status === 'processing' &&
-        !(d.cobertura?.paginas_visuales_pendientes && d.cobertura.paginas_visuales_pendientes.length > 0)
-    );
+    const hayProcesando = documentos.some((d) => d.status === 'processing');
     if (!hayProcesando) return;
-    const timer = setInterval(() => {
-      sincronizarEspacio();
+    let stopped = false;
+    let timer = setTimeout(async function poll() {
+      await sincronizarEspacio();
+      if (!stopped) timer = setTimeout(poll, 2000);
     }, 2000);
-    return () => clearInterval(timer);
+    return () => { stopped = true; clearTimeout(timer); };
   }, [sessionToken, documentos, sincronizarEspacio]);
 
   // Sondeo de generación activa
@@ -235,14 +277,17 @@ export const App: React.FC = () => {
     if (!sessionToken || !generacionActiva) return;
     try {
       const job = await api.getGeneration(sessionToken, generacionActiva.generation_id);
+      if (authRef.current !== sessionToken || activeGenRef.current !== generacionActiva.generation_id) return;
       setActiveJobData(job);
+      if (!['queued', 'running'].includes(job.status)) await sincronizarEspacio();
     } catch (err) {
+      if (authRef.current !== sessionToken || activeGenRef.current !== generacionActiva.generation_id) return;
       if (err instanceof APIError) {
         if (err.statusCode === 401) manejarSesionInvalida();
         else setGlobalError(err);
       }
     }
-  }, [api, sessionToken, generacionActiva, manejarSesionInvalida]);
+  }, [api, sessionToken, generacionActiva, manejarSesionInvalida, sincronizarEspacio]);
 
   useEffect(() => {
     consultarGeneracionActiva();
@@ -251,10 +296,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!generacionActiva || !activeJobData) return;
     if (!['queued', 'running'].includes(activeJobData.status)) return;
-    const timer = setInterval(() => {
-      consultarGeneracionActiva();
+    let stopped = false;
+    let timer = setTimeout(async function poll() {
+      await consultarGeneracionActiva();
+      if (!stopped) timer = setTimeout(poll, 4000);
     }, 4000);
-    return () => clearInterval(timer);
+    return () => { stopped = true; clearTimeout(timer); };
   }, [generacionActiva, activeJobData?.status, consultarGeneracionActiva]);
 
   const docsReady = useMemo(
@@ -320,6 +367,8 @@ export const App: React.FC = () => {
         confirmModalPending.peticion,
         confirmModalPending.idempotencyKey
       );
+      if (authRef.current !== sessionToken) return;
+      setActiveJobData(null);
       setGeneracionActiva({
         generation_id: resp.generation_id,
         status: resp.status,
@@ -336,6 +385,7 @@ export const App: React.FC = () => {
       setConfirmModalPending(null);
       lastGenAttemptRef.current = null;
     } catch (err) {
+      if (authRef.current !== sessionToken) return;
       if (err instanceof APIError) {
         if (err.statusCode === 401) manejarSesionInvalida();
         else setGlobalError(err);
@@ -347,7 +397,11 @@ export const App: React.FC = () => {
   const enviarEventoProgreso = async (eventId: string, datos: Record<string, any>) => {
     if (!sessionToken) return;
     try {
-      await api.recordProgress(sessionToken, { ...datos, event_id: eventId });
+      const recibo = await api.recordProgress(sessionToken, { ...datos, event_id: eventId });
+      if (authRef.current !== sessionToken) return;
+      if (recibo?.event_id !== eventId || !Number.isInteger(recibo.version) || recibo.version < 1) {
+        throw new APIError('INVALID_RESPONSE', 'Confirmación de progreso inválida.', 502);
+      }
       setPendingProgressEvents((prev) => prev.filter((e) => e.event_id !== eventId));
       if (datos.tipo === 'concepto_revisado') {
         setConfirmedConcepts((prev) => ({
@@ -356,6 +410,7 @@ export const App: React.FC = () => {
         }));
       }
     } catch (err) {
+      if (authRef.current !== sessionToken) return;
       setPendingProgressEvents((prev) =>
         prev.some((e) => e.event_id === eventId) ? prev : [...prev, { event_id: eventId, datos }]
       );
@@ -379,7 +434,7 @@ export const App: React.FC = () => {
                 {t('comun.app_nombre', idiomaUi)}
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--oracle-coral)', fontWeight: 600 }}>
-                ORACLE REDWOOD EDITION
+                {t('ui.tagline', idiomaUi)}
               </div>
             </div>
           </div>
@@ -463,8 +518,8 @@ export const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="nm-label">{t('sidebar.perfil', idiomaUi)}</label>
-                <select
+                <label className="nm-label" htmlFor="app-field-1">{t('sidebar.perfil', idiomaUi)}</label>
+                <select id="app-field-1"
                   className="nm-select"
                   value={genPerfil}
                   onChange={(e) => setGenPerfil(e.target.value as RecipientProfile)}
@@ -476,8 +531,8 @@ export const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="nm-label">{t('sidebar.formato', idiomaUi)}</label>
-                <select
+                <label className="nm-label" htmlFor="app-field-2">{t('sidebar.formato', idiomaUi)}</label>
+                <select id="app-field-2"
                   className="nm-select"
                   value={genFormato}
                   onChange={(e) => setGenFormato(e.target.value as PedagogicalFormat)}
@@ -489,8 +544,8 @@ export const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="nm-label">{t('sidebar.nicho', idiomaUi)}</label>
-                <select
+                <label className="nm-label" htmlFor="app-field-3">{t('sidebar.nicho', idiomaUi)}</label>
+                <select id="app-field-3"
                   className="nm-select"
                   value={genNicho}
                   onChange={(e) => setGenNicho(e.target.value as IndustryNiche)}
@@ -502,8 +557,8 @@ export const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="nm-label">{t('sidebar.detalle', idiomaUi)}</label>
-                <select
+                <label className="nm-label" htmlFor="app-field-4">{t('sidebar.detalle', idiomaUi)}</label>
+                <select id="app-field-4"
                   className="nm-select"
                   value={genDetalle}
                   onChange={(e) => setGenDetalle(e.target.value as DetailLevel)}
@@ -515,8 +570,8 @@ export const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="nm-label">{t('sidebar.idioma_salida', idiomaUi)}</label>
-                <select
+                <label className="nm-label" htmlFor="app-field-5">{t('sidebar.idioma_salida', idiomaUi)}</label>
+                <select id="app-field-5"
                   className="nm-select"
                   value={genIdiomaSalida}
                   onChange={(e) => setGenIdiomaSalida(e.target.value as OutputLanguage)}
@@ -564,8 +619,8 @@ export const App: React.FC = () => {
 
               {genAlcance === 'seccion' && seccionesDisponibles.length > 0 && (
                 <div>
-                  <label className="nm-label">{t('sidebar.seccion', idiomaUi)}</label>
-                  <select
+                  <label className="nm-label" htmlFor="app-field-6">{t('sidebar.seccion', idiomaUi)}</label>
+                  <select id="app-field-6"
                     className="nm-select"
                     value={genSeccionId}
                     onChange={(e) => setGenSeccionId(e.target.value)}
@@ -632,6 +687,7 @@ export const App: React.FC = () => {
                 <FolderOpen size={14} />
                 {t('historial.abrir_vista', idiomaUi)}
               </button>
+              <RecentGenerations api={api} token={sessionToken} idioma={idiomaUi} onOpen={() => setHistorialAbierto(true)} />
 
               <button
                 type="button"
@@ -985,7 +1041,10 @@ export const App: React.FC = () => {
                       api={api}
                       token={sessionToken}
                       idioma={idiomaUi}
-                      onUploaded={sincronizarEspacio}
+                      onUploaded={(docId, jobId) => {
+                        setTrabajosDoc((prev) => ({ ...prev, [docId]: { jobId, cursor: 0, estado: 'queued' } }));
+                        sincronizarEspacio();
+                      }}
                       onError={setGlobalError}
                     />
                   )}
@@ -1042,6 +1101,7 @@ export const App: React.FC = () => {
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
                                 <div>
                                   <div style={{ fontWeight: 600, fontSize: '1rem' }}>{doc.titulo}</div>
+                                  <DocumentStatus doc={doc} tracking={trabajosDoc[doc.document_id]} idioma={idiomaUi} />
                                   <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)', display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
                                     <span className="nm-badge nm-badge-neutral">
                                       {t(`estados.documento.${doc.status}`, idiomaUi)}
@@ -1196,7 +1256,7 @@ export const App: React.FC = () => {
 
       {/* Modal de Confirmación de Generación */}
       {confirmModalPending && (
-        <div className="nm-modal-backdrop" role="dialog" aria-modal="true">
+        <div className="nm-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('generar.resumen_titulo', idiomaUi)}>
           <div className="nm-modal">
             <h3 style={{ marginTop: 0 }}>{t('generar.resumen_titulo', idiomaUi)}</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginBottom: '1.25rem', fontSize: '0.9rem' }}>
@@ -1289,7 +1349,7 @@ const SidebarFileUpload: React.FC<{
   const [valido, errClave] = file ? validarArchivo(file.name, file.size) : [false, null];
 
   const subir = async () => {
-    if (!file || !valido || !permiso) return;
+    if (!file || !valido || !permiso || busy) return;
     setBusy(true);
     try {
       const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
@@ -1297,7 +1357,7 @@ const SidebarFileUpload: React.FC<{
         ext === '.pdf' ? 'application/pdf' : ext === '.md' ? 'text/markdown' : 'text/plain';
       const recibo = await api.uploadFile(token, file.name, file, mime, {
         title: file.name.slice(0, 300),
-        idempotencyKey: `file-${file.name}-${file.size}`,
+        idempotencyKey: await claveCarga(file.name.slice(0, 300), new Uint8Array(await file.arrayBuffer())),
       });
       setFile(null);
       setPermiso(false);
@@ -1352,7 +1412,7 @@ const PasteTextUpload: React.FC<{
   api: APIClient;
   token: string;
   idioma: OutputLanguage;
-  onUploaded: () => void;
+  onUploaded: (docId: string, jobId: string) => void;
   onError: (err: APIError) => void;
 }> = ({ api, token, idioma, onUploaded, onError }) => {
   const [titulo, setTitulo] = useState('');
@@ -1368,15 +1428,15 @@ const PasteTextUpload: React.FC<{
       return;
     }
     try {
-      await api.uploadDocument(
+      const recibo = await api.uploadDocument(
         token,
         { documento_titulo: titulo.trim(), documento_contenido: contenido },
-        `txt-${titulo.trim().slice(0, 32)}-${contenido.length}`
+        await claveCarga(titulo.trim(), contenido)
       );
       setTitulo('');
       setContenido('');
       setPermiso(false);
-      onUploaded();
+      onUploaded(recibo.document_id, recibo.job_id);
     } catch (err) {
       if (err instanceof APIError) onError(err);
     }
@@ -1387,8 +1447,8 @@ const PasteTextUpload: React.FC<{
       <h3 style={{ marginTop: 0 }}>{t('upload.enviar_texto', idioma)}</h3>
       {localErr && <div className="nm-alert nm-alert-error">{localErr}</div>}
       <div style={{ marginBottom: '0.75rem' }}>
-        <label className="nm-label">{t('upload.texto_titulo', idioma)}</label>
-        <input
+        <label className="nm-label" htmlFor="app-field-7">{t('upload.texto_titulo', idioma)}</label>
+        <input id="app-field-7"
           type="text"
           className="nm-input"
           maxLength={300}
@@ -1397,8 +1457,8 @@ const PasteTextUpload: React.FC<{
         />
       </div>
       <div style={{ marginBottom: '0.75rem' }}>
-        <label className="nm-label">{t('upload.texto_contenido', idioma)}</label>
-        <textarea
+        <label className="nm-label" htmlFor="app-field-8">{t('upload.texto_contenido', idioma)}</label>
+        <textarea id="app-field-8"
           className="nm-textarea"
           rows={6}
           value={contenido}
@@ -1522,7 +1582,7 @@ const ActiveGenerationPanel: React.FC<{
         <ErrorBanner error={err} idioma={idioma} />
         <div className="nm-alert nm-alert-success" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
           <span>{t(rotuloGuardado, idioma)}</span>
-          <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <select
               className="nm-select"
               style={{ width: 'auto', padding: '0.3rem 0.6rem' }}
@@ -1775,18 +1835,38 @@ const DemoExampleDetailView: React.FC<{
 }> = ({ api, token, ejemploId, idioma, onBack, onSessionInvalid }) => {
   const [paquete, setPaquete] = useState<PedagogicalStudentOutput | null>(null);
   const [itemMeta, setItemMeta] = useState<any | null>(null);
+  const [diagrama, setDiagrama] = useState<any | null>(null);
   const [err, setErr] = useState<APIError | null>(null);
 
   useEffect(() => {
+    let active = true;
+    setPaquete(null);
+    setDiagrama(null);
     Promise.all([api.getDemoGenerations(token), api.getDemoGeneration(token, ejemploId)])
       .then(([cat, pkg]) => {
+        if (!active) return;
         const found = (cat?.items || []).find((i: any) => i.generation_id === ejemploId);
+        validarPaquete(pkg);
+        if (!found || pkg.generation_id !== ejemploId || pkg.documento_fuente.document_id !== found.parametros?.document_id) {
+          throw new APIError('INVALID_RESPONSE', 'Ejemplo incompatible con el catálogo.', 502);
+        }
         setItemMeta(found);
         setPaquete(pkg);
+        if (cat.diagrama?.respuesta?.document_id === pkg.documento_fuente.document_id) {
+          const reply = cat.diagrama.respuesta;
+          validarRespuestaChat(reply, { document_id: pkg.documento_fuente.document_id,
+            pregunta: reply.pregunta, perfil_destinatario: reply.perfil_destinatario,
+            idioma_salida: reply.idioma_salida });
+          if (reply.document_hash !== pkg.documento_fuente.hash.replace(/^sha256:/, '')) {
+            throw new APIError('INVALID_RESPONSE', 'El diagrama corresponde a otra versión de fuente.', 502);
+          }
+          setDiagrama(cat.diagrama);
+        }
       })
       .catch((e) => {
-        if (e instanceof APIError) setErr(e);
+        if (active) setErr(e instanceof APIError ? e : new APIError('INVALID_RESPONSE', 'Ejemplo inválido.', 502));
       });
+    return () => { active = false; };
   }, [api, token, ejemploId]);
 
   const demoProxyClient = useMemo(() => {
@@ -1824,6 +1904,13 @@ const DemoExampleDetailView: React.FC<{
           onSessionInvalid={onSessionInvalid}
         />
       )}
+      {paquete && diagrama && <details className="nm-card">
+        <summary>{t('demo.diagrama', idioma)}</summary>
+        <p>{diagrama.pregunta || diagrama.respuesta.pregunta}</p>
+        <p>{diagrama.respuesta.respuesta}</p>
+        <SourcesDrawer documentId={paquete.documento_fuente.document_id} referencias={diagrama.respuesta.referencias}
+          idioma={idioma} apiClient={demoProxyClient} token={token} onSessionInvalid={onSessionInvalid} />
+      </details>}
     </div>
   );
 };

@@ -80,6 +80,12 @@ Los `code` son estables y no se traducen; los `message` se localizan según idio
 
 **Origen detrás de Streamlit/Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. Streamlit transmite ambas cabeceras al backend desde su contexto del servidor. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
 
+Con React, el navegador solicita `/api` al mismo origen y Caddy aplica esas
+cabeceras al reenviar directamente a FastAPI. La clave permanece en el proxy
+y el backend; no se incorpora al JavaScript. El proxy local del frontend
+conserva la autorización Bearer y no cambia el contrato HTTP.
+
+
 En cada `reverse_proxy` de UI y API del proxy #48, incorporar:
 
 ```caddyfile

@@ -33,11 +33,22 @@ export async function generarEventIdProgreso(
   workspaceId: string,
   datos: Record<string, any>
 ): Promise<string> {
-  const orderedKeys = Object.keys(datos).sort();
-  const canonicalObj: Record<string, any> = {};
-  for (const k of orderedKeys) canonicalObj[k] = datos[k];
-  const huella = await sha256Hex(JSON.stringify([workspaceId, canonicalObj]));
+  const huella = await sha256Hex(jsonCanonico([workspaceId, datos]));
   return `ui41-${huella}`;
+}
+
+// Compatible con json.dumps(sort_keys=True, ensure_ascii=False) del frontend
+// anterior: una lectura no se duplica al alternar entre ambas interfaces.
+function jsonCanonico(value: any): string {
+  if (Array.isArray(value)) return `[${value.map(jsonCanonico).join(', ')}]`;
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}: ${jsonCanonico(value[key])}`).join(', ')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export async function claveCarga(titulo: string, contenido: string | Uint8Array): Promise<string> {
+  return `upload-${await sha256Hex(JSON.stringify([titulo, await sha256Hex(contenido)]))}`;
 }
 
 export function validarArchivo(
@@ -189,7 +200,7 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
       esListaTextos(meta.alcance.secciones_cubiertas)
   );
   exigir(esReferencias(paquete.referencias));
-  exigir(validarCalidadAprobada(calidad, false));
+  exigir(validarCalidadAprobada(calidad, true));
   exigir(calidad.observaciones === undefined || calidad.observaciones === null || esTexto(calidad.observaciones));
   exigir(
     contenido.introduccion_contextualizada === undefined ||
@@ -282,7 +293,7 @@ export function validarGeneracionCompletada(
     !job ||
     typeof job !== 'object' ||
     job.generation_id !== expectedGenId ||
-    !ESTADOS_TRABAJO.includes(job.status)
+    job.status !== 'completed'
   ) {
     throw new APIError('INVALID_RESPONSE', 'Estado de generación inválido.', 502);
   }
@@ -411,7 +422,7 @@ export function validarGlosario(
       exigir(['definido', 'sin_definicion_suficiente'].includes(term.estado));
       exigir(
         Array.isArray(term.referencias) &&
-          term.referencias.length > 0 &&
+          (term.estado !== 'definido' || term.referencias.length > 0) &&
           term.referencias.every((r: any) => esTexto(r?.chunk_id))
       );
       if (term.estado === 'definido') {

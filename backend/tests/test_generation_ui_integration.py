@@ -17,7 +17,7 @@ from streamlit.testing.v1 import AppTest
 entorno_generacion = generaciones.entorno
 
 pytestmark = pytest.mark.integration_mock
-APP = Path(__file__).resolve().parents[2] / "frontend" / "app.py"
+APP = Path(__file__).resolve().parents[2] / "frontend_streamlit_viejo" / "app.py"
 
 
 @pytest.fixture(autouse=True)

@@ -11,6 +11,9 @@
 
 ## Mantenimiento
 
+La migración de presentación a React está descrita en
+[frontend/README.md](../frontend/README.md), con arranque y verificación aislada.
+
 - La trazabilidad va siempre en este orden: **cambio de decisión → `decisiones_proyecto.md` → este plan/issues → código**.
 - Los contratos (`contratos-api.md` + schemas) solo cambian por PR `contract-change` con revisión multi-carril.
 - La evidencia de ejecución (capturas, JSON, videos) se archiva en `docs/evidencia/` conforme avanzan `Issue 54`, `Issue 55` y `Issue 56`.

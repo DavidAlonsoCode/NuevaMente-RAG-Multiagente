@@ -189,7 +189,10 @@ python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 # 2. Instalar dependencias fijadas (desde la raíz): servicios + herramientas de desarrollo
-pip install -r backend/requirements.txt -r frontend/requirements.txt -r requirements-dev.txt
+pip install -r backend/requirements.txt -r frontend_streamlit_viejo/requirements.txt -r requirements-dev.txt
+
+# Frontend React: ver frontend/README.md para npm ci, arranque y pruebas.
+# Streamlit se conserva para las pruebas históricas de regresión.
 
 # 3. Verificar el esqueleto del backend (paquete importable)
 cd backend && python -c "import app" && cd ..

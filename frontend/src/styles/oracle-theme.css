@@ -49,6 +49,7 @@
 }
 
 html, body {
+  overflow-wrap: anywhere;
   margin: 0;
   padding: 0;
   background-color: var(--bg-canvas);
@@ -62,6 +63,8 @@ html, body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
+
+select, input, textarea { max-width: 100%; min-width: 0; }
 
 code, pre, .mono {
   font-family: 'JetBrains Mono', Menlo, Consolas, monospace;

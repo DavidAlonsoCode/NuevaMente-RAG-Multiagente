@@ -49,6 +49,12 @@ def pytest_configure(config):
             raise pytest.UsageError("La suite integration_real exige MOCK_OCI=0 y MOCK_GEMINI=0 explícitos")
     else:
         os.environ.update(MOCK_OCI="1", MOCK_GEMINI="1")
+        # Las pruebas declaran sus cuotas/proveedores. El .env personal puede
+        # habilitar integraciones y secretos que no pertenecen a ese escenario.
+        # Un test de configuración puede seguir pasando _env_file explícito.
+        from app.config import Configuracion
+
+        Configuracion.model_config["env_file"] = None
     os.environ["APP_ENV"] = "ci" if os.environ.get("APP_ENV") == "ci" else "test"
 
 

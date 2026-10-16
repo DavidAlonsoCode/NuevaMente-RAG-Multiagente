@@ -125,34 +125,38 @@ export class APIClient {
     } catch {
       clearTimeout(timer);
       throw new APIError('SERVICE_UNAVAILABLE', 'No se pudo conectar al backend.', 503);
-    } finally {
-      clearTimeout(timer);
     }
 
     const requestId = identificadorSeguro(res.headers.get('X-Request-ID'));
 
     if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+      clearTimeout(timer);
       throw new APIError('INVALID_RESPONSE', 'Redirección inesperada de la API.', 502, requestId);
     }
 
     if (res.status === 204) {
+      clearTimeout(timer);
       return null;
     }
 
     if (options?.binary && res.ok) {
-      const buffer = await res.arrayBuffer();
-      return new Uint8Array(buffer);
+      try {
+        return new Uint8Array(await res.arrayBuffer());
+      } catch {
+        throw new APIError('SERVICE_UNAVAILABLE', 'Descarga interrumpida.', 503, requestId);
+      } finally { clearTimeout(timer); }
     }
 
     let data: any = {};
     try {
       data = await res.json();
     } catch {
+      if (controller.signal.aborted) throw new APIError('SERVICE_UNAVAILABLE', 'Respuesta interrumpida.', 503, requestId);
       if (res.ok) {
         throw new APIError('INVALID_RESPONSE', 'Respuesta JSON inválida.', 502, requestId);
       }
       data = {};
-    }
+    } finally { clearTimeout(timer); }
 
     if (res.ok && (typeof data !== 'object' || data === null || Array.isArray(data))) {
       throw new APIError('INVALID_RESPONSE', 'Se esperaba un objeto JSON.', 502, requestId);

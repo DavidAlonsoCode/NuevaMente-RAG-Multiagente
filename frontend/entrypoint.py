@@ -10,16 +10,18 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import URLError
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from urllib.request import ProxyHandler, build_opener
 
 DIST_DIR = Path(__file__).resolve().parent / "dist"
+mimetypes.add_type("text/javascript", ".js")
 HOP_BY_HOP = {
     "connection",
     "keep-alive",
     "proxy-authenticate",
     "proxy-authorization",
     "te",
+    "trailer",
     "trailers",
     "transfer-encoding",
     "upgrade",
@@ -51,11 +53,33 @@ class FrontendHandler(BaseHTTPRequestHandler):
         return
 
     def _proxy_api(self) -> None:
+        route = urlsplit(self.path)
+        if route.scheme or route.netloc or not (route.path.startswith("/api/") or route.path == "/api"):
+            self.send_error(404)
+            return
         parsed = urlsplit(self.api_url)
         conn_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        length = int(self.headers.get("Content-Length", "0") or "0")
-        body = self.rfile.read(length) if length > 0 else None
+        self.connection.settimeout(65)
+        if self.headers.get("Transfer-Encoding"):
+            self.send_error(411)
+            return
+        lengths = self.headers.get_all("Content-Length", [])
+        if len(lengths) > 1 or (lengths and not lengths[0].isdigit()):
+            self.send_error(400)
+            return
+        length = int(lengths[0]) if lengths else 0
+        if length > 32 * 1024 * 1024:
+            self.send_error(413)
+            return
+        try:
+            body = self.rfile.read(length) if length > 0 else None
+        except OSError:
+            self.send_error(408)
+            return
+        if body is not None and len(body) != length:
+            self.send_error(400)
+            return
 
         out_headers = {}
         for k, v in self.headers.items():
@@ -63,19 +87,25 @@ class FrontendHandler(BaseHTTPRequestHandler):
                 out_headers[k] = v
 
         conn = conn_cls(parsed.hostname, port, timeout=65)
+        started = False
         try:
             conn.request(self.command, self.path, body=body, headers=out_headers)
             resp = conn.getresponse()
             self.send_response(resp.status)
+            started = True
             is_sse = resp.getheader("Content-Type", "").startswith("text/event-stream")
             for k, v in resp.getheaders():
-                if k.lower() not in HOP_BY_HOP and k.lower() != "content-length":
+                if k.lower() not in HOP_BY_HOP | {
+                    "content-length",
+                    "x-nuevamente-origin-key",
+                    "x-nuevamente-client-ip",
+                }:
                     self.send_header(k, v)
             if is_sse:
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("Connection", "close")
                 self.end_headers()
-                while chunk := resp.read(128):
+                while chunk := resp.read1(65536):
                     self.wfile.write(chunk)
                     self.wfile.flush()
             else:
@@ -86,6 +116,9 @@ class FrontendHandler(BaseHTTPRequestHandler):
                 if self.command != "HEAD":
                     self.wfile.write(data)
         except Exception:
+            if started:
+                self.close_connection = True
+                return
             payload = json.dumps(
                 {
                     "error": {"code": "SERVICE_UNAVAILABLE", "message": "Backend no disponible.", "details": {}},
@@ -117,9 +150,12 @@ class FrontendHandler(BaseHTTPRequestHandler):
             self._proxy_api()
             return
 
-        clean_path = urlsplit(self.path).path.lstrip("/")
+        clean_path = unquote(urlsplit(self.path).path).lstrip("/")
         candidate = (DIST_DIR / clean_path).resolve()
-        if not clean_path or not str(candidate).startswith(str(DIST_DIR.resolve())) or not candidate.is_file():
+        if not candidate.is_relative_to(DIST_DIR.resolve()):
+            self.send_error(404)
+            return
+        if not clean_path or not candidate.is_file():
             candidate = DIST_DIR / "index.html"
 
         data = candidate.read_bytes()
@@ -128,6 +164,11 @@ class FrontendHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", mime or "application/octet-stream")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        )
         self.send_header("Connection", "close")
         self.end_headers()
         if self.command != "HEAD":
@@ -158,8 +199,9 @@ def main() -> None:
 
     FrontendHandler.api_url = api_url.rstrip("/")
     port = int(os.environ.get("PORT", "8501"))
-    print(f"API disponible; iniciando servidor React NuevaMente en 0.0.0.0:{port}.", flush=True)
-    server = ThreadingHTTPServer(("0.0.0.0", port), FrontendHandler)
+    host = os.environ.get("FRONTEND_HOST", "127.0.0.1")
+    print(f"API disponible; iniciando servidor React NuevaMente en {host}:{port}.", flush=True)
+    server = ThreadingHTTPServer((host, port), FrontendHandler)
     server.serve_forever()
 
 

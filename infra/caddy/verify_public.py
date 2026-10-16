@@ -228,15 +228,23 @@ class DeadlineSocketReader(io.RawIOBase):
         return True
 
     def readinto(self, buffer):
+        remaining = None
         if self.deadline is not None:
             remaining = self.deadline - time.monotonic()
             if remaining <= 0:
                 raise WindowEnded()
             self.sock.settimeout(remaining)
+        read_started = time.perf_counter()
         try:
             count = self.raw.readinto(buffer)
         except TimeoutError:
-            if self.deadline is not None and time.monotonic() >= self.deadline:
+            # Python 3.11/Windows puede usar GetTickCount64 para monotonic
+            # (resolución de ~16 ms), mientras el socket ya agotó el presupuesto
+            # nativo. Contrastar también el tiempo de alta resolución de ESTA
+            # lectura; un timeout realmente prematuro sigue siendo un error.
+            if self.deadline is not None and (
+                time.monotonic() >= self.deadline or time.perf_counter() - read_started >= remaining
+            ):
                 raise WindowEnded() from None
             raise
         if self.deadline is not None and time.monotonic() >= self.deadline:

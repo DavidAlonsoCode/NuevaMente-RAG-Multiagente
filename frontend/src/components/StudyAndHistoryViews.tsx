@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BookMarked, Download, History, MessageSquare, RefreshCw, Search, TrendingUp } from 'lucide-react';
 import { APIClient, APIError } from '../api/client';
 import {
@@ -18,6 +18,7 @@ import {
   formatosExportables,
   validarGlosario,
   validarPaquete,
+  validarGeneracionCompletada,
   validarProgreso,
   validarRespuestaChat,
   validarTrabajoChat,
@@ -26,6 +27,7 @@ import { t } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
 import { PackageViewer } from './FormatRenderers';
 import { SourcesDrawer } from './SourcesDrawer';
+import { useOtherPendingChat, useScopedState } from '../flows/studyState';
 
 // -----------------------------------------------------------------------------
 // 1. Tutor Chat RAG
@@ -52,13 +54,16 @@ export const ChatTutorView: React.FC<{
 }> = ({
   apiClient,
   token,
+  workspaceId,
   documentId,
   perfil,
   idiomaSalida,
   idiomaUi,
   onSessionInvalid,
 }) => {
-  const [turnos, setTurnos] = useState<TurnoChatUI[]>([]);
+  const scopeKey = `chat:${workspaceId}:${JSON.stringify([documentId, perfil, idiomaSalida])}`;
+  const [turnos, setTurnos] = useScopedState<TurnoChatUI[]>(scopeKey, []);
+  const otroPendiente = useOtherPendingChat(workspaceId, scopeKey);
   const [input, setInput] = useState('');
   const [docReady, setDocReady] = useState<boolean | null>(null);
   const [docError, setDocError] = useState<APIError | null>(null);
@@ -119,10 +124,19 @@ export const ChatTutorView: React.FC<{
       if (err instanceof APIError) {
         if (err.statusCode === 401) onSessionInvalid();
         setTurnos((prev) =>
-          prev.map((x) => (x.clave === turno.clave ? { ...x, error: err as APIError } : x))
+          prev.map((x) => (x.clave === turno.clave ? { ...x, error: err as APIError, status: [401, 404].includes(err.statusCode) ? 'unavailable' : x.status, respuesta: null } : x))
         );
       }
     }
+  };
+
+  const recibirTurno = (turno: TurnoChatUI, datos: any): TurnoChatUI => {
+    validarTrabajoChat(datos, turno.jobId);
+    const respuesta = datos.status === 'completed' ? validarRespuestaChat(datos.result, {
+      document_id: documentId, pregunta: turno.pregunta,
+      perfil_destinatario: perfil, idioma_salida: idiomaSalida,
+    }) : null;
+    return { ...turno, jobId: datos.job_id, status: datos.status, respuesta, error: null };
   };
 
   useEffect(() => {
@@ -136,7 +150,7 @@ export const ChatTutorView: React.FC<{
   const enviarPregunta = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = input.trim();
-    if (!q || pendiente || q.length > 2000) return;
+    if (!q || pendiente || otroPendiente || docReady !== true || q.length > 2000) return;
 
     const clave = `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const nuevo: TurnoChatUI = {
@@ -162,15 +176,11 @@ export const ChatTutorView: React.FC<{
         },
         clave
       );
+      const confirmado = recibirTurno(nuevo, recibo);
       setTurnos((prev) =>
         prev.map((x) =>
           x.clave === clave
-            ? {
-                ...x,
-                jobId: recibo.job_id,
-                status: recibo.status,
-                respuesta: recibo.status === 'completed' ? recibo.result : null,
-              }
+            ? confirmado
             : x
         )
       );
@@ -178,7 +188,7 @@ export const ChatTutorView: React.FC<{
       if (err instanceof APIError) {
         if (err.statusCode === 401) onSessionInvalid();
         setTurnos((prev) =>
-          prev.map((x) => (x.clave === clave ? { ...x, error: err } : x))
+          prev.map((x) => (x.clave === clave ? { ...x, error: err, status: [401, 404].includes(err.statusCode) ? 'unavailable' : x.status, respuesta: null } : x))
         );
       }
     }
@@ -196,23 +206,18 @@ export const ChatTutorView: React.FC<{
         },
         turno.clave
       );
+      const confirmado = recibirTurno(turno, recibo);
       setTurnos((prev) =>
         prev.map((x) =>
           x.clave === turno.clave
-            ? {
-                ...x,
-                jobId: recibo.job_id,
-                status: recibo.status,
-                respuesta: recibo.status === 'completed' ? recibo.result : null,
-                error: null,
-              }
+            ? confirmado
             : x
         )
       );
     } catch (err) {
       if (err instanceof APIError) {
         setTurnos((prev) =>
-          prev.map((x) => (x.clave === turno.clave ? { ...x, error: err } : x))
+          prev.map((x) => (x.clave === turno.clave ? { ...x, error: err, status: [401, 404].includes(err.statusCode) ? 'unavailable' : x.status, respuesta: null } : x))
         );
       }
     }
@@ -222,12 +227,12 @@ export const ChatTutorView: React.FC<{
     if (!turno.jobId) return;
     try {
       const datos = await apiClient.cancelJob(token, turno.jobId);
+      const confirmado = recibirTurno(turno, datos);
       setTurnos((prev) =>
         prev.map((x) =>
           x.clave === turno.clave
             ? {
-                ...x,
-                status: datos.status,
+                ...confirmado,
                 cancelacionSolicitada: ['queued', 'running'].includes(datos.status),
               }
             : x
@@ -236,12 +241,13 @@ export const ChatTutorView: React.FC<{
     } catch (err) {
       if (err instanceof APIError) {
         setTurnos((prev) =>
-          prev.map((x) => (x.clave === turno.clave ? { ...x, error: err } : x))
+          prev.map((x) => (x.clave === turno.clave ? { ...x, error: err, status: [401, 404].includes(err.statusCode) ? 'unavailable' : x.status, respuesta: null } : x))
         );
       }
     }
   };
 
+  if (otroPendiente) return <div className="nm-alert nm-alert-info">{t('chat.otro_pendiente', idiomaUi)}</div>;
   if (docError) return <ErrorBanner error={docError} idioma={idiomaUi} />;
   if (docReady === false) {
     return <div className="nm-alert nm-alert-info">{t('chat.documento_no_listo', idiomaUi)}</div>;
@@ -401,11 +407,12 @@ export const GlossaryView: React.FC<{
   idiomaUi: OutputLanguage;
   onSessionInvalid: () => void;
 }> = ({ apiClient, token, documentId, perfil, idiomaSalida, idiomaUi, onSessionInvalid }) => {
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [cancelReq, setCancelReq] = useState(false);
-  const [salida, setSalida] = useState<any | null>(null);
+  const scope = `glossary:${JSON.stringify([token, documentId, perfil, idiomaSalida])}`;
+  const [jobId, setJobId] = useScopedState<string | null>(scope + ':job', null);
+  const [status, setStatus] = useScopedState<string | null>(scope + ':status', null);
+  const [pendingKey, setPendingKey] = useScopedState<string | null>(scope + ':key', null);
+  const [cancelReq, setCancelReq] = useScopedState(scope + ':cancel', false);
+  const [salida, setSalida] = useScopedState<any | null>(scope + ':result', null);
   const [consulta, setConsulta] = useState('');
   const [error, setError] = useState<APIError | null>(null);
 
@@ -416,6 +423,7 @@ export const GlossaryView: React.FC<{
       let nextStatus = currentStatus;
       if (!nextStatus || !terminales.has(nextStatus)) {
         const recibo = await apiClient.getJob(token, currentJobId);
+        validarTrabajoChat(recibo, currentJobId);
         nextStatus = recibo.status;
         setStatus(nextStatus);
       }
@@ -442,13 +450,7 @@ export const GlossaryView: React.FC<{
     }
   };
 
-  useEffect(() => {
-    setJobId(null);
-    setStatus(null);
-    setSalida(null);
-    setError(null);
-    setPendingKey(null);
-  }, [documentId, perfil, idiomaSalida]);
+  useEffect(() => { setError(null); setConsulta(''); }, [scope]);
 
   useEffect(() => {
     if (!jobId || !status || terminales.has(status)) return;
@@ -472,6 +474,8 @@ export const GlossaryView: React.FC<{
         },
         key
       );
+      validarTrabajoChat(recibo);
+      if (recibo.glossary_id !== recibo.job_id) throw new APIError('INVALID_RESPONSE', 'Admisión de glosario inválida.', 502);
       setJobId(recibo.job_id);
       setStatus(recibo.status);
       setPendingKey(null);
@@ -804,6 +808,7 @@ export const HistoryFullView: React.FC<{
   const [comparedPackages, setComparedPackages] = useState<PedagogicalStudentOutput[] | null>(null);
   const [compareWarning, setCompareWarning] = useState<string | null>(null);
   const [error, setError] = useState<APIError | null>(null);
+  const pageRequest = useRef(0);
 
   const rangoInvalido = Boolean(desde && hasta && desde > hasta);
 
@@ -825,6 +830,7 @@ export const HistoryFullView: React.FC<{
   }, [apiClient, token]);
 
   const cargarPagina = async (targetCursor: string | null) => {
+    const request = ++pageRequest.current;
     if (rangoInvalido) return;
     setError(null);
     const params: Record<string, any> = { limit: 20 };
@@ -838,9 +844,11 @@ export const HistoryFullView: React.FC<{
 
     try {
       const pagina = await apiClient.getGenerations(token, params);
+      if (request !== pageRequest.current) return;
       setItems(pagina.items || []);
       setNextCursor(pagina.next_cursor || null);
     } catch (err) {
+      if (request !== pageRequest.current) return;
       if (err instanceof APIError) {
         if (err.statusCode === 401) onSessionInvalid();
         setError(err);
@@ -852,9 +860,12 @@ export const HistoryFullView: React.FC<{
     setCursor(null);
     setAnteriores([]);
     cargarPagina(null);
-  }, [filtroDoc, filtroPerfil, filtroFormato, filtroIdioma, desde, hasta]);
+    return () => { pageRequest.current++; };
+  }, [filtroDoc, filtroPerfil, filtroFormato, filtroIdioma, desde, hasta, apiClient, token]);
 
   useEffect(() => {
+    let active = true;
+    setDetalleJob(null);
     if (!detalleId) {
       setDetalleJob(null);
       return;
@@ -862,18 +873,23 @@ export const HistoryFullView: React.FC<{
     apiClient
       .getGeneration(token, detalleId)
       .then((job) => {
+        if (!active) return;
+        if (job.status === 'completed') validarGeneracionCompletada(job, detalleId);
         setDetalleJob(job);
         if (job?.contenido) {
           setExportFmt('json');
         }
       })
       .catch((err) => {
+        if (!active) return;
         setDetalleJob(null);
         if (err instanceof APIError) setError(err);
       });
+    return () => { active = false; };
   }, [detalleId, apiClient, token]);
 
   useEffect(() => {
+    let active = true;
     setCompareWarning(null);
     setComparedPackages(null);
     if (!compareA || !compareB) return;
@@ -886,10 +902,13 @@ export const HistoryFullView: React.FC<{
       apiClient.getGeneration(token, compareB),
     ])
       .then(([j1, j2]) => {
+        if (!active) return;
         if (j1.status !== 'completed' || j2.status !== 'completed' || !j1.contenido || !j2.contenido) {
           setCompareWarning(t('historial.comparacion_incompatible', idiomaUi));
           return;
         }
+        validarGeneracionCompletada(j1, compareA);
+        validarGeneracionCompletada(j2, compareB);
         const f1 = j1.contenido.documento_fuente;
         const f2 = j2.contenido.documento_fuente;
         if (
@@ -903,9 +922,10 @@ export const HistoryFullView: React.FC<{
         setComparedPackages([j1.contenido, j2.contenido]);
       })
       .catch((err) => {
-        if (err instanceof APIError) setError(err);
+        if (active && err instanceof APIError) setError(err);
       });
-  }, [compareA, compareB, idiomaUi]);
+    return () => { active = false; };
+  }, [compareA, compareB, idiomaUi, apiClient, token]);
 
   const descargarExportacion = async (generationId: string, fmt: ExportFormat) => {
     try {
@@ -1048,8 +1068,8 @@ export const HistoryFullView: React.FC<{
             <div style={{ fontWeight: 600, marginBottom: '0.65rem' }}>{t('historial.filtros', idiomaUi)}</div>
             <div className="nm-grid-4">
               <div>
-                <label className="nm-label">{t('historial.documento', idiomaUi)}</label>
-                <select className="nm-select" value={filtroDoc} onChange={(e) => setFiltroDoc(e.target.value)}>
+                <label className="nm-label" htmlFor="study-field-1">{t('historial.documento', idiomaUi)}</label>
+                <select id="study-field-1" className="nm-select" value={filtroDoc} onChange={(e) => setFiltroDoc(e.target.value)}>
                   <option value="">{t('historial.todos', idiomaUi)}</option>
                   {Object.entries(docsMap).map(([id, title]) => (
                     <option key={id} value={id}>{title}</option>
@@ -1057,8 +1077,8 @@ export const HistoryFullView: React.FC<{
                 </select>
               </div>
               <div>
-                <label className="nm-label">{t('historial.perfil', idiomaUi)}</label>
-                <select className="nm-select" value={filtroPerfil} onChange={(e) => setFiltroPerfil(e.target.value)}>
+                <label className="nm-label" htmlFor="study-field-2">{t('historial.perfil', idiomaUi)}</label>
+                <select id="study-field-2" className="nm-select" value={filtroPerfil} onChange={(e) => setFiltroPerfil(e.target.value)}>
                   <option value="">{t('historial.todos', idiomaUi)}</option>
                   {PERFILES.map((p) => (
                     <option key={p} value={p}>{t(`perfil.${p}`, idiomaUi)}</option>
@@ -1066,8 +1086,8 @@ export const HistoryFullView: React.FC<{
                 </select>
               </div>
               <div>
-                <label className="nm-label">{t('historial.formato', idiomaUi)}</label>
-                <select className="nm-select" value={filtroFormato} onChange={(e) => setFiltroFormato(e.target.value)}>
+                <label className="nm-label" htmlFor="study-field-3">{t('historial.formato', idiomaUi)}</label>
+                <select id="study-field-3" className="nm-select" value={filtroFormato} onChange={(e) => setFiltroFormato(e.target.value)}>
                   <option value="">{t('historial.todos', idiomaUi)}</option>
                   {FORMATOS.map((f) => (
                     <option key={f} value={f}>{t(`formato.${f}`, idiomaUi)}</option>
@@ -1075,8 +1095,8 @@ export const HistoryFullView: React.FC<{
                 </select>
               </div>
               <div>
-                <label className="nm-label">{t('historial.idioma', idiomaUi)}</label>
-                <select className="nm-select" value={filtroIdioma} onChange={(e) => setFiltroIdioma(e.target.value)}>
+                <label className="nm-label" htmlFor="study-field-4">{t('historial.idioma', idiomaUi)}</label>
+                <select id="study-field-4" className="nm-select" value={filtroIdioma} onChange={(e) => setFiltroIdioma(e.target.value)}>
                   <option value="">{t('historial.todos', idiomaUi)}</option>
                   {IDIOMAS_SALIDA.map((l) => (
                     <option key={l} value={l}>{t(`idioma.${l}`, idiomaUi)}</option>
@@ -1087,12 +1107,12 @@ export const HistoryFullView: React.FC<{
 
             <div className="nm-grid-2" style={{ marginTop: '0.65rem' }}>
               <div>
-                <label className="nm-label">{t('historial.desde', idiomaUi)}</label>
-                <input type="date" className="nm-input" value={desde} onChange={(e) => setDesde(e.target.value)} />
+                <label className="nm-label" htmlFor="study-field-5">{t('historial.desde', idiomaUi)}</label>
+                <input id="study-field-5" type="date" className="nm-input" value={desde} onChange={(e) => setDesde(e.target.value)} />
               </div>
               <div>
-                <label className="nm-label">{t('historial.hasta', idiomaUi)}</label>
-                <input type="date" className="nm-input" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+                <label className="nm-label" htmlFor="study-field-6">{t('historial.hasta', idiomaUi)}</label>
+                <input id="study-field-6" type="date" className="nm-input" value={hasta} onChange={(e) => setHasta(e.target.value)} />
               </div>
             </div>
             {rangoInvalido && (
@@ -1169,8 +1189,8 @@ export const HistoryFullView: React.FC<{
               <h3 style={{ margin: '0 0 0.75rem 0' }}>{t('historial.comparar', idiomaUi)}</h3>
               <div className="nm-grid-2" style={{ marginBottom: '1rem' }}>
                 <div>
-                  <label className="nm-label">{t('historial.adaptacion_0', idiomaUi)}</label>
-                  <select className="nm-select" value={compareA} onChange={(e) => setCompareA(e.target.value)}>
+                  <label className="nm-label" htmlFor="study-field-7">{t('historial.adaptacion_0', idiomaUi)}</label>
+                  <select id="study-field-7" className="nm-select" value={compareA} onChange={(e) => setCompareA(e.target.value)}>
                     <option value="">{t('historial.elegir', idiomaUi)}</option>
                     {completados.map((c) => (
                       <option key={c.generation_id} value={c.generation_id}>{etiquetaFila(c)}</option>
@@ -1178,8 +1198,8 @@ export const HistoryFullView: React.FC<{
                   </select>
                 </div>
                 <div>
-                  <label className="nm-label">{t('historial.adaptacion_1', idiomaUi)}</label>
-                  <select className="nm-select" value={compareB} onChange={(e) => setCompareB(e.target.value)}>
+                  <label className="nm-label" htmlFor="study-field-8">{t('historial.adaptacion_1', idiomaUi)}</label>
+                  <select id="study-field-8" className="nm-select" value={compareB} onChange={(e) => setCompareB(e.target.value)}>
                     <option value="">{t('historial.elegir', idiomaUi)}</option>
                     {completados.map((c) => (
                       <option key={c.generation_id} value={c.generation_id}>{etiquetaFila(c)}</option>

@@ -1,0 +1,485 @@
+{
+  "flashcards": {
+    "schema_version": "1.0",
+    "generation_id": "gen_01HX",
+    "status": "aprobado",
+    "metadatos": {
+      "perfil_aplicado": "principiante",
+      "formato_generado": "flashcards",
+      "nicho_sector": "general",
+      "nivel_detalle": "didactico",
+      "idioma_origen": "es",
+      "idioma_salida": "es",
+      "conceptos_clave": [
+        "VCN"
+      ],
+      "prerrequisitos": [],
+      "objetivos_aprendizaje": [
+        "Explicar qué es una VCN y para qué sirve"
+      ],
+      "tiempo_estimado_estudio_minutos": 5,
+      "alcance": {
+        "tipo": "documento_completo",
+        "seccion_id": null,
+        "secciones_cubiertas": [
+          "Conceptos"
+        ]
+      }
+    },
+    "documento_fuente": {
+      "document_id": "doc_01HX",
+      "titulo": "Introducción a la Arquitectura de Redes VCN en OCI",
+      "hash": "sha256:abc",
+      "version": "v1",
+      "procedencia": null
+    },
+    "contenido_adaptado": {
+      "tipo": "flashcards",
+      "titulo": "Dominando Redes en la Nube (VCN) desde Cero",
+      "introduccion_contextualizada": "Contexto inicial adaptado al perfil.",
+      "items": [
+        {
+          "id": "fc_001",
+          "frente": "¿Qué es una VCN en Oracle Cloud?",
+          "dorso": "Una red virtual privada que aísla recursos en OCI.",
+          "pista_didactica": "Piensa en 'barrio privado dentro de la ciudad'.",
+          "etiquetas": [
+            "redes"
+          ],
+          "referencias": [
+            {
+              "chunk_id": "chk_001",
+              "pagina": 2,
+              "seccion": "Conceptos"
+            }
+          ]
+        }
+      ]
+    },
+    "evaluacion_calidad": {
+      "anclaje_fuente_score": 1.0,
+      "cantidad_afirmaciones": 12,
+      "cantidad_respaldadas": 12,
+      "estado_evaluacion": "aprobada",
+      "claridad_pedagogica": "alta",
+      "adecuacion_perfil": "alta",
+      "cobertura_objetivos": "completa",
+      "coherencia_didactica": "alta",
+      "verificacion_visual": "no_aplica",
+      "observaciones": "Sin observaciones",
+      "razones_bloqueo": null
+    },
+    "referencias": [
+      {
+        "chunk_id": "chk_001",
+        "pagina": 2,
+        "seccion": "Conceptos"
+      }
+    ],
+    "created_at": "2026-10-01T12:00:00Z",
+    "trazabilidad": {
+      "modelo_generacion": "gemini-2.5-flash",
+      "modelo_verificacion": "gemini-2.5-flash",
+      "modelo_embeddings": "gemini-embedding-2",
+      "prompt_version": "1.0",
+      "parser_version": "1.0",
+      "retrieval": {
+        "k": 5,
+        "fetch_k": 15,
+        "lambda_mult": 0.7
+      }
+    },
+    "almacenamiento_oci": {
+      "bucket": "nuevamente-contenidos-educativos",
+      "objeto_id": "outputs/ws/gen_01HX/content.json"
+    }
+  },
+  "quiz": {
+    "schema_version": "1.0",
+    "generation_id": "gen_01HX",
+    "status": "aprobado",
+    "metadatos": {
+      "perfil_aplicado": "principiante",
+      "formato_generado": "quiz",
+      "nicho_sector": "general",
+      "nivel_detalle": "didactico",
+      "idioma_origen": "es",
+      "idioma_salida": "es",
+      "conceptos_clave": [
+        "VCN"
+      ],
+      "prerrequisitos": [],
+      "objetivos_aprendizaje": [
+        "Explicar qué es una VCN y para qué sirve"
+      ],
+      "tiempo_estimado_estudio_minutos": 5,
+      "alcance": {
+        "tipo": "documento_completo",
+        "seccion_id": null,
+        "secciones_cubiertas": [
+          "Conceptos"
+        ]
+      }
+    },
+    "documento_fuente": {
+      "document_id": "doc_01HX",
+      "titulo": "Introducción a la Arquitectura de Redes VCN en OCI",
+      "hash": "sha256:abc",
+      "version": "v1",
+      "procedencia": null
+    },
+    "contenido_adaptado": {
+      "tipo": "quiz",
+      "titulo": "Quiz: fundamentos de VCN",
+      "introduccion_contextualizada": null,
+      "preguntas": [
+        {
+          "id": "q_001",
+          "enunciado": "¿Qué delimita una VCN dentro de OCI?",
+          "opciones": [
+            {
+              "option_id": "A",
+              "texto": "Un rango CIDR elegido al crearla"
+            },
+            {
+              "option_id": "B",
+              "texto": "El nombre de la región"
+            },
+            {
+              "option_id": "C",
+              "texto": "La lista de usuarios"
+            },
+            {
+              "option_id": "D",
+              "texto": "El tamaño del bucket"
+            }
+          ]
+        }
+      ]
+    },
+    "evaluacion_calidad": {
+      "anclaje_fuente_score": 1.0,
+      "cantidad_afirmaciones": 12,
+      "cantidad_respaldadas": 12,
+      "estado_evaluacion": "aprobada",
+      "claridad_pedagogica": "alta",
+      "adecuacion_perfil": "alta",
+      "cobertura_objetivos": "completa",
+      "coherencia_didactica": "alta",
+      "verificacion_visual": "no_aplica",
+      "observaciones": "Sin observaciones",
+      "razones_bloqueo": null
+    },
+    "referencias": [
+      {
+        "chunk_id": "chk_001",
+        "pagina": 2,
+        "seccion": "Conceptos"
+      }
+    ],
+    "created_at": "2026-10-01T12:00:00Z",
+    "trazabilidad": {
+      "modelo_generacion": "gemini-2.5-flash",
+      "modelo_verificacion": "gemini-2.5-flash",
+      "modelo_embeddings": "gemini-embedding-2",
+      "prompt_version": "1.0",
+      "parser_version": "1.0",
+      "retrieval": {
+        "k": 5,
+        "fetch_k": 15,
+        "lambda_mult": 0.7
+      }
+    },
+    "almacenamiento_oci": {
+      "bucket": "nuevamente-contenidos-educativos",
+      "objeto_id": "outputs/ws/gen_01HX/content.json"
+    }
+  },
+  "tutorial": {
+    "schema_version": "1.0",
+    "generation_id": "gen_01HX",
+    "status": "aprobado",
+    "metadatos": {
+      "perfil_aplicado": "principiante",
+      "formato_generado": "tutorial",
+      "nicho_sector": "general",
+      "nivel_detalle": "didactico",
+      "idioma_origen": "es",
+      "idioma_salida": "es",
+      "conceptos_clave": [
+        "VCN"
+      ],
+      "prerrequisitos": [],
+      "objetivos_aprendizaje": [
+        "Explicar qué es una VCN y para qué sirve"
+      ],
+      "tiempo_estimado_estudio_minutos": 5,
+      "alcance": {
+        "tipo": "documento_completo",
+        "seccion_id": null,
+        "secciones_cubiertas": [
+          "Conceptos"
+        ]
+      }
+    },
+    "documento_fuente": {
+      "document_id": "doc_01HX",
+      "titulo": "Introducción a la Arquitectura de Redes VCN en OCI",
+      "hash": "sha256:abc",
+      "version": "v1",
+      "procedencia": null
+    },
+    "contenido_adaptado": {
+      "tipo": "tutorial",
+      "titulo": "Tu primera VCN en 3 pasos",
+      "audiencia": "Principiantes en cloud",
+      "prerrequisitos": [
+        "Cuenta de OCI"
+      ],
+      "pasos": [
+        {
+          "id": "paso_1",
+          "instruccion": "Abre el menú de redes y elige 'Virtual Cloud Networks'.",
+          "resultado_esperado": "Ves la lista de VCNs del compartment.",
+          "verificacion": "El botón 'Create VCN' está habilitado.",
+          "codigo": null,
+          "referencias": [
+            {
+              "chunk_id": "chk_001",
+              "pagina": 2,
+              "seccion": "Conceptos"
+            }
+          ]
+        }
+      ]
+    },
+    "evaluacion_calidad": {
+      "anclaje_fuente_score": 1.0,
+      "cantidad_afirmaciones": 12,
+      "cantidad_respaldadas": 12,
+      "estado_evaluacion": "aprobada",
+      "claridad_pedagogica": "alta",
+      "adecuacion_perfil": "alta",
+      "cobertura_objetivos": "completa",
+      "coherencia_didactica": "alta",
+      "verificacion_visual": "no_aplica",
+      "observaciones": "Sin observaciones",
+      "razones_bloqueo": null
+    },
+    "referencias": [
+      {
+        "chunk_id": "chk_001",
+        "pagina": 2,
+        "seccion": "Conceptos"
+      }
+    ],
+    "created_at": "2026-10-01T12:00:00Z",
+    "trazabilidad": {
+      "modelo_generacion": "gemini-2.5-flash",
+      "modelo_verificacion": "gemini-2.5-flash",
+      "modelo_embeddings": "gemini-embedding-2",
+      "prompt_version": "1.0",
+      "parser_version": "1.0",
+      "retrieval": {
+        "k": 5,
+        "fetch_k": 15,
+        "lambda_mult": 0.7
+      }
+    },
+    "almacenamiento_oci": {
+      "bucket": "nuevamente-contenidos-educativos",
+      "objeto_id": "outputs/ws/gen_01HX/content.json"
+    }
+  },
+  "resumen_ejecutivo": {
+    "schema_version": "1.0",
+    "generation_id": "gen_01HX",
+    "status": "aprobado",
+    "metadatos": {
+      "perfil_aplicado": "principiante",
+      "formato_generado": "resumen_ejecutivo",
+      "nicho_sector": "general",
+      "nivel_detalle": "didactico",
+      "idioma_origen": "es",
+      "idioma_salida": "es",
+      "conceptos_clave": [
+        "VCN"
+      ],
+      "prerrequisitos": [],
+      "objetivos_aprendizaje": [
+        "Explicar qué es una VCN y para qué sirve"
+      ],
+      "tiempo_estimado_estudio_minutos": 5,
+      "alcance": {
+        "tipo": "documento_completo",
+        "seccion_id": null,
+        "secciones_cubiertas": [
+          "Conceptos"
+        ]
+      }
+    },
+    "documento_fuente": {
+      "document_id": "doc_01HX",
+      "titulo": "Introducción a la Arquitectura de Redes VCN en OCI",
+      "hash": "sha256:abc",
+      "version": "v1",
+      "procedencia": null
+    },
+    "contenido_adaptado": {
+      "tipo": "resumen_ejecutivo",
+      "titulo": "VCN para decisiones de negocio",
+      "puntos_clave": [
+        "Una VCN aísla y organiza los recursos de red."
+      ],
+      "impacto_cualitativo": "Reduce riesgo de exposición sin costo adicional en Always Free.",
+      "implicaciones": [
+        "Toda arquitectura nueva debe nacer dentro de una VCN."
+      ],
+      "acciones": [
+        "Definir convención de rangos CIDR por ambiente."
+      ],
+      "referencias": [
+        {
+          "chunk_id": "chk_001",
+          "pagina": 2,
+          "seccion": "Conceptos"
+        }
+      ]
+    },
+    "evaluacion_calidad": {
+      "anclaje_fuente_score": 1.0,
+      "cantidad_afirmaciones": 12,
+      "cantidad_respaldadas": 12,
+      "estado_evaluacion": "aprobada",
+      "claridad_pedagogica": "alta",
+      "adecuacion_perfil": "alta",
+      "cobertura_objetivos": "completa",
+      "coherencia_didactica": "alta",
+      "verificacion_visual": "no_aplica",
+      "observaciones": "Sin observaciones",
+      "razones_bloqueo": null
+    },
+    "referencias": [
+      {
+        "chunk_id": "chk_001",
+        "pagina": 2,
+        "seccion": "Conceptos"
+      }
+    ],
+    "created_at": "2026-10-01T12:00:00Z",
+    "trazabilidad": {
+      "modelo_generacion": "gemini-2.5-flash",
+      "modelo_verificacion": "gemini-2.5-flash",
+      "modelo_embeddings": "gemini-embedding-2",
+      "prompt_version": "1.0",
+      "parser_version": "1.0",
+      "retrieval": {
+        "k": 5,
+        "fetch_k": 15,
+        "lambda_mult": 0.7
+      }
+    },
+    "almacenamiento_oci": {
+      "bucket": "nuevamente-contenidos-educativos",
+      "objeto_id": "outputs/ws/gen_01HX/content.json"
+    }
+  },
+  "guion_clase": {
+    "schema_version": "1.0",
+    "generation_id": "gen_01HX",
+    "status": "aprobado",
+    "metadatos": {
+      "perfil_aplicado": "principiante",
+      "formato_generado": "guion_clase",
+      "nicho_sector": "general",
+      "nivel_detalle": "didactico",
+      "idioma_origen": "es",
+      "idioma_salida": "es",
+      "conceptos_clave": [
+        "VCN"
+      ],
+      "prerrequisitos": [],
+      "objetivos_aprendizaje": [
+        "Explicar qué es una VCN y para qué sirve"
+      ],
+      "tiempo_estimado_estudio_minutos": 5,
+      "alcance": {
+        "tipo": "documento_completo",
+        "seccion_id": null,
+        "secciones_cubiertas": [
+          "Conceptos"
+        ]
+      }
+    },
+    "documento_fuente": {
+      "document_id": "doc_01HX",
+      "titulo": "Introducción a la Arquitectura de Redes VCN en OCI",
+      "hash": "sha256:abc",
+      "version": "v1",
+      "procedencia": null
+    },
+    "contenido_adaptado": {
+      "tipo": "guion_clase",
+      "titulo": "Clase introductoria: redes en la nube",
+      "objetivos": [
+        "Explicar el concepto de red virtual privada."
+      ],
+      "escenas": [
+        {
+          "id": "esc_1",
+          "duracion_min": 2.5,
+          "narracion": "Comencemos con una analogía: la ciudad y sus barrios...",
+          "puntos_diapositiva": [
+            "VCN = barrio privado",
+            "Aislamiento por diseño"
+          ],
+          "pregunta_interactiva": "¿Qué separaría un barrio de otro?",
+          "referencias": [
+            {
+              "chunk_id": "chk_001",
+              "pagina": 2,
+              "seccion": "Conceptos"
+            }
+          ]
+        }
+      ]
+    },
+    "evaluacion_calidad": {
+      "anclaje_fuente_score": 1.0,
+      "cantidad_afirmaciones": 12,
+      "cantidad_respaldadas": 12,
+      "estado_evaluacion": "aprobada",
+      "claridad_pedagogica": "alta",
+      "adecuacion_perfil": "alta",
+      "cobertura_objetivos": "completa",
+      "coherencia_didactica": "alta",
+      "verificacion_visual": "no_aplica",
+      "observaciones": "Sin observaciones",
+      "razones_bloqueo": null
+    },
+    "referencias": [
+      {
+        "chunk_id": "chk_001",
+        "pagina": 2,
+        "seccion": "Conceptos"
+      }
+    ],
+    "created_at": "2026-10-01T12:00:00Z",
+    "trazabilidad": {
+      "modelo_generacion": "gemini-2.5-flash",
+      "modelo_verificacion": "gemini-2.5-flash",
+      "modelo_embeddings": "gemini-embedding-2",
+      "prompt_version": "1.0",
+      "parser_version": "1.0",
+      "retrieval": {
+        "k": 5,
+        "fetch_k": 15,
+        "lambda_mult": 0.7
+      }
+    },
+    "almacenamiento_oci": {
+      "bucket": "nuevamente-contenidos-educativos",
+      "objeto_id": "outputs/ws/gen_01HX/content.json"
+    }
+  }
+}

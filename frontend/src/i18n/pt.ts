@@ -390,5 +390,6 @@ export const CATALOGO_PT: Record<string, string> = {
   "demo.tiempo": "Preparação: {segundos} s",
   "demo.abrir": "Explorar exemplo",
   "demo.practica": "A prática destes exemplos não modifica seu progresso pessoal.",
-  "demo.diagrama": "Como o sistema interpretou o diagrama"
+  "demo.diagrama": "Como o sistema interpretou o diagrama",
+  "ui.tagline": "Aprendizagem técnica com IA"
 };

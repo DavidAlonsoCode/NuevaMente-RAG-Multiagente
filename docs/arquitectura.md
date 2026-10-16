@@ -49,7 +49,7 @@ graph TB
     subgraph Host["VM OCI (Ubuntu 24.04 · ARM64)"]
         Caddy["Caddy (host)<br/>proxy HTTPS · SSE sin buffering"]
         subgraph Compose["docker compose"]
-            UI["frontend · Streamlit<br/>UI ES/EN/PT · tema Linear"]
+            UI["frontend · React<br/>UI ES/EN/PT · tema rojo/coral"]
             API["backend · FastAPI<br/>validación · sesión · trabajos · RAG · agentes"]
             VOL[("volumen backend_data<br/>ChromaDB · SQLite · temporales")]
         end
@@ -58,11 +58,17 @@ graph TB
 
     User2["👤 Usuario"] -- "HTTPS 443" --> Caddy
     Caddy -- "/api/*" --> API
-    Caddy -- "UI + websocket" --> UI
-    UI -- "HTTP interno · Bearer token" --> API
+    Caddy -- "UI estática" --> UI
     API -- "originales · paquetes · manifiestos" --> Store
     API -- "índice + registro operativo" --> VOL
 ```
+
+El diagrama representa el despliegue objetivo; no acredita una VM disponible.
+La UI React está en [frontend/src/App.tsx](../frontend/src/App.tsx), el cliente
+HTTP en [frontend/src/api/client.ts](../frontend/src/api/client.ts) y las rutas
+públicas en [infra/caddy/Caddyfile](../infra/caddy/Caddyfile). En desarrollo,
+[Vite](../frontend/vite.config.ts) y el [servidor del build](../frontend/entrypoint.py)
+redirigen `/api` al backend configurado.
 
 Reglas estructurales (decisiones §3.1, §14):
 

@@ -613,7 +613,7 @@ export const QualityPanel: React.FC<{
   );
 };
 
-export const PackageViewer: React.FC<{
+const PackageViewerView: React.FC<{
   paquete: PedagogicalStudentOutput;
   idioma: OutputLanguage;
   apiClient: APIClient;
@@ -811,3 +811,6 @@ export const PackageViewer: React.FC<{
     </div>
   );
 };
+
+export const PackageViewer: React.FC<React.ComponentProps<typeof PackageViewerView>> = (props) =>
+  <PackageViewerView key={`${props.token}:${props.paquete.generation_id}`} {...props} />;
