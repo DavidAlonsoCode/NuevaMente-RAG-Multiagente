@@ -4,6 +4,12 @@
 > **Fuente**: `decisiones_proyecto.md` §3.3, §7, §16, §17. La referencia navegable por HTTP será el OpenAPI en `/docs` (issue `Issue 59`).
 > **Uso**: backend implementa contra este documento; frontend construye contra este documento. Ambos lo tratan como la interfaz compartida.
 
+Referencia del runtime y recorridos curl: [api_reference.md](api_reference.md),
+con [snapshot OpenAPI](openapi.json). Esa documentación no aprueba las precisiones
+contractuales pendientes señaladas en este documento. La aceptación pública se sigue
+en [#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133)
+y no bloquea los criterios locales de #59.
+
 ---
 
 ## Convenciones generales

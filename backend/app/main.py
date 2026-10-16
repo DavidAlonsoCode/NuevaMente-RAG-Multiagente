@@ -48,6 +48,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
+from app.api.openapi_metadata import parametros, respuestas
 from app.api.routes import (
     chat,
     demo_documents,
@@ -463,7 +464,7 @@ def crear_app(
 
     # ------------------------------ Rutas -----------------------------------
 
-    @app.get("/api/health")
+    @app.get("/api/health", responses=respuestas(), openapi_extra=parametros())
     async def health() -> dict:
         """Disponibilidad básica (§7.1): sin secretos, sin llamadas LLM.
 

@@ -121,6 +121,14 @@ jobs:
       - name: Verificar versiones fijadas en requirements
         run: python .github/scripts/check_pinned_requirements.py backend/requirements.txt frontend/requirements.txt requirements-dev.txt
 
+      # Etapa 1 de #59: comprobar, nunca regenerar automáticamente el snapshot.
+      # Validez estructural no acredita fidelidad contractual ni aceptación pública.
+      - name: Validar OpenAPI y referencias locales sin red
+        run: python .github/scripts/export_openapi.py --validate
+
+      - name: Detectar drift del snapshot OpenAPI
+        run: python .github/scripts/export_openapi.py --check
+
       # Paso 7: linter sobre todo el repo. La configuración vive en ruff.toml
       # (120 columnas, py311, excluye documentación). `run:` ejecuta un
       # comando de shell en el runner; si devuelve != 0, el paso y el job

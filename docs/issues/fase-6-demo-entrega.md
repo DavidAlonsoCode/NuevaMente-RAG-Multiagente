@@ -161,12 +161,12 @@ la integración activa o acreditan un despliegue inexistente.
 - Ejemplos de solicitud/respuesta del enunciado verificados contra la implementación real.
 
 **Criterios de aceptación**:
-- [ ] El OpenAPI exportado valida en un viewer estándar.
-- [ ] Los ejemplos `curl` del documento funcionan tal cual contra una instancia local de la API integrada, indicando URL base configurable y los requisitos de cada ejemplo.
+- [x] El OpenAPI exportado valida en un viewer estándar.
+- [x] Los ejemplos `curl` del documento funcionan tal cual contra una instancia local de la API integrada, indicando URL base configurable y los requisitos de cada ejemplo.
 
 **Verificación**: validar el OpenAPI exportado y ejecutar los ejemplos contra la API local. No afirmar integración real cuando se usen proveedores simulados.
 
-**Comprobación pública diferida — 15/10/2026**: la ejecución de esos mismos ejemplos contra la URL HTTPS de entrega se traslada al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). No bloquea la documentación ni el cierre local de #59; permanece obligatoria para aceptar el despliegue. #59 conserva su alcance documental y sigue abierto hasta acreditar sus criterios propios.
+**Comprobación pública diferida — 15/10/2026**: la ejecución de esos mismos ejemplos contra la URL HTTPS de entrega se traslada al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). No bloquea la documentación ni el cierre local de #59; permanece obligatoria para aceptar el despliegue. #59 conserva su alcance documental; su cierre acredita los criterios locales. Evidencia: [verificación #59](../verificacion-issue-59.md).
 
 ---
 

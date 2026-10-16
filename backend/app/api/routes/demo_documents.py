@@ -5,13 +5,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.api.openapi_metadata import parametros, respuestas
 from app.documents.demo import ServicioCatalogoDemo
 from app.schemas.documents_http import DocumentoResponse, DocumentosResponse, FuenteDocumentoResponse
-from app.schemas.errors import ErrorAplicacion, ErrorCode, ErrorResponse
+from app.schemas.errors import ErrorAplicacion, ErrorCode
 
 router = APIRouter(prefix="/api/demo/documents", tags=["Documentos demo"])
 bearer_demo = HTTPBearer(auto_error=False)
-ERRORES = {codigo: {"model": ErrorResponse} for codigo in (400, 401, 404, 409, 422, 503)}
 
 
 def get_catalogo(request: Request) -> ServicioCatalogoDemo:
@@ -36,7 +36,15 @@ def get_token(
     return credentials.credentials
 
 
-@router.get("", response_model=DocumentosResponse, responses=ERRORES)
+@router.get(
+    "",
+    response_model=DocumentosResponse,
+    responses=respuestas(400, 401, 409, 422, 503),
+    openapi_extra=parametros(),
+    description="Biblioteca demo compartida, Bearer obligatorio, sin renovar actividad ni crear trabajos. "
+    "No admite workspace_id (422). limit=20 (1..100); cursor demo firmado y orden document_id ASCII ascendente. "
+    "Catálogo accesible vacío devuelve items=[]; un fallo técnico no se convierte en catálogo vacío.",
+)
 def listar(
     token: str = Depends(get_token),
     catalogo: ServicioCatalogoDemo = Depends(get_catalogo),
@@ -46,12 +54,26 @@ def listar(
     return catalogo.pagina(token, limit=limit, cursor=cursor)
 
 
-@router.get("/{document_id}", response_model=DocumentoResponse, responses=ERRORES)
+@router.get(
+    "/{document_id}",
+    response_model=DocumentoResponse,
+    responses=respuestas(401, 404, 409, 422, 503),
+    openapi_extra=parametros(),
+    description="Detalle demo con sesión vigente, sin renovar actividad. "
+    "No admite workspace_id (422) ni resuelve documentos privados. Estas rutas no habilitan generación demo.",
+)
 def detalle(document_id: str, token: str = Depends(get_token), catalogo: ServicioCatalogoDemo = Depends(get_catalogo)):
     return catalogo.detalle(token, document_id)
 
 
-@router.get("/{document_id}/sources/{chunk_id}", response_model=FuenteDocumentoResponse, responses=ERRORES)
+@router.get(
+    "/{document_id}/sources/{chunk_id}",
+    response_model=FuenteDocumentoResponse,
+    responses=respuestas(401, 404, 409, 422, 503),
+    openapi_extra=parametros(),
+    description="Fuente demo ready con Bearer vigente; no admite workspace_id (422). "
+    "Valida publicación, hash, cobertura e índice antes de entregar el chunk; no crea embeddings ni interpretaciones.",
+)
 def fuente(
     document_id: str,
     chunk_id: str,
