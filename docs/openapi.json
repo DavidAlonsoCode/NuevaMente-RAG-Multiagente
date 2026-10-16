@@ -3864,7 +3864,7 @@
     },
     "/api/demo/generations": {
       "get": {
-        "description": "Catálogo curado con Bearer vigente; sin catálogo devuelve items=[]. No crea trabajos, no renueva actividad ni admite workspace_id. Los ejemplos compartidos no otorgan acceso al espacio privado.",
+        "description": "Ejemplos publicados previamente, Bearer vigente sin renovar actividad. No admite workspace_id (422). Catálogo finito sin paginación, hasta doce entradas con fuente/hash, parámetros, fecha, tiempo y estado. Si no existe catálogo devuelve sólo items=[]; fallos técnicos no se convierten en catálogo vacío. provider=mock no acredita proveedores reales; rejected_quality sólo contiene diagnóstico, no borrador.",
         "operationId": "listar_api_demo_generations_get",
         "parameters": [
           {
@@ -3929,24 +3929,6 @@
                   "type": "string"
                 }
               },
-              "X-Request-ID": {
-                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
-            "headers": {
               "X-Request-ID": {
                 "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
                 "schema": {
@@ -4023,7 +4005,7 @@
     },
     "/api/demo/generations/{generation_id}": {
       "get": {
-        "description": "Ejemplo publicado e íntegro con sesión vigente. Vista estudiante del quiz, sin soluciones ni justificación; un diagnóstico rechazado no entrega paquete. No admite IDs privados ni workspace_id.",
+        "description": "Proyección estudiante de un ejemplo completed publicado, sin claves ni justificaciones iniciales del quiz. No lee generaciones privadas ni crea trabajos. Ejemplo ausente o rechazado: 404. Revalida sesión y huellas de paquete/fuente; no acepta workspace_id ni renueva actividad.",
         "operationId": "detalle_api_demo_generations__generation_id__get",
         "parameters": [
           {
@@ -4115,24 +4097,6 @@
               }
             }
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
-            "headers": {
-              "X-Request-ID": {
-                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
           "422": {
             "content": {
               "application/json": {
@@ -4201,7 +4165,7 @@
     },
     "/api/demo/generations/{generation_id}/answers": {
       "post": {
-        "description": "Corrección determinista del quiz publicado, con justificación y citas. Conserva el body QuizAnswerRequest (incluido event_id), pero no registra progreso privado ni llama al LLM. Pregunta inexistente devuelve 404; opción ajena o formato no quiz devuelve 422.",
+        "description": "Práctica sobre un quiz demo publicado, sin persistir progreso privado, escribir ni llamar al LLM. Recibe QuizAnswerRequest; event_id no registra un evento de progreso y no usa Idempotency-Key. Repetir la misma respuesta conserva el feedback. Pregunta ausente: 404; opción inválida o formato no quiz: 422. Requiere Bearer vigente; no admite workspace_id ni renueva actividad.",
         "operationId": "responder_api_demo_generations__generation_id__answers_post",
         "parameters": [
           {
@@ -4303,24 +4267,6 @@
               }
             }
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
-            "headers": {
-              "X-Request-ID": {
-                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
           "422": {
             "content": {
               "application/json": {
@@ -4389,7 +4335,7 @@
     },
     "/api/demo/generations/{generation_id}/sources/{chunk_id}": {
       "get": {
-        "description": "Fuente del snapshot publicado, con identidad/hash y localización verificados. No busca chunks privados ni crea embeddings; requiere Bearer y rechaza workspace_id.",
+        "description": "Fragmento del snapshot publicado y verificado del ejemplo; no consulta recursos privados por fallback. Fuente o ejemplo ausente: 404; integridad o storage no verificables: 503. Bearer obligatorio, sin renovar actividad.",
         "operationId": "fuente_api_demo_generations__generation_id__sources__chunk_id__get",
         "parameters": [
           {
@@ -4490,24 +4436,6 @@
               }
             }
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
-            "headers": {
-              "X-Request-ID": {
-                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
           "422": {
             "content": {
               "application/json": {
@@ -4576,7 +4504,7 @@
     },
     "/api/demo/generations/{generation_id}/sources/{chunk_id}/image": {
       "get": {
-        "description": "PNG original asociado a la fuente visual del ejemplo, nunca su interpretación textual. Bearer vigente; sin imagen publicada devuelve 404. No admite workspace_id.",
+        "description": "PNG original del snapshot demo, con firma y hash verificados; Cache-Control: no-store. No es una descripción generada. Ejemplo, fuente o imagen ausente: 404; snapshot no verificable: 503. Requiere sesión válida y no acepta workspace_id.",
         "operationId": "imagen_api_demo_generations__generation_id__sources__chunk_id__image_get",
         "parameters": [
           {
@@ -4675,24 +4603,6 @@
               }
             },
             "description": "NOT_FOUND: recurso inexistente, ajeno o retirado, sin revelar su existencia.",
-            "headers": {
-              "X-Request-ID": {
-                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
             "headers": {
               "X-Request-ID": {
                 "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",

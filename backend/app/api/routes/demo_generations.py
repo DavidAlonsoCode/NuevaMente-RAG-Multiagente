@@ -26,10 +26,12 @@ class CatalogoVacio(BaseModel):
 @router.get(
     "",
     response_model=CatalogoEjemplos | CatalogoVacio,
-    responses=respuestas(401, 409, 422, 503),
+    responses=respuestas(401, 422, 503),
     openapi_extra=parametros(),
-    description="Catálogo curado con Bearer vigente; sin catálogo devuelve items=[]. No crea trabajos, "
-    "no renueva actividad ni admite workspace_id. Los ejemplos compartidos no otorgan acceso al espacio privado.",
+    description="Ejemplos publicados previamente, Bearer vigente sin renovar actividad. No admite workspace_id (422). "
+    "Catálogo finito sin paginación, hasta doce entradas con fuente/hash, parámetros, fecha, tiempo y estado. "
+    "Si no existe catálogo devuelve sólo items=[]; fallos técnicos no se convierten en catálogo vacío. "
+    "provider=mock no acredita proveedores reales; rejected_quality sólo contiene diagnóstico, no borrador.",
 )
 def listar(token=Depends(get_token), servicio=Depends(get_resultados)):
     return servicio.leer(token) or CatalogoVacio()
@@ -38,10 +40,11 @@ def listar(token=Depends(get_token), servicio=Depends(get_resultados)):
 @router.get(
     "/{generation_id}",
     response_model=PedagogicalStudentOutput,
-    responses=respuestas(401, 404, 409, 422, 503),
+    responses=respuestas(401, 404, 422, 503),
     openapi_extra=parametros(),
-    description="Ejemplo publicado e íntegro con sesión vigente. Vista estudiante del quiz, sin soluciones "
-    "ni justificación; un diagnóstico rechazado no entrega paquete. No admite IDs privados ni workspace_id.",
+    description="Proyección estudiante de un ejemplo completed publicado, sin claves ni justificaciones iniciales del quiz. "
+    "No lee generaciones privadas ni crea trabajos. Ejemplo ausente o rechazado: 404. "
+    "Revalida sesión y huellas de paquete/fuente; no acepta workspace_id ni renueva actividad.",
 )
 def detalle(generation_id: str, token=Depends(get_token), servicio=Depends(get_resultados)):
     return servicio.estudiante(token, generation_id)
@@ -50,10 +53,10 @@ def detalle(generation_id: str, token=Depends(get_token), servicio=Depends(get_r
 @router.get(
     "/{generation_id}/sources/{chunk_id}",
     response_model=FuenteDocumentoResponse,
-    responses=respuestas(401, 404, 409, 422, 503),
+    responses=respuestas(401, 404, 422, 503),
     openapi_extra=parametros(),
-    description="Fuente del snapshot publicado, con identidad/hash y localización verificados. "
-    "No busca chunks privados ni crea embeddings; requiere Bearer y rechaza workspace_id.",
+    description="Fragmento del snapshot publicado y verificado del ejemplo; no consulta recursos privados por fallback. "
+    "Fuente o ejemplo ausente: 404; integridad o storage no verificables: 503. Bearer obligatorio, sin renovar actividad.",
 )
 def fuente(generation_id: str, chunk_id: str, token=Depends(get_token), servicio=Depends(get_resultados)):
     return servicio.fuente(token, generation_id, chunk_id)
@@ -65,15 +68,15 @@ def fuente(generation_id: str, chunk_id: str, token=Depends(get_token), servicio
     responses=respuestas(
         401,
         404,
-        409,
         422,
         503,
         contenido={"image/png": {"schema": {"type": "string", "format": "binary"}}},
         cabeceras={"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
     ),
     openapi_extra=parametros(),
-    description="PNG original asociado a la fuente visual del ejemplo, nunca su interpretación textual. "
-    "Bearer vigente; sin imagen publicada devuelve 404. No admite workspace_id.",
+    description="PNG original del snapshot demo, con firma y hash verificados; Cache-Control: no-store. "
+    "No es una descripción generada. Ejemplo, fuente o imagen ausente: 404; snapshot no verificable: 503. "
+    "Requiere sesión válida y no acepta workspace_id.",
 )
 def imagen(generation_id: str, chunk_id: str, token=Depends(get_token), servicio=Depends(get_resultados)):
     return Response(
@@ -84,11 +87,12 @@ def imagen(generation_id: str, chunk_id: str, token=Depends(get_token), servicio
 @router.post(
     "/{generation_id}/answers",
     response_model=QuizAnswerResponse,
-    responses=respuestas(401, 404, 409, 422, 503),
+    responses=respuestas(401, 404, 422, 503),
     openapi_extra=parametros(),
-    description="Corrección determinista del quiz publicado, con justificación y citas. Conserva el body "
-    "QuizAnswerRequest (incluido event_id), pero no registra progreso privado ni llama al LLM. "
-    "Pregunta inexistente devuelve 404; opción ajena o formato no quiz devuelve 422.",
+    description="Práctica sobre un quiz demo publicado, sin persistir progreso privado, escribir ni llamar al LLM. "
+    "Recibe QuizAnswerRequest; event_id no registra un evento de progreso y no usa Idempotency-Key. "
+    "Repetir la misma respuesta conserva el feedback. Pregunta ausente: 404; opción inválida o formato no quiz: 422. "
+    "Requiere Bearer vigente; no admite workspace_id ni renueva actividad.",
 )
 def responder(
     generation_id: str, solicitud: QuizAnswerRequest, token=Depends(get_token), servicio=Depends(get_resultados)

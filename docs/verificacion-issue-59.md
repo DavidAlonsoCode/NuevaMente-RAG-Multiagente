@@ -51,7 +51,7 @@ error o advertencia en la consola. Se deshabilitaron el validador externo y los
 botones de ejecución; el viewer sirvió sólo archivos locales, sin credenciales.
 
 SHA-256 del snapshot visualizado:
-`b815caba3fa753377e3cc7d69e7dac0ca865bab8dc1a883e3da382ec9610313a`.
+`d8f388b4e55b1ccb129ca4c3563aadc0c1fabf2be30969a20880044c84badca6`.
 
 ![Snapshot actualizado en Swagger UI](evidencia/issue-59/swagger-37.jpg)
 
