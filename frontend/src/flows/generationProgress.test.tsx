@@ -84,6 +84,20 @@ it.each([401, 404])('detiene la reconexión ante %i sin crear otra generación',
   expect(status === 401 ? invalid.mock.calls.length : hook.result.current.phase).toBe(status === 401 ? 1 : 'error');
 });
 
+it('un 401 tardío del espacio anterior no cierra la sesión recuperada', async () => {
+  let reject!: (error: unknown) => void;
+  const api = { getGeneration: vi.fn().mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail; }))
+    .mockResolvedValue(complete) } as unknown as APIClient;
+  const invalid = vi.fn();
+  const hook = renderHook(({ token }) => useGenerationProgress({ api, token, generationId: 'gen-one', enabled: true,
+    onSnapshot: vi.fn(), onSessionInvalid: invalid }), { initialProps: { token: 'old' } });
+  await tick();
+  hook.rerender({ token: 'recovered' });
+  await tick();
+  await act(async () => reject(new APIError('SESSION_INVALID', '', 401)));
+  expect(invalid).not.toHaveBeenCalled();
+});
+
 it('recupera el trabajo propio desde el historial y conserva los parámetros', async () => {
   const api = { getGenerations: vi.fn().mockResolvedValue({ items: [{ ...running, document_id: 'doc-one', parametros: params }] }),
     getDocument: vi.fn().mockResolvedValue({ document_id: 'doc-one', titulo: 'Fuente de prueba' }), createGeneration: vi.fn() } as unknown as APIClient;

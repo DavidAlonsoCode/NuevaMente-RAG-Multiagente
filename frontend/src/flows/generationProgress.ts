@@ -33,6 +33,8 @@ export function useGenerationProgress({ api, token, generationId, enabled, onSna
   onSnapshot: (job: any) => void; onSessionInvalid: () => void;
 }) {
   const key = `${token ?? ''}:${generationId ?? ''}`;
+  const scope = useRef(key);
+  scope.current = key;
   const callbacks = useRef({ onSnapshot, onSessionInvalid });
   callbacks.current = { onSnapshot, onSessionInvalid };
   const cursor = useRef({ key, id: 0, notBefore: 0 });
@@ -44,30 +46,31 @@ export function useGenerationProgress({ api, token, generationId, enabled, onSna
     if (!enabled || !token || !generationId) return;
     const controller = new AbortController();
     const signal = controller.signal;
+    const alive = () => !signal.aborted && scope.current === key;
     if (cursor.current.key !== key) cursor.current = { key, id: 0, notBefore: 0 };
     setState(previous => ({ key, phase: 'connecting',
       progress: previous.key === key && previous.progress && isActive(previous.progress.status) ? previous.progress : null, error: null }));
     const update = (value: Partial<typeof state>) => {
-      if (!signal.aborted) setState(previous => ({ ...previous, ...value, key }));
+      if (alive()) setState(previous => ({ ...previous, ...value, key }));
     };
     const snapshot = async () => {
       const job = await api.getGeneration(token, generationId);
-      if (signal.aborted) return false;
+      if (!alive()) return false;
       validateSnapshot(job, generationId);
       callbacks.current.onSnapshot(job);
       return isActive(job.status);
     };
     void (async () => {
       let failures = 0;
-      while (!signal.aborted) {
+      while (alive()) {
         let delay = 1000;
         try {
           await pause(Math.max(0, cursor.current.notBefore - Date.now()), signal);
-          if (signal.aborted) return;
+          if (!alive()) return;
           if (!await snapshot()) { update({ phase: 'closed' }); return; }
           for await (const event of api.streamGenerationEvents(token, generationId,
             { signal, lastEventId: cursor.current.id })) {
-            if (signal.aborted) return;
+            if (!alive()) return;
             if (event.kind === 'open') { update({ phase: 'connected', error: null }); continue; }
             if (event.kind === 'heartbeat') {
               if (!await snapshot()) { update({ phase: 'closed' }); return; }
@@ -80,9 +83,9 @@ export function useGenerationProgress({ api, token, generationId, enabled, onSna
               update({ phase: 'closed' }); return;
             }
           }
-          if (!signal.aborted && !await snapshot()) { update({ phase: 'closed' }); return; }
+          if (alive() && !await snapshot()) { update({ phase: 'closed' }); return; }
         } catch (error) {
-          if (signal.aborted) return;
+          if (!alive()) return;
           const failure = error instanceof APIError ? error : new APIError('SERVICE_UNAVAILABLE', 'Conexión interrumpida.', 503);
           if (failure.statusCode === 401) { callbacks.current.onSessionInvalid(); return; }
           if ([400, 404, 409, 422].includes(failure.statusCode) || failure.code === 'INVALID_RESPONSE') {

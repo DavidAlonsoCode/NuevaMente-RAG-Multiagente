@@ -28,7 +28,7 @@ Fecha: 16/10/2026. Rama: `feature/issue-33-react-sse`, desde develop `4c61545`
 
 ## Evidencia local
 
-`npm test`: **52 pruebas aprobadas** (18 regresiones conservadas y 34 nuevas).
+`npm test`: **53 pruebas aprobadas** (18 regresiones conservadas y 35 nuevas).
 TypeScript y build de producción aprobados. Ruff y formato Python aprobados.
 OpenAPI se contrasta con el snapshot existente; no se introduce otro contrato.
 

@@ -171,6 +171,8 @@ export const App: React.FC = () => {
   }, []);
 
   const limpiarSesionLocal = useCallback(() => {
+    authRef.current = null;
+    activeGenRef.current = undefined;
     creacionPendiente.current = null;
     clearStudyState();
     setSessionToken(null);
@@ -298,6 +300,7 @@ export const App: React.FC = () => {
     api, token: sessionToken, generationId: generacionActiva?.generation_id ?? null,
     enabled: !!generacionActiva && (!activeJobData || isActive(activeJobData.status)),
     onSnapshot: (job) => {
+      if (authRef.current !== sessionToken || activeGenRef.current !== job.generation_id) return;
       setActiveJobData(job);
       if (!isActive(job.status)) void sincronizarEspacio();
     },
@@ -309,6 +312,7 @@ export const App: React.FC = () => {
     let active = true;
     recoverActiveGeneration(api, sessionToken).then(generation => {
       if (!active || authRef.current !== sessionToken || activeGenRef.current || !generation) return;
+      activeGenRef.current = generation.generation_id;
       setGeneracionActiva(generation);
       setActiveJobData(null);
       selectionRef.current = { id: generation.parametros.document_id, demo: false };
@@ -398,6 +402,7 @@ export const App: React.FC = () => {
       );
       if (authRef.current !== sessionToken) return;
       setActiveJobData(null);
+      activeGenRef.current = resp.generation_id;
       setGeneracionActiva({
         generation_id: resp.generation_id,
         status: resp.status,
