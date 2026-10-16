@@ -59,6 +59,8 @@ import {
 } from './flows/validators';
 import { CATALOGOS, IDIOMA_POR_DEFECTO, t } from './i18n';
 import { clearStudyState } from './flows/studyState';
+import { isActive, recoverActiveGeneration, useGenerationProgress, validateSnapshot } from './flows/generationProgress';
+import { GenerationLiveStatus } from './components/GenerationLiveStatus';
 
 interface GeneracionActivaUI {
   generation_id: string;
@@ -137,6 +139,8 @@ export const App: React.FC = () => {
   const api = useMemo(() => new APIClient({ idiomaUi }), [idiomaUi]);
   const authRef = useRef(sessionToken);
   authRef.current = sessionToken;
+  const selectionRef = useRef({ id: docActivoId, demo: docActivoDemo });
+  selectionRef.current = { id: docActivoId, demo: docActivoDemo };
 
   useEffect(() => {
     if (!confirmModalPending && !accionConfirmar) return;
@@ -239,8 +243,8 @@ export const App: React.FC = () => {
         } }));
       }));
 
-      if (!docActivoDemo) {
-        const actual = docs.find((d) => d.document_id === docActivoId && d.status === 'ready');
+      if (!selectionRef.current.demo) {
+        const actual = docs.find((d) => d.document_id === selectionRef.current.id && d.status === 'ready');
         if (!actual) {
           const primerReady = docs.find((d) => d.status === 'ready');
           setDocActivoId(primerReady ? primerReady.document_id : null);
@@ -278,6 +282,7 @@ export const App: React.FC = () => {
     try {
       const job = await api.getGeneration(sessionToken, generacionActiva.generation_id);
       if (authRef.current !== sessionToken || activeGenRef.current !== generacionActiva.generation_id) return;
+      validateSnapshot(job, generacionActiva.generation_id);
       setActiveJobData(job);
       if (!['queued', 'running'].includes(job.status)) await sincronizarEspacio();
     } catch (err) {
@@ -289,20 +294,44 @@ export const App: React.FC = () => {
     }
   }, [api, sessionToken, generacionActiva, manejarSesionInvalida, sincronizarEspacio]);
 
-  useEffect(() => {
-    consultarGeneracionActiva();
-  }, [consultarGeneracionActiva]);
+  const generationStream = useGenerationProgress({
+    api, token: sessionToken, generationId: generacionActiva?.generation_id ?? null,
+    enabled: !!generacionActiva && (!activeJobData || isActive(activeJobData.status)),
+    onSnapshot: (job) => {
+      setActiveJobData(job);
+      if (!isActive(job.status)) void sincronizarEspacio();
+    },
+    onSessionInvalid: manejarSesionInvalida,
+  });
 
   useEffect(() => {
-    if (!generacionActiva || !activeJobData) return;
-    if (!['queued', 'running'].includes(activeJobData.status)) return;
-    let stopped = false;
-    let timer = setTimeout(async function poll() {
-      await consultarGeneracionActiva();
-      if (!stopped) timer = setTimeout(poll, 4000);
-    }, 4000);
-    return () => { stopped = true; clearTimeout(timer); };
-  }, [generacionActiva, activeJobData?.status, consultarGeneracionActiva]);
+    if (!sessionToken) return;
+    let active = true;
+    recoverActiveGeneration(api, sessionToken).then(generation => {
+      if (!active || authRef.current !== sessionToken || activeGenRef.current || !generation) return;
+      setGeneracionActiva(generation);
+      setActiveJobData(null);
+      selectionRef.current = { id: generation.parametros.document_id, demo: false };
+      setDocActivoId(generation.parametros.document_id);
+      setDocActivoDemo(false);
+      setGenPerfil(generation.parametros.perfil_destinatario);
+      setGenFormato(generation.parametros.formato_salida);
+      setGenNicho(generation.parametros.nicho_sector);
+      setGenDetalle(generation.parametros.nivel_detalle);
+      setGenIdiomaSalida(generation.parametros.idioma_salida);
+      setGenAlcance(generation.parametros.alcance.tipo);
+      setGenSeccionId(generation.parametros.alcance.seccion_id ?? '');
+      setMostrandoDocumentos(false);
+      setHistorialAbierto(false);
+      setEjemploDemoId(null);
+      setActiveTab('resultado');
+    }).catch(error => {
+      if (!active || authRef.current !== sessionToken) return;
+      if (error instanceof APIError && error.statusCode === 401) manejarSesionInvalida();
+      else if (error instanceof APIError) setGlobalError(error);
+    });
+    return () => { active = false; };
+  }, [api, sessionToken, manejarSesionInvalida]);
 
   const docsReady = useMemo(
     () => documentos.filter((d) => d.status === 'ready'),
@@ -902,11 +931,19 @@ export const App: React.FC = () => {
 
                   {activeTab === 'resultado' && (
                     <ActiveGenerationPanel
+                      key={`${sessionToken}:${generacionActiva.generation_id}`}
                       api={api}
                       token={sessionToken}
                       generacion={generacionActiva}
                       job={activeJobData}
                       idioma={idiomaUi}
+                      stream={generationStream}
+                      onChangeSource={() => setMostrandoDocumentos(true)}
+                      onNarrowScope={() => {
+                        setGenAlcance('seccion');
+                        if (seccionesDisponibles[0]) setGenSeccionId(seccionesDisponibles[0].seccion_id);
+                        requestAnimationFrame(() => document.getElementById('app-field-6')?.focus());
+                      }}
                       confirmedConcepts={confirmedConcepts}
                       onRefresh={consultarGeneracionActiva}
                       onMarkConcept={(docId, concepto, genId) =>
@@ -1528,7 +1565,7 @@ const RecoveryScreen: React.FC<{
   );
 };
 
-const ActiveGenerationPanel: React.FC<{
+export const ActiveGenerationPanel: React.FC<{
   api: APIClient;
   token: string;
   generacion: GeneracionActivaUI;
@@ -1539,6 +1576,9 @@ const ActiveGenerationPanel: React.FC<{
   onMarkConcept: (docId: string, concepto: string, genId: string) => void;
   onReviewFlashcard: (genId: string, fcId: string) => void;
   onSessionInvalid: () => void;
+  stream: ReturnType<typeof useGenerationProgress>;
+  onChangeSource: () => void;
+  onNarrowScope: () => void;
 }> = ({
   api,
   token,
@@ -1550,13 +1590,18 @@ const ActiveGenerationPanel: React.FC<{
   onMarkConcept,
   onReviewFlashcard,
   onSessionInvalid,
+  stream,
+  onChangeSource,
+  onNarrowScope,
 }) => {
   const [persistKey] = useState(() => `persist-${generacion.generation_id}-${Date.now().toString(36)}`);
   const [exportFmt, setExportFmt] = useState<ExportFormat>('json');
   const [err, setErr] = useState<APIError | null>(null);
+  const [pendingAction, setPendingAction] = useState<'cancel' | 'persist' | null>(null);
+  const [cancelRequested, setCancelRequested] = useState(false);
 
   if (!job) {
-    return <div className="nm-card">{t('comun.cargando', idioma)}</div>;
+    return <div className="nm-card"><GenerationLiveStatus stream={stream} idioma={idioma} /></div>;
   }
 
   const estado = job.status;
@@ -1635,10 +1680,13 @@ const ActiveGenerationPanel: React.FC<{
   if (estado === 'queued' || estado === 'running') {
     return (
       <div className="nm-card">
+        <ErrorBanner error={err} idioma={idioma} />
         <div className="nm-alert nm-alert-info">{t('generar.enviada', idioma)}</div>
         <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>
           {t(`estados.trabajo.${estado}`, idioma)}
         </div>
+        <GenerationLiveStatus stream={stream} idioma={idioma} />
+        {cancelRequested && <p role="status">{t('live.cancel_requested', idioma)}</p>}
         {estado === 'queued' && typeof job.posicion_cola === 'number' && (
           <div style={{ fontSize: '0.85rem', color: 'var(--ink-secondary)' }}>
             {t('generar.posicion', idioma, { posicion: job.posicion_cola })}
@@ -1654,9 +1702,17 @@ const ActiveGenerationPanel: React.FC<{
           <button
             type="button"
             className="nm-btn nm-btn-danger"
+            disabled={cancelRequested || pendingAction !== null}
             onClick={async () => {
-              await api.cancelGeneration(token, generacion.generation_id);
-              onRefresh();
+              setPendingAction('cancel'); setErr(null);
+              try {
+                await api.cancelGeneration(token, generacion.generation_id);
+                setCancelRequested(true);
+                await onRefresh();
+              } catch (error) {
+                if (error instanceof APIError && error.statusCode === 401) onSessionInvalid();
+                else if (error instanceof APIError) setErr(error);
+              } finally { setPendingAction(null); }
             }}
           >
             {t('generar.cancelar', idioma)}
@@ -1674,8 +1730,13 @@ const ActiveGenerationPanel: React.FC<{
     return (
       <div className="nm-card">
         <div className="nm-alert nm-alert-error">{t('generar.rechazado_calidad', idioma)}</div>
+        <p>{t('live.rejected_reason', idioma)}</p>
         <div style={{ fontSize: '0.88rem', color: 'var(--ink-secondary)' }}>
           {t('material.rechazo_ayuda', idioma)}
+        </div>
+        <div className="nm-actions">
+          <button type="button" className="nm-btn" onClick={onNarrowScope}>{t('live.narrow', idioma)}</button>
+          <button type="button" className="nm-btn" onClick={onChangeSource}>{t('live.source', idioma)}</button>
         </div>
       </div>
     );
@@ -1683,6 +1744,7 @@ const ActiveGenerationPanel: React.FC<{
 
   return (
     <div className="nm-card">
+      <ErrorBanner error={err} idioma={idioma} />
       <ErrorBanner
         error={new APIError(job.error?.code || 'INTERNAL', 'Trabajo fallido.', 500)}
         idioma={idioma}
@@ -1695,9 +1757,16 @@ const ActiveGenerationPanel: React.FC<{
           <button
             type="button"
             className="nm-btn nm-btn-primary"
+            disabled={pendingAction !== null}
             onClick={async () => {
-              await api.persistGeneration(token, generacion.generation_id, persistKey);
-              onRefresh();
+              setPendingAction('persist'); setErr(null);
+              try {
+                await api.persistGeneration(token, generacion.generation_id, persistKey);
+                await onRefresh();
+              } catch (error) {
+                if (error instanceof APIError && error.statusCode === 401) onSessionInvalid();
+                else if (error instanceof APIError) setErr(error);
+              } finally { setPendingAction(null); }
             }}
           >
             <RotateCcw size={14} />

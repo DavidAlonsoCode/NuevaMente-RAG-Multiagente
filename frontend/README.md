@@ -65,6 +65,10 @@ npm run build
 npm audit
 ```
 
+Para observar etapas e intentos, el servidor de verificación admite
+`--delay-seconds 6`; `--reject-quality` fuerza el rechazo del doble pedagógico.
+Ambas opciones pertenecen exclusivamente a ese helper de pruebas.
+
 `npm run preview` sirve una vista local del build y conserva el proxy de API;
 no es el servidor de despliegue. Las pruebas Python ordinarias aíslan `.env`.
 
@@ -74,8 +78,10 @@ Resultados y límites de la revisión: [verificación de React](../docs/verifica
 
 Se conservan los contratos HTTP y los cinco formatos, el quiz, chat, glosario,
 progreso, historial, comparación y los ejemplos publicados. El seguimiento de
-generación todavía usa consultas de estado: esto no acredita el cierre completo
-de SSE/reconexión del #33. Tampoco cierra automáticamente #46 o #53.
+generación utiliza SSE autenticado, reconcilia el estado al reconectar y recupera
+trabajos activos desde el historial del espacio, sin otra admisión.
+Ver [verificación de #33](../docs/verificacion-issue-33.md) y sus límites: las
+pruebas con dobles no acreditan proveedores reales. Esto tampoco cierra #46 o #53.
 La generación directa desde fuentes compartidas demo sigue pendiente. La VM y
 el HTTPS público se verifican en #133. La CI conserva las pruebas históricas
 Caddy/Streamlit y añade una prueba del build React en navegador detrás de

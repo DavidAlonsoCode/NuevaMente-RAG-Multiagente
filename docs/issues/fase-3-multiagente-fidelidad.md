@@ -203,10 +203,10 @@ graph TD
 ### `Issue 33` — Progreso en vivo (SSE) en la UI
 **F3** · **UI** · **M** · **Depende de**: `Issue 32`, `Issue 31` · **Referencia**: decisiones_proyecto.md §3.3, §6.5
 
-**Objetivo**: consumo del stream SSE desde el servidor Streamlit (requests en streaming) mostrando etapa e intento, con cancelación y reconexión.
+**Objetivo**: consumir SSE en React mediante fetch autenticado, mostrando etapa e intento, con cancelación y reconexión. La migración de presentación conserva la interfaz Streamlit anterior y sus pruebas históricas.
 
 **Tareas**:
-- Cliente SSE en `api_client.py`: lectura streaming con reconexión vía `status_url` y continuación por `Last-Event-ID` cuando exista.
+- Cliente SSE en `frontend/src/api/client.ts`: lectura incremental, reconciliación del estado HTTP y continuación por `Last-Event-ID` cuando exista. Reconexión y recuperación en `frontend/src/flows/generationProgress.ts`.
 - Render de etapas: en cola (posición + cancelar), procesando (etapa e intento, **sin porcentajes ficticios** — §3.3), y estados terminales con presentación de §6.5.
 - `rejected_quality`: motivo y acciones útiles (acotar sección / cargar versión más completa), sin botón de «aprobar igual».
 - Fallo técnico: causa recuperable + acción (reintentar persistencia si aplica).
@@ -215,7 +215,7 @@ graph TD
 **Criterios de aceptación**:
 - [ ] Durante una generación real se ven las etapas avanzar e intentar (1/2/3).
 - [ ] Cancelar desde la UI detiene el trabajo y muestra estado cancelado conservando documentos.
-- [ ] Tras refrescar y perder session_state, recuperar con el código y listar/reconectar al trabajo existente, sin duplicarlo.
+- [ ] Tras refrescar y perder el estado en memoria de la interfaz, recuperar con el código y listar/reconectar al trabajo existente, sin duplicarlo.
 - [ ] Un rechazo por calidad muestra diagnóstico sin exponer el borrador fallido.
 
-**Verificación**: prueba manual con trabajo ralentizado (env de test) + `pytest` del cliente SSE con stream simulado.
+**Verificación**: trabajo ralentizado con proveedores simulados explícitos, Vitest del cliente SSE y navegador con Caddy/TLS locales. Evidencias y límites en [verificacion-issue-33.md](../verificacion-issue-33.md); no equivalen a una ejecución con proveedores reales ni a aceptación pública.

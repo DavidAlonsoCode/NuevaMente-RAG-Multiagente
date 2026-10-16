@@ -99,6 +99,7 @@ def main(path):
         trusted_origin_secret=settings["secret"],
     )
     provider = DelayedProvider(16)
+    provider.rechazar = bool(settings.get("reject_quality", False))
     quotas = CuotasProveedor(
         {
             model: CuotasModelo(1000, 10_000_000, 1000)

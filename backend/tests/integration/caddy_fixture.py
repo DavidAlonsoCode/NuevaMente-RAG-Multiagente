@@ -127,9 +127,10 @@ def native_policy(base, local, ports):
 
 
 class ProxyHarness:
-    def __init__(self, directory, *, frontend="streamlit"):
+    def __init__(self, directory, *, frontend="streamlit", reject_quality=False):
         assert frontend in {"streamlit", "react"}
         self.frontend = frontend
+        self.reject_quality = reject_quality
         self.directory = Path(directory)
         self.processes, self.handles = {}, []
         self.evidence = {"platform": sys.platform, "caddy": "2.11.7", "checks": []}
@@ -226,7 +227,12 @@ class ProxyHarness:
             self.directory / "backend-config.json",
             json.dumps(
                 self.ports
-                | {"directory": str(self.directory), "secret": SECRET, "diagnostic_mode": self.diagnostic_mode}
+                | {
+                    "directory": str(self.directory),
+                    "secret": SECRET,
+                    "diagnostic_mode": self.diagnostic_mode,
+                    "reject_quality": self.reject_quality,
+                }
             ),
         )
         self.start(
