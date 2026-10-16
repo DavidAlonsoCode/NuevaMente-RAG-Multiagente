@@ -4,7 +4,7 @@ Desde la raíz: python .github/scripts/export_openapi.py [--check | --validate].
 --output permite comprobar copias sin tocar docs/openapi.json. El proceso hijo
 importa la instancia global real, sin lifespan, con SQLite/storage temporales.
 La validación es estructural y offline; conserva las divergencias conocidas de
-metadatos del runtime. Viewer, referencia humana y aceptación pública quedan pendientes.
+metadatos del runtime. El viewer y los recorridos locales se comprueban aparte; la aceptación pública corresponde a #133.
 """
 
 from __future__ import annotations

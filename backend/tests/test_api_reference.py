@@ -25,7 +25,7 @@ pytestmark = pytest.mark.integration_mock
 
 def test_cobertura_completa_y_bloques_literales():
     text = reference.REFERENCE.read_text(encoding="utf-8")
-    assert reference.check_reference(text) == (32, 7)
+    assert reference.check_reference(text) == (37, 7)
     script = reference.published_script(text)
     assert all(body in text and body in script for body, _ in reference.example_blocks(text))
     assert script.count("# api-example:") == 7

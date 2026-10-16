@@ -15,7 +15,11 @@
     "pagina": 9,
     "seccion_id": "pagina:9",
     "titulo": "15. Costos y límites",
-    "rechazo_real_verificado": false
+    "rechazo_real_verificado": true,
+    "generation_id": "gen_6426833e5f2144a5b7e2ee3acc9b110e",
+    "prompt_version": "nm-prompts-1.1.3",
+    "status": "rejected_quality",
+    "segundos": 88.5
   },
   "referencias_verificacion": [
     "https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/overview.htm",

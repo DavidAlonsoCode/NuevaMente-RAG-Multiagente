@@ -49,7 +49,18 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
 from app.api.openapi_metadata import parametros, respuestas
-from app.api.routes import chat, demo_documents, documents, exports, generations, glossary, jobs, progress, workspaces
+from app.api.routes import (
+    chat,
+    demo_documents,
+    demo_generations,
+    documents,
+    exports,
+    generations,
+    glossary,
+    jobs,
+    progress,
+    workspaces,
+)
 from app.config import Configuracion, config
 from app.jobs.manager import ControlesOperativos, CuotasProveedor, GestorTrabajos
 from app.jobs.quotas import cuotas_configuradas
@@ -128,6 +139,7 @@ def crear_app(
     proveedor_generacion: GeneradorSync | None = None,
     proveedor_verificacion: VerificadorSync | None = None,
     cuotas_proveedor: CuotasProveedor | None = None,
+    proveedor_storage=None,
 ) -> FastAPI:
     """Fábrica de la aplicación. Recibe configuración inyectable para tests.
 
@@ -464,7 +476,9 @@ def crear_app(
 
     app.state.config = ajustes
     app.state.db = RegistroOperativo(ruta_db=Path(ajustes.data_dir) / "operativo.db")
-    app.state.storage_provider = get_storage_provider(configuracion=ajustes)
+    app.state.storage_provider = (
+        proveedor_storage if proveedor_storage is not None else get_storage_provider(configuracion=ajustes)
+    )
     # Los schemas públicos documentales se implementan con la dirección del
     # equipo; sus precisiones conservan revisión contract-change pendiente.
     app.state.documents_admission = None
@@ -481,6 +495,7 @@ def crear_app(
     app.include_router(jobs.router)
     app.include_router(documents.router)
     app.include_router(demo_documents.router)
+    app.include_router(demo_generations.router)
     app.include_router(generations.router)
     app.include_router(exports.router)
     app.include_router(chat.router)

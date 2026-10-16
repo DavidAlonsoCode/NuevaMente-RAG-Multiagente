@@ -1,0 +1,295 @@
+{
+  "fecha_utc": "2026-10-15T02:46:37.057420+00:00",
+  "base_develop": "86c86530a634248f3994ee21e77a75b48242c68d",
+  "proveedores_reales": true,
+  "publicacion": {
+    "objeto": "demo/examples/catalog.json",
+    "provider": "oci",
+    "completo": false,
+    "items": [
+      {
+        "escenario": "vcn-a",
+        "generation_id": "gen_3461d6a0e03c4e58b9bc172a11ae2f35",
+        "fuente": "redes_vcn_oci.pdf",
+        "document_hash": "f29f930aa861f4069631181286dbcca510779bf61e4b3298c734f1fb02087214",
+        "parametros": {
+          "document_id": "doc_6079d80502574f3d92e17deca746d81d",
+          "perfil_destinatario": "principiante",
+          "formato_salida": "flashcards",
+          "nicho_sector": "general",
+          "nivel_detalle": "didactico",
+          "idioma_salida": "es",
+          "alcance": {
+            "tipo": "documento_completo",
+            "seccion_id": null
+          }
+        },
+        "created_at": "2026-10-15T02:38:49.117540Z",
+        "segundos": 76.491,
+        "status": "completed",
+        "paquete_sha256": "f7cced75e24c2fe7d81a1d960e1059cfdd23b7a7e5f075d59cdf1c773322b59b",
+        "fuente_sha256": "b789cf6d7a8e130acecb834cb2686c62405cb4f49e9ab3c3dced0aff858baa33",
+        "diagnostico": null
+      },
+      {
+        "escenario": "vcn-b",
+        "generation_id": "gen_d3b36290db774f02b2fd9c70c571f5b0",
+        "fuente": "redes_vcn_oci.pdf",
+        "document_hash": "f29f930aa861f4069631181286dbcca510779bf61e4b3298c734f1fb02087214",
+        "parametros": {
+          "document_id": "doc_6079d80502574f3d92e17deca746d81d",
+          "perfil_destinatario": "junior_ssr",
+          "formato_salida": "tutorial",
+          "nicho_sector": "ecommerce",
+          "nivel_detalle": "didactico",
+          "idioma_salida": "en",
+          "alcance": {
+            "tipo": "documento_completo",
+            "seccion_id": null
+          }
+        },
+        "created_at": "2026-10-15T02:28:46.416596Z",
+        "segundos": 120.969,
+        "status": "rejected_quality",
+        "paquete_sha256": null,
+        "fuente_sha256": null,
+        "diagnostico": "La adaptación no superó la revisión de calidad. No se publica su borrador."
+      },
+      {
+        "escenario": "vcn-c",
+        "generation_id": "gen_fc5fb7babf1d47fc8780a836e3c3230d",
+        "fuente": "redes_vcn_oci.pdf",
+        "document_hash": "f29f930aa861f4069631181286dbcca510779bf61e4b3298c734f1fb02087214",
+        "parametros": {
+          "document_id": "doc_6079d80502574f3d92e17deca746d81d",
+          "perfil_destinatario": "ejecutivo",
+          "formato_salida": "resumen_ejecutivo",
+          "nicho_sector": "fintech",
+          "nivel_detalle": "didactico",
+          "idioma_salida": "pt",
+          "alcance": {
+            "tipo": "documento_completo",
+            "seccion_id": null
+          }
+        },
+        "created_at": "2026-10-15T02:30:47.399197Z",
+        "segundos": 45.25,
+        "status": "completed",
+        "paquete_sha256": "6c917a9ef1561d09071ff2e4cc07ebe8d52be910794d6f9e28ecab2bd2f0141d",
+        "fuente_sha256": "b789cf6d7a8e130acecb834cb2686c62405cb4f49e9ab3c3dced0aff858baa33",
+        "diagnostico": null
+      },
+      {
+        "escenario": "vcn-guion",
+        "generation_id": "gen_f052119216c942959e5c6d5516b6f99a",
+        "fuente": "redes_vcn_oci.pdf",
+        "document_hash": "f29f930aa861f4069631181286dbcca510779bf61e4b3298c734f1fb02087214",
+        "parametros": {
+          "document_id": "doc_6079d80502574f3d92e17deca746d81d",
+          "perfil_destinatario": "principiante",
+          "formato_salida": "guion_clase",
+          "nicho_sector": "general",
+          "nivel_detalle": "didactico",
+          "idioma_salida": "es",
+          "alcance": {
+            "tipo": "documento_completo",
+            "seccion_id": null
+          }
+        },
+        "created_at": "2026-10-15T02:32:02.404443Z",
+        "segundos": 55.844,
+        "status": "rejected_quality",
+        "paquete_sha256": null,
+        "fuente_sha256": null,
+        "diagnostico": "La adaptación no superó la revisión de calidad. No se publica su borrador."
+      },
+      {
+        "escenario": "pagos-tutorial",
+        "generation_id": "gen_893512a4e59349ba9e35646c6b1c3453",
+        "fuente": "integracion_apis_pagos.md",
+        "document_hash": "138ae2cf36898326d95bc1d74d61ce3c377469ed76fafd993d91304ac2aea586",
+        "parametros": {
+          "document_id": "doc_f2df29efde374105b6cc967f4b0e29dc",
+          "perfil_destinatario": "junior_ssr",
+          "formato_salida": "tutorial",
+          "nicho_sector": "fintech",
+          "nivel_detalle": "didactico",
+          "idioma_salida": "es",
+          "alcance": {
+            "tipo": "documento_completo",
+            "seccion_id": null
+          }
+        },
+        "created_at": "2026-10-15T02:34:52.416443Z",
+        "segundos": 100.922,
+        "status": "rejected_quality",
+        "paquete_sha256": null,
+        "fuente_sha256": null,
+        "diagnostico": "La adaptación no superó la revisión de calidad. No se publica su borrador."
+      },
+      {
+        "escenario": "salud-resumen",
+        "generation_id": "gen_e5f13fc48782461b875cfa1765a82ba1",
+        "fuente": "gobernanza_datos_salud.md",
+        "document_hash": "acde9ab245daa7f206f7c1c8abd922a0eac801a0ca2629e514c176cbf25ff897",
+        "parametros": {
+          "document_id": "doc_9dffaa8a39b64b3dada0ed598d44b763",
+          "perfil_destinatario": "ejecutivo",
+          "formato_salida": "resumen_ejecutivo",
+          "nicho_sector": "salud",
+          "nivel_detalle": "didactico",
+          "idioma_salida": "es",
+          "alcance": {
+            "tipo": "documento_completo",
+            "seccion_id": null
+          }
+        },
+        "created_at": "2026-10-15T02:36:33.464503Z",
+        "segundos": 54.031,
+        "status": "rejected_quality",
+        "paquete_sha256": null,
+        "fuente_sha256": null,
+        "diagnostico": "La adaptación no superó la revisión de calidad. No se publica su borrador."
+      }
+    ]
+  },
+  "escenarios": {
+    "vcn-a": {
+      "generation_id": "gen_3461d6a0e03c4e58b9bc172a11ae2f35",
+      "status": "completed",
+      "segundos": 76.491,
+      "recuperado": true
+    },
+    "vcn-b": {
+      "generation_id": "gen_d3b36290db774f02b2fd9c70c571f5b0",
+      "status": "rejected_quality",
+      "segundos": 120.969
+    },
+    "vcn-c": {
+      "generation_id": "gen_fc5fb7babf1d47fc8780a836e3c3230d",
+      "status": "completed",
+      "segundos": 45.25
+    },
+    "vcn-quiz": {
+      "generation_id": "gen_c3770d6139344592b2aa5a21e0b6be72",
+      "status": "failed",
+      "segundos": 29.781
+    },
+    "vcn-guion": {
+      "generation_id": "gen_f052119216c942959e5c6d5516b6f99a",
+      "status": "rejected_quality",
+      "segundos": 55.844
+    },
+    "vcn-arquitecto": {
+      "generation_id": "gen_853901292f464d72827edbc0f92b8a36",
+      "status": "failed",
+      "segundos": 114.141
+    },
+    "pagos-tutorial": {
+      "generation_id": "gen_893512a4e59349ba9e35646c6b1c3453",
+      "status": "rejected_quality",
+      "segundos": 100.922
+    },
+    "salud-resumen": {
+      "generation_id": "gen_e5f13fc48782461b875cfa1765a82ba1",
+      "status": "rejected_quality",
+      "segundos": 54.031
+    }
+  },
+  "complementos": {
+    "diagrama": {
+      "job_id": "job_379d4ea3099d437d",
+      "status": "failed",
+      "segundos": 12.703
+    },
+    "rechazo": {
+      "generation_id": "gen_df85cb0e424f41909f65e15d937fe957",
+      "status": "completed",
+      "segundos": 40.578
+    }
+  },
+  "fuentes": [
+    {
+      "fuente": "demo-redes-vcn",
+      "document_id": "doc_6079d80502574f3d92e17deca746d81d",
+      "hash": "f29f930aa861f4069631181286dbcca510779bf61e4b3298c734f1fb02087214",
+      "segundos_ingesta": 24.031
+    },
+    {
+      "fuente": "demo-pagos-fintech",
+      "document_id": "doc_f2df29efde374105b6cc967f4b0e29dc",
+      "hash": "138ae2cf36898326d95bc1d74d61ce3c377469ed76fafd993d91304ac2aea586",
+      "segundos_ingesta": 9.578
+    },
+    {
+      "fuente": "demo-salud-gobernanza",
+      "document_id": "doc_9dffaa8a39b64b3dada0ed598d44b763",
+      "hash": "acde9ab245daa7f206f7c1c8abd922a0eac801a0ca2629e514c176cbf25ff897",
+      "segundos_ingesta": 9.078
+    }
+  ],
+  "aprobados": [
+    {
+      "escenario": "vcn-a",
+      "generation_id": "gen_3461d6a0e03c4e58b9bc172a11ae2f35",
+      "evaluacion_calidad": {
+        "anclaje_fuente_score": 1.0,
+        "cantidad_afirmaciones": 39,
+        "cantidad_respaldadas": 39,
+        "estado_evaluacion": "aprobada",
+        "claridad_pedagogica": "alta",
+        "adecuacion_perfil": "alta",
+        "cobertura_objetivos": "completa",
+        "coherencia_didactica": "alta",
+        "verificacion_visual": "aprobada",
+        "observaciones": null,
+        "razones_bloqueo": []
+      },
+      "trazabilidad": {
+        "modelo_generacion": "gemini-3.5-flash-lite",
+        "modelo_verificacion": "gemini-3.5-flash-lite",
+        "modelo_embeddings": "gemini-embedding-2",
+        "prompt_version": "nm-prompts-1.1.1",
+        "parser_version": "config-sha256:4be5c606c9d0c76c1ba46fc199743a0005479fb05f7d7c3cf11fa78b403c78ef",
+        "retrieval": {
+          "k": 5,
+          "fetch_k": 15,
+          "lambda_mult": 0.7
+        }
+      },
+      "objeto_original": "outputs/4336b3a8-e662-4c84-bbc5-3b642b2e5406/gen_3461d6a0e03c4e58b9bc172a11ae2f35/content.json",
+      "snapshot_sha256": "f7cced75e24c2fe7d81a1d960e1059cfdd23b7a7e5f075d59cdf1c773322b59b"
+    },
+    {
+      "escenario": "vcn-c",
+      "generation_id": "gen_fc5fb7babf1d47fc8780a836e3c3230d",
+      "evaluacion_calidad": {
+        "anclaje_fuente_score": 1.0,
+        "cantidad_afirmaciones": 25,
+        "cantidad_respaldadas": 25,
+        "estado_evaluacion": "aprobada",
+        "claridad_pedagogica": "alta",
+        "adecuacion_perfil": "alta",
+        "cobertura_objetivos": "completa",
+        "coherencia_didactica": "alta",
+        "verificacion_visual": "aprobada",
+        "observaciones": null,
+        "razones_bloqueo": []
+      },
+      "trazabilidad": {
+        "modelo_generacion": "gemini-3.5-flash-lite",
+        "modelo_verificacion": "gemini-3.5-flash-lite",
+        "modelo_embeddings": "gemini-embedding-2",
+        "prompt_version": "nm-prompts-1.1.1",
+        "parser_version": "config-sha256:4be5c606c9d0c76c1ba46fc199743a0005479fb05f7d7c3cf11fa78b403c78ef",
+        "retrieval": {
+          "k": 5,
+          "fetch_k": 15,
+          "lambda_mult": 0.7
+        }
+      },
+      "objeto_original": "outputs/4336b3a8-e662-4c84-bbc5-3b642b2e5406/gen_fc5fb7babf1d47fc8780a836e3c3230d/content.json",
+      "snapshot_sha256": "6c917a9ef1561d09071ff2e4cc07ebe8d52be910794d6f9e28ecab2bd2f0141d"
+    }
+  ]
+}

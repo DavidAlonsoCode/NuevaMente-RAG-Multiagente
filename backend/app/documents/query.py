@@ -351,6 +351,7 @@ class ServicioConsultaDocumental:
             idioma_origen=detectar_idioma("\n".join(c.texto for c in chunks)),
             secciones=tuple(dict.fromkeys(seccion_del_chunk(c) for c in chunks)),
             contiene_material_visual=any(c.es_diagrama for c in chunks),
+            secciones_visuales=tuple(dict.fromkeys(seccion_del_chunk(c) for c in chunks if c.es_diagrama)),
         )
 
     def version_parser(self, contexto: ContextoEjecucion, document_id: str):

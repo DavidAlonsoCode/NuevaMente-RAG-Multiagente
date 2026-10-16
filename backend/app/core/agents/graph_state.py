@@ -38,6 +38,7 @@ class DocumentoGeneracion(ContratoGrafo):
     secciones: tuple[str, ...] = ()
     vision_pendiente: bool = False
     contiene_material_visual: bool = False
+    secciones_visuales: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)

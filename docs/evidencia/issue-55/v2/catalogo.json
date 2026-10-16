@@ -1,0 +1,264 @@
+{
+  "schema_version": "1.0",
+  "etiqueta": "Ejemplo generado previamente",
+  "provider": "oci",
+  "publicado_en": "2026-10-15T16:54:14.524467Z",
+  "completo": true,
+  "items": [
+    {
+      "escenario": "vcn-a",
+      "generation_id": "gen_66279cac6a8748fc91926203198838a1",
+      "fuente": "redes_vcn_oci.pdf",
+      "document_hash": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+      "parametros": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "principiante",
+        "formato_salida": "flashcards",
+        "nicho_sector": "general",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "es",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "created_at": "2026-10-15T15:52:42.742874Z",
+      "segundos": 94.815,
+      "status": "completed",
+      "paquete_sha256": "83c654ea61ade9b3ce2dd1dbb92650b95e1eadaf9d6be729bc532dede1ed3ae9",
+      "fuente_sha256": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "diagnostico": null
+    },
+    {
+      "escenario": "vcn-b",
+      "generation_id": "gen_5733436c8ddf4dfeb09ae96ac5c7c724",
+      "fuente": "redes_vcn_oci.pdf",
+      "document_hash": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+      "parametros": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "junior_ssr",
+        "formato_salida": "tutorial",
+        "nicho_sector": "ecommerce",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "en",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "created_at": "2026-10-15T16:10:55.852606Z",
+      "segundos": 79.624,
+      "status": "completed",
+      "paquete_sha256": "6528583a9bdd023db6a477353612b442af2f86c6370ef089d0e535419e65e57d",
+      "fuente_sha256": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "diagnostico": null
+    },
+    {
+      "escenario": "vcn-c",
+      "generation_id": "gen_92d7ca76b771469a9054e76ff30acc91",
+      "fuente": "redes_vcn_oci.pdf",
+      "document_hash": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+      "parametros": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "ejecutivo",
+        "formato_salida": "resumen_ejecutivo",
+        "nicho_sector": "fintech",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "pt",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "created_at": "2026-10-15T15:56:26.442757Z",
+      "segundos": 113.531,
+      "status": "completed",
+      "paquete_sha256": "ea0ec80d992bae489564baa236acb176f5b5b3ffdc618782722d9c575317161b",
+      "fuente_sha256": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "diagnostico": null
+    },
+    {
+      "escenario": "vcn-quiz",
+      "generation_id": "gen_f0d2374d23b74f5a9901cb037da7456c",
+      "fuente": "redes_vcn_oci.pdf",
+      "document_hash": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+      "parametros": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "principiante",
+        "formato_salida": "quiz",
+        "nicho_sector": "general",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "es",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "created_at": "2026-10-15T15:58:21.311293Z",
+      "segundos": 126.599,
+      "status": "completed",
+      "paquete_sha256": "2a4479023aa322cf543fca1f1492ec962c6f642f057fae1cc20e8684f483080f",
+      "fuente_sha256": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "diagnostico": null
+    },
+    {
+      "escenario": "vcn-guion",
+      "generation_id": "gen_3f8a7f047a8e448d9a82b36f2b6bf185",
+      "fuente": "redes_vcn_oci.pdf",
+      "document_hash": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+      "parametros": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "principiante",
+        "formato_salida": "guion_clase",
+        "nicho_sector": "general",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "es",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "created_at": "2026-10-15T04:06:34.679300Z",
+      "segundos": 50.611,
+      "status": "completed",
+      "paquete_sha256": "f17b21d3c7fc0fe3e0af23c7a0ad77f2717ec4b101ad069f0d673bfdef83d007",
+      "fuente_sha256": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "diagnostico": null
+    },
+    {
+      "escenario": "vcn-arquitecto",
+      "generation_id": "gen_8d26026656174bf7bdf35815a50510ac",
+      "fuente": "redes_vcn_oci.pdf",
+      "document_hash": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+      "parametros": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "lider_tecnico",
+        "formato_salida": "tutorial",
+        "nicho_sector": "general",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "es",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "created_at": "2026-10-15T16:00:29.240836Z",
+      "segundos": 67.515,
+      "status": "completed",
+      "paquete_sha256": "8c09a6bc584e3c887de08ec598492fa0b85c7804bf862241af53d761eb7d8960",
+      "fuente_sha256": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "diagnostico": null
+    },
+    {
+      "escenario": "pagos-tutorial",
+      "generation_id": "gen_921008fe06d840c2ab0f5a1f34dde0cc",
+      "fuente": "integracion_apis_pagos.md",
+      "document_hash": "a536a1c1f9960850cf0e7ffa80b946a0e9de5fde0104343fc98722c45aa90944",
+      "parametros": {
+        "document_id": "doc_e04cab941fce4f418f536fa9297a2370",
+        "perfil_destinatario": "junior_ssr",
+        "formato_salida": "tutorial",
+        "nicho_sector": "fintech",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "es",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "created_at": "2026-10-15T16:50:56.818757Z",
+      "segundos": 154.508,
+      "status": "completed",
+      "paquete_sha256": "f9862a069cb504c85be463fe402268f898f6cc92996c73475962ae74e0baf4c6",
+      "fuente_sha256": "3c768a33e5e7dae473c2c148045524056437c4b946c44601ef7b47c4648bdb25",
+      "diagnostico": null
+    },
+    {
+      "escenario": "salud-resumen",
+      "generation_id": "gen_f2f5d3f38a124565822054924f82fd39",
+      "fuente": "gobernanza_datos_salud.md",
+      "document_hash": "1bf5c5b39eda0f4faf6d2d260b5ccb087bc7e71581ea66a29c84ee4dfc5d9455",
+      "parametros": {
+        "document_id": "doc_8016c87c800a45b3b86dc7996d2dd5b3",
+        "perfil_destinatario": "ejecutivo",
+        "formato_salida": "resumen_ejecutivo",
+        "nicho_sector": "salud",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "es",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "created_at": "2026-10-15T16:03:33.695386Z",
+      "segundos": 79.682,
+      "status": "completed",
+      "paquete_sha256": "e97e3406e8ed8c76f04ff8a88d76dbe1b182ce236aacfdd10432f03332f89b02",
+      "fuente_sha256": "6bd46722c36588cf2908501edf14fcfa8df2d43b5c5c2b863dbc8c9210442af0",
+      "diagnostico": null
+    },
+    {
+      "escenario": "evidencia-insuficiente",
+      "generation_id": "gen_6426833e5f2144a5b7e2ee3acc9b110e",
+      "fuente": "redes_vcn_oci.pdf",
+      "document_hash": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+      "parametros": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "lider_tecnico",
+        "formato_salida": "tutorial",
+        "nicho_sector": "general",
+        "nivel_detalle": "tecnico_profundo",
+        "idioma_salida": "es",
+        "alcance": {
+          "tipo": "seccion",
+          "seccion_id": "pagina:9"
+        }
+      },
+      "created_at": "2026-10-15T16:17:35.938979Z",
+      "segundos": 88.5,
+      "status": "rejected_quality",
+      "paquete_sha256": null,
+      "fuente_sha256": null,
+      "diagnostico": "La evidencia disponible no permitió aprobar esta adaptación. Acotá el alcance o aportá una fuente más completa."
+    }
+  ],
+  "diagrama": {
+    "respuesta": {
+      "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+      "document_hash": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e",
+      "pregunta": "En el diagrama de la página 3, ¿las subredes 10.0.1.0/24 y 10.0.2.0/24 aparecen dentro de la misma VCN 10.0.0.0/16? Respondé sólo esa relación visible y citá la imagen original.",
+      "perfil_destinatario": "lider_tecnico",
+      "idioma_salida": "es",
+      "estado": "respondida",
+      "respuesta": "Sí, en el diagrama de la página 3 las subredes 10.0.1.0/24 y 10.0.2.0/24 aparecen contenidas dentro de la misma VCN 10.0.0.0/16.",
+      "referencias": [
+        {
+          "chunk_id": "ch_visual_d71a61e185cfb20ef9c019f9",
+          "pagina": 3,
+          "seccion": "Interpretación visual: página 3"
+        },
+        {
+          "chunk_id": "chk_7413b9fe504b6edb317563b5",
+          "pagina": 3,
+          "seccion": null
+        }
+      ],
+      "evaluacion_calidad": {
+        "anclaje_fuente_score": 1.0,
+        "cantidad_afirmaciones": 1,
+        "cantidad_respaldadas": 1,
+        "estado_evaluacion": "aprobada",
+        "claridad_pedagogica": "alta",
+        "adecuacion_perfil": "alta",
+        "cobertura_objetivos": "completa",
+        "coherencia_didactica": "alta",
+        "verificacion_visual": "aprobada",
+        "observaciones": null,
+        "razones_bloqueo": []
+      }
+    },
+    "fuente_sha256": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+    "segundos": 84.688
+  },
+  "quiz_verificado": true
+}

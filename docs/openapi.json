@@ -99,6 +99,148 @@
         "title": "AlmacenamientoOCI",
         "type": "object"
       },
+      "CatalogoEjemplos": {
+        "additionalProperties": false,
+        "properties": {
+          "completo": {
+            "title": "Completo",
+            "type": "boolean"
+          },
+          "diagrama": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiagramaDemo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "etiqueta": {
+            "const": "Ejemplo generado previamente",
+            "default": "Ejemplo generado previamente",
+            "title": "Etiqueta",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EjemploDemo"
+            },
+            "maxItems": 12,
+            "title": "Items",
+            "type": "array"
+          },
+          "provider": {
+            "enum": [
+              "oci",
+              "mock"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "publicado_en": {
+            "format": "date-time",
+            "title": "Publicado En",
+            "type": "string"
+          },
+          "quiz_verificado": {
+            "default": false,
+            "title": "Quiz Verificado",
+            "type": "boolean"
+          },
+          "schema_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "publicado_en",
+          "completo",
+          "items"
+        ],
+        "title": "CatalogoEjemplos",
+        "type": "object"
+      },
+      "CatalogoVacio": {
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {},
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "CatalogoVacio",
+        "type": "object"
+      },
+      "ChatAnswer": {
+        "additionalProperties": false,
+        "properties": {
+          "document_hash": {
+            "title": "Document Hash",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "estado": {
+            "enum": [
+              "respondida",
+              "fuera_de_alcance"
+            ],
+            "title": "Estado",
+            "type": "string"
+          },
+          "evaluacion_calidad": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluacionCalidad"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "idioma_salida": {
+            "$ref": "#/components/schemas/OutputLanguage"
+          },
+          "perfil_destinatario": {
+            "$ref": "#/components/schemas/RecipientProfile"
+          },
+          "pregunta": {
+            "title": "Pregunta",
+            "type": "string"
+          },
+          "referencias": {
+            "items": {
+              "$ref": "#/components/schemas/Referencia"
+            },
+            "title": "Referencias",
+            "type": "array"
+          },
+          "respuesta": {
+            "title": "Respuesta",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "document_hash",
+          "pregunta",
+          "perfil_destinatario",
+          "idioma_salida",
+          "estado",
+          "respuesta",
+          "referencias",
+          "evaluacion_calidad"
+        ],
+        "title": "ChatAnswer",
+        "type": "object"
+      },
       "ChatRequest": {
         "additionalProperties": false,
         "properties": {
@@ -243,6 +385,31 @@
         "title": "DetailLevel",
         "type": "string"
       },
+      "DiagramaDemo": {
+        "additionalProperties": false,
+        "properties": {
+          "fuente_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Fuente Sha256",
+            "type": "string"
+          },
+          "respuesta": {
+            "$ref": "#/components/schemas/ChatAnswer"
+          },
+          "segundos": {
+            "minimum": 0.0,
+            "title": "Segundos",
+            "type": "number"
+          }
+        },
+        "required": [
+          "respuesta",
+          "fuente_sha256",
+          "segundos"
+        ],
+        "title": "DiagramaDemo",
+        "type": "object"
+      },
       "DocumentStatus": {
         "description": "Ciclo de vida de un documento cargado (§3.2 paso 6).\n\n``ready`` es el único estado desde el que POST /api/generate acepta\ngenerar (§7.2: \"la generación solo acepta documentos ready\").",
         "enum": [
@@ -384,6 +551,98 @@
           "next_cursor"
         ],
         "title": "DocumentosResponse",
+        "type": "object"
+      },
+      "EjemploDemo": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diagnostico": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostico"
+          },
+          "document_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Document Hash",
+            "type": "string"
+          },
+          "escenario": {
+            "pattern": "^[a-z0-9-]{1,40}$",
+            "title": "Escenario",
+            "type": "string"
+          },
+          "fuente": {
+            "title": "Fuente",
+            "type": "string"
+          },
+          "fuente_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fuente Sha256"
+          },
+          "generation_id": {
+            "pattern": "^[a-zA-Z0-9_-]{1,100}$",
+            "title": "Generation Id",
+            "type": "string"
+          },
+          "paquete_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paquete Sha256"
+          },
+          "parametros": {
+            "$ref": "#/components/schemas/GenerateRequest"
+          },
+          "segundos": {
+            "minimum": 0.0,
+            "title": "Segundos",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "rejected_quality"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "escenario",
+          "generation_id",
+          "fuente",
+          "document_hash",
+          "parametros",
+          "created_at",
+          "segundos",
+          "status"
+        ],
+        "title": "EjemploDemo",
         "type": "object"
       },
       "ErrorBody": {
@@ -3600,6 +3859,912 @@
         "summary": "Fuente",
         "tags": [
           "Documentos demo"
+        ]
+      }
+    },
+    "/api/demo/generations": {
+      "get": {
+        "description": "Catálogo curado con Bearer vigente; sin catálogo devuelve items=[]. No crea trabajos, no renueva actividad ni admite workspace_id. Los ejemplos compartidos no otorgan acceso al espacio privado.",
+        "operationId": "listar_api_demo_generations_get",
+        "parameters": [
+          {
+            "description": "Se respeta si cumple [A-Za-z0-9_.-]{1,128}; ausente o inválido se reemplaza por uno nuevo.",
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Mensajes de error es/en/pt con preferencias q; por defecto es. No cambia idioma_salida.",
+            "in": "header",
+            "name": "Accept-Language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CatalogoEjemplos"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CatalogoVacio"
+                    }
+                  ],
+                  "title": "Response Listar Api Demo Generations Get"
+                }
+              }
+            },
+            "description": "Operación realizada.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "SESSION_INVALID: Bearer ausente/inválido, sesión vencida/revocada o recuperación inválida.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer cuando lo incluye el autenticador; puede faltar para una sesión inválida.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_ERROR: la petición no respeta los tipos o reglas semánticas de la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL: fallo técnico no manejado; mensaje seguro y request_id para diagnóstico.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "STORAGE_UNAVAILABLE o PROVIDER_UNAVAILABLE según la dependencia requerida por la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar",
+        "tags": [
+          "Ejemplos demo"
+        ]
+      }
+    },
+    "/api/demo/generations/{generation_id}": {
+      "get": {
+        "description": "Ejemplo publicado e íntegro con sesión vigente. Vista estudiante del quiz, sin soluciones ni justificación; un diagnóstico rechazado no entrega paquete. No admite IDs privados ni workspace_id.",
+        "operationId": "detalle_api_demo_generations__generation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Se respeta si cumple [A-Za-z0-9_.-]{1,128}; ausente o inválido se reemplaza por uno nuevo.",
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Mensajes de error es/en/pt con preferencias q; por defecto es. No cambia idioma_salida.",
+            "in": "header",
+            "name": "Accept-Language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PedagogicalStudentOutput"
+                }
+              }
+            },
+            "description": "Operación realizada.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "SESSION_INVALID: Bearer ausente/inválido, sesión vencida/revocada o recuperación inválida.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer cuando lo incluye el autenticador; puede faltar para una sesión inválida.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "NOT_FOUND: recurso inexistente, ajeno o retirado, sin revelar su existencia.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_ERROR: la petición no respeta los tipos o reglas semánticas de la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL: fallo técnico no manejado; mensaje seguro y request_id para diagnóstico.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "STORAGE_UNAVAILABLE o PROVIDER_UNAVAILABLE según la dependencia requerida por la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detalle",
+        "tags": [
+          "Ejemplos demo"
+        ]
+      }
+    },
+    "/api/demo/generations/{generation_id}/answers": {
+      "post": {
+        "description": "Corrección determinista del quiz publicado, con justificación y citas. Conserva el body QuizAnswerRequest (incluido event_id), pero no registra progreso privado ni llama al LLM. Pregunta inexistente devuelve 404; opción ajena o formato no quiz devuelve 422.",
+        "operationId": "responder_api_demo_generations__generation_id__answers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Se respeta si cumple [A-Za-z0-9_.-]{1,128}; ausente o inválido se reemplaza por uno nuevo.",
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Mensajes de error es/en/pt con preferencias q; por defecto es. No cambia idioma_salida.",
+            "in": "header",
+            "name": "Accept-Language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizAnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizAnswerResponse"
+                }
+              }
+            },
+            "description": "Operación realizada.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "SESSION_INVALID: Bearer ausente/inválido, sesión vencida/revocada o recuperación inválida.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer cuando lo incluye el autenticador; puede faltar para una sesión inválida.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "NOT_FOUND: recurso inexistente, ajeno o retirado, sin revelar su existencia.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_ERROR: la petición no respeta los tipos o reglas semánticas de la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL: fallo técnico no manejado; mensaje seguro y request_id para diagnóstico.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "STORAGE_UNAVAILABLE o PROVIDER_UNAVAILABLE según la dependencia requerida por la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Responder",
+        "tags": [
+          "Ejemplos demo"
+        ]
+      }
+    },
+    "/api/demo/generations/{generation_id}/sources/{chunk_id}": {
+      "get": {
+        "description": "Fuente del snapshot publicado, con identidad/hash y localización verificados. No busca chunks privados ni crea embeddings; requiere Bearer y rechaza workspace_id.",
+        "operationId": "fuente_api_demo_generations__generation_id__sources__chunk_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "chunk_id",
+            "required": true,
+            "schema": {
+              "title": "Chunk Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Se respeta si cumple [A-Za-z0-9_.-]{1,128}; ausente o inválido se reemplaza por uno nuevo.",
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Mensajes de error es/en/pt con preferencias q; por defecto es. No cambia idioma_salida.",
+            "in": "header",
+            "name": "Accept-Language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FuenteDocumentoResponse"
+                }
+              }
+            },
+            "description": "Operación realizada.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "SESSION_INVALID: Bearer ausente/inválido, sesión vencida/revocada o recuperación inválida.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer cuando lo incluye el autenticador; puede faltar para una sesión inválida.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "NOT_FOUND: recurso inexistente, ajeno o retirado, sin revelar su existencia.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_ERROR: la petición no respeta los tipos o reglas semánticas de la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL: fallo técnico no manejado; mensaje seguro y request_id para diagnóstico.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "STORAGE_UNAVAILABLE o PROVIDER_UNAVAILABLE según la dependencia requerida por la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Fuente",
+        "tags": [
+          "Ejemplos demo"
+        ]
+      }
+    },
+    "/api/demo/generations/{generation_id}/sources/{chunk_id}/image": {
+      "get": {
+        "description": "PNG original asociado a la fuente visual del ejemplo, nunca su interpretación textual. Bearer vigente; sin imagen publicada devuelve 404. No admite workspace_id.",
+        "operationId": "imagen_api_demo_generations__generation_id__sources__chunk_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "chunk_id",
+            "required": true,
+            "schema": {
+              "title": "Chunk Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Se respeta si cumple [A-Za-z0-9_.-]{1,128}; ausente o inválido se reemplaza por uno nuevo.",
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Mensajes de error es/en/pt con preferencias q; por defecto es. No cambia idioma_salida.",
+            "in": "header",
+            "name": "Accept-Language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Operación realizada.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "SESSION_INVALID: Bearer ausente/inválido, sesión vencida/revocada o recuperación inválida.",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Bearer cuando lo incluye el autenticador; puede faltar para una sesión inválida.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "NOT_FOUND: recurso inexistente, ajeno o retirado, sin revelar su existencia.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INVALID_STATE o IDEMPOTENCY_CONFLICT según la operación: estado incompatible o clave con otro cuerpo.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_ERROR: la petición no respeta los tipos o reglas semánticas de la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL: fallo técnico no manejado; mensaje seguro y request_id para diagnóstico.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "STORAGE_UNAVAILABLE o PROVIDER_UNAVAILABLE según la dependencia requerida por la operación.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador de trazabilidad; también aparece como request_id en el JSON de error.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Imagen",
+        "tags": [
+          "Ejemplos demo"
         ]
       }
     },

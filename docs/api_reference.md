@@ -1,7 +1,7 @@
 # Referencia de API — NuevaMente (#59)
 
 Referencia del runtime actual, basada en el [OpenAPI versionado](openapi.json), las
-[rutas FastAPI](../backend/app/api/routes/) y sus servicios. Cubre 32 operaciones.
+[rutas FastAPI](../backend/app/api/routes/) y sus servicios. Cubre 37 operaciones.
 No aprueba las precisiones `contract-change` pendientes en [contratos-api.md](contratos-api.md).
 
 ## Versiones y fuente técnica
@@ -165,6 +165,11 @@ para localizarlos en el snapshot o en un viewer que lo soporte.
 | `GET /api/demo/documents` | Bearer | query `limit`: integer; default `20`; minimum `1`; maximum `100`<br>query `cursor`: string / null | **200** `application/json` [DocumentosResponse](openapi.json#/components/schemas/DocumentosResponse) | 400, 401, 409, 422, 500, 503 |
 | `GET /api/demo/documents/{document_id}` | Bearer | path `document_id`: string obligatorio | **200** `application/json` [DocumentoResponse](openapi.json#/components/schemas/DocumentoResponse) | 401, 404, 409, 422, 500, 503 |
 | `GET /api/demo/documents/{document_id}/sources/{chunk_id}` | Bearer | path `document_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `application/json` [FuenteDocumentoResponse](openapi.json#/components/schemas/FuenteDocumentoResponse) | 401, 404, 409, 422, 500, 503 |
+| `GET /api/demo/generations` | Bearer | Sin body/parámetros específicos | **200** `application/json` [CatalogoEjemplos](openapi.json#/components/schemas/CatalogoEjemplos) / [CatalogoVacio](openapi.json#/components/schemas/CatalogoVacio) | 401, 409, 422, 500, 503 |
+| `GET /api/demo/generations/{generation_id}` | Bearer | path `generation_id`: string obligatorio | **200** `application/json` [PedagogicalStudentOutput](openapi.json#/components/schemas/PedagogicalStudentOutput) | 401, 404, 409, 422, 500, 503 |
+| `POST /api/demo/generations/{generation_id}/answers` | Bearer | path `generation_id`: string obligatorio<br>body `application/json` obligatorio: [QuizAnswerRequest](openapi.json#/components/schemas/QuizAnswerRequest) | **200** `application/json` [QuizAnswerResponse](openapi.json#/components/schemas/QuizAnswerResponse) | 401, 404, 409, 422, 500, 503 |
+| `GET /api/demo/generations/{generation_id}/sources/{chunk_id}` | Bearer | path `generation_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `application/json` [FuenteDocumentoResponse](openapi.json#/components/schemas/FuenteDocumentoResponse) | 401, 404, 409, 422, 500, 503 |
+| `GET /api/demo/generations/{generation_id}/sources/{chunk_id}/image` | Bearer | path `generation_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `image/png` string (binary) | 401, 404, 409, 422, 500, 503 |
 | `GET /api/documents` | Bearer | query `limit`: integer; default `20`; minimum `1`; maximum `100`<br>query `cursor`: string / null | **200** `application/json` [DocumentosResponse](openapi.json#/components/schemas/DocumentosResponse) | 400, 401, 409, 422, 500, 503 |
 | `POST /api/documents/upload` | Bearer | header `Idempotency-Key`: string / null<br>body `application/json` obligatorio: object<br>body `multipart/form-data` obligatorio: `file`: string (binary) obligatorio; `titulo`: string opcional; minLength `1`; maxLength `300` | **202** `application/json` [UploadDocumentoResponse](openapi.json#/components/schemas/UploadDocumentoResponse) | 400, 401, 409, 413, 422, 429, 500, 503 |
 | `DELETE /api/documents/{document_id}` | Bearer | path `document_id`: string obligatorio | **202** `application/json` [RetiradaDocumentoResponse](openapi.json#/components/schemas/RetiradaDocumentoResponse)<br>**204** sin cuerpo | 401, 404, 422, 500, 503 |
@@ -276,6 +281,18 @@ Definir en el entorno `BASE_URL` con el origen autorizado, sin `/api` al final,
 y `INPUT_FILE` con un archivo **TXT UTF-8 propio no vacío** sobre el tema a adaptar.
 En esta etapa ejecutar sólo contra el backend local con proveedores configurados.
 El harness asigna un origen loopback efímero y usa la fixture `txt_ejemplo` de VCN.
+
+En Windows ejecutar el verificador desde Git Bash, con las herramientas anteriores
+en `PATH`. Si se invoca desde PowerShell y `bash` resuelve al lanzador WSL sin
+distribución instalada, seleccionar Git Bash explícitamente para esa terminal:
+
+```powershell
+$env:NM_API_REFERENCE_BASH = "C:\Program Files\Git\bin\bash.exe"
+$env:PATH = "C:\Program Files\Git\usr\bin;C:\Program Files\Git\mingw64\bin;$env:PATH"
+```
+
+jq debe estar instalado y disponible en ese mismo `PATH`; no se instala ni se
+descarga automáticamente al ejecutar la verificación.
 
 Ejecutar los siete bloques **en orden en la misma sesión Bash**. El primero
 crea un directorio privado para respuestas, claves de intención y descargas.
@@ -522,7 +539,9 @@ del recorrido TXT comprobado aquí.
 
 ## Evidencia y alcance de la comprobación
 
-`verify_api_reference.py --check` contrasta las 32 filas (método, ruta,
+Ver [registro de revisión integrada](verificacion-issue-59.md) y su captura del snapshot vigente.
+
+`verify_api_reference.py --check` contrasta las 37 filas (método, ruta,
 parámetros, modelos, HTTP y tipos de contenido), enlaces de schemas y los siete
 bloques ordenados. `--local` extrae sus cuerpos literalmente y los ejecuta en una
 sola sesión Bash contra la app real por TCP, reutilizando la fixture de #31/#52
@@ -536,16 +555,16 @@ no se cuentan como peticiones curl. Los bloques crean su propio espacio y suben
 la entrada por curl, obteniendo sus nuevas credenciales e identidades por HTTP.
 
 Comprobación local de esta etapa (2026-10-15): los siete bloques se ejecutaron
-por TCP con Bash 5.2.37, curl 8.18.0 y jq 1.8.2. Se verificaron ambos SSE,
+por TCP con Bash 5.2.37, curl 8.12.1 y jq 1.8.2. Se verificaron ambos SSE,
 reconexión, documento ready, quiz, feedback, progreso, JSON/MD/PDF,
 CSV/TSV/APKG y multipart. Un fallo inicial de ruta multipart MSYS para curl
 nativo Windows se corrigió en el bloque publicado, sin alterar el runtime.
 
 Viewer: **Swagger UI 5.33.2**, servido localmente con assets descargados y una
 copia byte a byte del archivo versionado, no `/docs`. El navegador mostró
-`NuevaMente API 0.1.0`, `OAS 3.1` y las 32 operaciones, sin texto de error de carga
+`NuevaMente API 0.1.0`, `OAS 3.1` y las 37 operaciones, sin texto de error de carga
 ni de resolución. SHA-256 del snapshot visualizado:
-`214bb3d318b8c2288f257706fdb198223965ec8ab9ebaded42adacf0b85f8cf1`.
+`b815caba3fa753377e3cc7d69e7dac0ca865bab8dc1a883e3da382ec9610313a`.
 
 Los ejemplos de error y SSE anteriores son ilustrativos; los resultados reales
 se comprueban durante la ejecución y las credenciales no se publican. La
@@ -584,6 +603,6 @@ Caddy (7) y docker-compose (45) no disponibles: son cobertura no ejecutada.
 La CI de la PR y la revisión del equipo siguen siendo requisitos de integración.
 
 Quedan separadas las precisiones contractuales pendientes y la cobertura de
-escenarios de las 32 operaciones: los curl locales sólo acreditan los recorridos
+escenarios de las 37 operaciones: los curl locales sólo acreditan los recorridos
 indicados con dobles. No se alteraron timeouts, expectativas ni skips para
 obtener estos resultados.
