@@ -138,6 +138,29 @@ def test_cinco_formatos_tipos_citas_y_metadata(entorno, formato):
     assert EstadoGrafo.model_validate_json(nuevo.model_dump_json()) == nuevo
 
 
+def test_writer_solicita_ids_y_backend_resuelve_ubicacion(entorno, monkeypatch):
+    estado = estado_inicial(entorno)
+    datos = respuesta(estado)
+    for tarjeta in datos["contenido_adaptado"]["items"]:
+        tarjeta["referencias"] = [{"chunk_id": "ch_1"}]
+    proveedor = entorno[0].proveedor
+    proveedor.programar_generacion(json.dumps(datos))
+    original = proveedor.generar_sync
+    schemas = []
+
+    def observar(prompt, **kwargs):
+        schemas.append(kwargs["response_json_schema"])
+        return original(prompt, **kwargs)
+
+    monkeypatch.setattr(proveedor, "generar_sync", observar)
+    nuevo = aplicar(estado, writer(estado, entorno[0]))
+    assert nuevo.borrador is not None
+    assert nuevo.referencias[0].model_dump() == {"chunk_id": "ch_1", "pagina": 1, "seccion": "Fundamentos"}
+    referencia = schemas[0]["$defs"]["Referencia"]
+    assert referencia["properties"] == {"chunk_id": {"type": "string", "enum": ["ch_1"]}}
+    assert referencia["additionalProperties"] is False
+
+
 @pytest.mark.parametrize("problema", ["chunk", "pagina", "seccion", "perfil", "idioma", "cobertura", "alcance"])
 def test_corrige_citas_y_metadata_antes_de_critic(entorno, problema):
     estado = estado_inicial(entorno)

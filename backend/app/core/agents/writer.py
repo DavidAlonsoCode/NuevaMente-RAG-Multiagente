@@ -2,6 +2,7 @@
 
 import inspect
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -20,6 +21,8 @@ from app.jobs.manager import (
     TrabajoCanceladoError,
 )
 from app.schemas.enums import JobStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -136,6 +139,14 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
             sistema = prompts.writer.system_instruction
             if dependencias.transformar_entrada is not None:
                 sistema, prompt, schema = dependencias.transformar_entrada(sistema, prompt, schema)
+            # La ubicación la resuelve el backend desde el chunk autorizado; el LLM
+            # sólo elige su ID. El validador sigue rechazando ubicaciones falsas.
+            referencia = schema["$defs"]["Referencia"]
+            referencia["properties"] = {
+                "chunk_id": {"type": "string", "enum": [e.chunk.chunk_id for e in estado.evidencia]}
+            }
+            referencia["required"] = ["chunk_id"]
+            sistema += "\nEn las referencias devolver sólo chunk_id; el backend completa pagina y seccion originales."
             max_output = dependencias.configuracion.generation_max_output_tokens
             estimados = TokenizadorBPE().contar(sistema + prompt + json.dumps(schema)) + max_output
             iniciada = False
@@ -164,6 +175,8 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
             try:
                 borrador, referencias = validar_borrador(texto, estado)
             except BorradorInvalidoError as error:
+                # Diagnóstico fijo de validación, nunca texto del borrador ni respuesta SDK.
+                logger.warning("Writer: redacción %s descartada: %s", redacciones, error)
                 feedback.append(str(error))
                 continue
             invalido = revalidar()

@@ -1,7 +1,7 @@
 # Referencia de API — NuevaMente (#59)
 
 Referencia del runtime actual, basada en el [OpenAPI versionado](openapi.json), las
-[rutas FastAPI](../backend/app/api/routes/) y sus servicios. Cubre 32 operaciones.
+[rutas FastAPI](../backend/app/api/routes/) y sus servicios. Cubre 37 operaciones.
 No aprueba las precisiones `contract-change` pendientes en [contratos-api.md](contratos-api.md).
 
 ## Versiones y fuente técnica
@@ -165,6 +165,11 @@ para localizarlos en el snapshot o en un viewer que lo soporte.
 | `GET /api/demo/documents` | Bearer | query `limit`: integer; default `20`; minimum `1`; maximum `100`<br>query `cursor`: string / null | **200** `application/json` [DocumentosResponse](openapi.json#/components/schemas/DocumentosResponse) | 400, 401, 409, 422, 500, 503 |
 | `GET /api/demo/documents/{document_id}` | Bearer | path `document_id`: string obligatorio | **200** `application/json` [DocumentoResponse](openapi.json#/components/schemas/DocumentoResponse) | 401, 404, 409, 422, 500, 503 |
 | `GET /api/demo/documents/{document_id}/sources/{chunk_id}` | Bearer | path `document_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `application/json` [FuenteDocumentoResponse](openapi.json#/components/schemas/FuenteDocumentoResponse) | 401, 404, 409, 422, 500, 503 |
+| `GET /api/demo/generations` | Bearer | Sin body/parámetros específicos | **200** `application/json` [CatalogoEjemplos](openapi.json#/components/schemas/CatalogoEjemplos) / [CatalogoVacio](openapi.json#/components/schemas/CatalogoVacio) | 401, 422, 500, 503 |
+| `GET /api/demo/generations/{generation_id}` | Bearer | path `generation_id`: string obligatorio | **200** `application/json` [PedagogicalStudentOutput](openapi.json#/components/schemas/PedagogicalStudentOutput) | 401, 404, 422, 500, 503 |
+| `POST /api/demo/generations/{generation_id}/answers` | Bearer | path `generation_id`: string obligatorio<br>body `application/json` obligatorio: [QuizAnswerRequest](openapi.json#/components/schemas/QuizAnswerRequest) | **200** `application/json` [QuizAnswerResponse](openapi.json#/components/schemas/QuizAnswerResponse) | 401, 404, 422, 500, 503 |
+| `GET /api/demo/generations/{generation_id}/sources/{chunk_id}` | Bearer | path `generation_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `application/json` [FuenteDocumentoResponse](openapi.json#/components/schemas/FuenteDocumentoResponse) | 401, 404, 422, 500, 503 |
+| `GET /api/demo/generations/{generation_id}/sources/{chunk_id}/image` | Bearer | path `generation_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `image/png` string (binary) | 401, 404, 422, 500, 503 |
 | `GET /api/documents` | Bearer | query `limit`: integer; default `20`; minimum `1`; maximum `100`<br>query `cursor`: string / null | **200** `application/json` [DocumentosResponse](openapi.json#/components/schemas/DocumentosResponse) | 400, 401, 409, 422, 500, 503 |
 | `POST /api/documents/upload` | Bearer | header `Idempotency-Key`: string / null<br>body `application/json` obligatorio: object<br>body `multipart/form-data` obligatorio: `file`: string (binary) obligatorio; `titulo`: string opcional; minLength `1`; maxLength `300` | **202** `application/json` [UploadDocumentoResponse](openapi.json#/components/schemas/UploadDocumentoResponse) | 400, 401, 409, 413, 422, 429, 500, 503 |
 | `DELETE /api/documents/{document_id}` | Bearer | path `document_id`: string obligatorio | **202** `application/json` [RetiradaDocumentoResponse](openapi.json#/components/schemas/RetiradaDocumentoResponse)<br>**204** sin cuerpo | 401, 404, 422, 500, 503 |
@@ -209,9 +214,20 @@ para localizarlos en el snapshot o en un viewer que lo soporte.
   DELETE devuelve 204 si se verifica limpieza o 202 con `cleanup_pending=true`
   si quedan efectos físicos; repetir sobre retirado devuelve 404. Estas precisiones
   siguen pendientes de revisión contractual, como señala `contratos-api.md`.
-- **Demo:** catálogo compartido de sólo lectura, Bearer vigente sin renovar
+- **Documentos demo:** catálogo compartido de sólo lectura, Bearer vigente sin renovar
   actividad; no admite `workspace_id` (422), no resuelve privados ni habilita
   generación demo. Cursor firmado; orden `document_id` ASCII ascendente.
+- **Ejemplos demo de #55:** `/api/demo/generations` ofrece un catálogo finito
+  de hasta doce ejemplos publicados previamente, sin paginación. Requiere Bearer
+  vigente, no renueva actividad ni admite `workspace_id`. Catálogo ausente devuelve
+  sólo `items=[]`; errores de integridad/storage siguen siendo 503. Las entradas
+  `rejected_quality` sólo exponen diagnóstico y no permiten leer un paquete (404).
+  La vista estudiante oculta soluciones iniciales del quiz; `/answers` devuelve
+  feedback sin escribir progreso privado ni llamar al LLM. Usa `QuizAnswerRequest`,
+  pero `event_id` no registra progreso ni se usa `Idempotency-Key`. Repetir la misma
+  respuesta devuelve el mismo feedback. Las fuentes e imágenes provienen de
+  snapshots verificados, sin fallback privado. `/image` entrega PNG con
+  `Cache-Control: no-store`. `provider=mock` no acredita preparación real.
 - **Generaciones:** documento propio ready. Historial descendente por creación e
   ID, cursor ligado a filtros; `desde`/`hasta` con zona horaria y `desde <= hasta`.
   Cancelación cooperativa: puede seguir `running` hasta que el worker la observe;
@@ -522,7 +538,7 @@ del recorrido TXT comprobado aquí.
 
 ## Evidencia y alcance de la comprobación
 
-`verify_api_reference.py --check` contrasta las 32 filas (método, ruta,
+`verify_api_reference.py --check` contrasta las 37 filas (método, ruta,
 parámetros, modelos, HTTP y tipos de contenido), enlaces de schemas y los siete
 bloques ordenados. `--local` extrae sus cuerpos literalmente y los ejecuta en una
 sola sesión Bash contra la app real por TCP, reutilizando la fixture de #31/#52
@@ -542,16 +558,23 @@ CSV/TSV/APKG y multipart. Un fallo inicial de ruta multipart MSYS para curl
 nativo Windows se corrigió en el bloque publicado, sin alterar el runtime.
 
 Viewer: **Swagger UI 5.33.2**, servido localmente con assets descargados y una
-copia byte a byte del archivo versionado, no `/docs`. El navegador mostró
-`NuevaMente API 0.1.0`, `OAS 3.1` y las 32 operaciones, sin texto de error de carga
-ni de resolución. SHA-256 del snapshot visualizado:
-`214bb3d318b8c2288f257706fdb198223965ec8ab9ebaded42adacf0b85f8cf1`.
+copia byte a byte del archivo versionado, no `/docs`. Tras sincronizar con #55,
+el navegador mostró `NuevaMente API 0.1.0`, `OAS 3.1` y las **37 operaciones**,
+incluidas las cinco de ejemplos demo, sin errores de carga ni de resolución.
+SHA-256 del snapshot visualizado:
+`d8f388b4e55b1ccb129ca4c3563aadc0c1fabf2be30969a20880044c84badca6`.
 
 Los ejemplos de error y SSE anteriores son ilustrativos; los resultados reales
 se comprueban durante la ejecución y las credenciales no se publican. La
 referencia cubre también operaciones que no se ejecutan en estos recorridos,
 como rotación/borrado, cancelación, demo, chat y glosario; siguen cubiertas por sus
 tests de API existentes. No se atribuye ejecución curl a esas filas.
+
+La sincronización con `develop` `7fd1d5afe59fc557d48935a32f283f1c0844ee02`
+incorpora las cinco operaciones de ejemplos demo de #55; el snapshot actual
+contiene 37 operaciones. La tanda afectada aprobó 73 tests: 29 de #59,
+cinco de ejemplos demo y 39 de schemas/health, incluidos los siete bloques
+curl literales. No se repitió la suite general tras esta sincronización.
 
 ### Criterios vigentes de #59 y seguimiento público
 
@@ -584,6 +607,6 @@ Caddy (7) y docker-compose (45) no disponibles: son cobertura no ejecutada.
 La CI de la PR y la revisión del equipo siguen siendo requisitos de integración.
 
 Quedan separadas las precisiones contractuales pendientes y la cobertura de
-escenarios de las 32 operaciones: los curl locales sólo acreditan los recorridos
+escenarios de las 37 operaciones: los curl locales sólo acreditan los recorridos
 indicados con dobles. No se alteraron timeouts, expectativas ni skips para
 obtener estos resultados.

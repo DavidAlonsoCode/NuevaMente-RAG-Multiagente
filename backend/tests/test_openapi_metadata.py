@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import test_api_generate as generaciones
+import test_demo_examples as ejemplos_demo
 import test_glossary as glosarios
 import test_multimodal as visuales
 from jsonschema import Draft202012Validator
@@ -12,6 +13,7 @@ from test_workspaces import cliente as cliente
 
 pytestmark = pytest.mark.integration_mock
 entorno = generaciones.entorno
+ejemplo_demo = ejemplos_demo.ejemplo
 entorno_generacion = generaciones.entorno
 entorno_glosario = glosarios.entorno
 entorno_visual = visuales.entorno
@@ -23,6 +25,10 @@ OPERACIONES_BASE = [
     "GET /api/demo/documents",
     "GET /api/demo/documents/{document_id}",
     "GET /api/demo/documents/{document_id}/sources/{chunk_id}",
+    "GET /api/demo/generations",
+    "GET /api/demo/generations/{generation_id}",
+    "GET /api/demo/generations/{generation_id}/sources/{chunk_id}",
+    "GET /api/demo/generations/{generation_id}/sources/{chunk_id}/image",
     "GET /api/documents",
     "GET /api/documents/{document_id}",
     "GET /api/documents/{document_id}/sources/{chunk_id}",
@@ -38,6 +44,7 @@ OPERACIONES_BASE = [
     "GET /api/progress",
     "GET /api/workspaces/current",
     "POST /api/chat",
+    "POST /api/demo/generations/{generation_id}/answers",
     "POST /api/documents/upload",
     "POST /api/generate",
     "POST /api/generations/{generation_id}/cancel",
@@ -267,3 +274,40 @@ def test_png_real_y_multipart_documentados(spec, entorno_visual):
     )
     assert invalido.status_code == 422, invalido.text
     comprobar_respuesta(spec, "/api/documents/upload", "post", invalido)
+
+
+def test_ejemplos_demo_coinciden_con_snapshot_y_errores(spec, ejemplo_demo):
+    e = ejemplo_demo
+    base = "/api/demo/generations"
+    detalle = base + "/" + e.gid
+    fuente = e.paquete.referencias[0].chunk_id
+    llamadas = e.doble.llamadas_generacion
+    casos = [
+        (base, base),
+        (detalle, base + "/{generation_id}"),
+        (detalle + "/sources/" + fuente, base + "/{generation_id}/sources/{chunk_id}"),
+    ]
+    for url, plantilla in casos:
+        respuesta = e.cliente.get(url, headers=e.public_headers)
+        assert respuesta.status_code == 200, respuesta.text
+        comprobar_respuesta(spec, plantilla, "get", respuesta)
+    pregunta = e.paquete.contenido_adaptado.preguntas[0]
+    respuesta = e.cliente.post(
+        detalle + "/answers",
+        headers=e.public_headers,
+        json={"question_id": pregunta.id, "option_id": pregunta.correct_option_id, "event_id": "verificar-demo-59"},
+    )
+    assert respuesta.status_code == 200 and respuesta.json()["correcta"] is True
+    comprobar_respuesta(spec, base + "/{generation_id}/answers", "post", respuesta)
+    rechazada = e.cliente.get(base + "?workspace_id=ajeno", headers=e.public_headers)
+    assert rechazada.status_code == 422
+    comprobar_respuesta(spec, base, "get", rechazada)
+    imagen = e.cliente.get(detalle + "/sources/" + fuente + "/image", headers=e.public_headers)
+    assert imagen.status_code == 404
+    ruta_imagen = base + "/{generation_id}/sources/{chunk_id}/image"
+    comprobar_respuesta(spec, ruta_imagen, "get", imagen)
+    declarada = operacion(spec, ruta_imagen)["responses"]["200"]
+    assert set(declarada["content"]) == {"image/png"}
+    assert declarada["headers"]["Cache-Control"]["schema"]["const"] == "no-store"
+    assert "X-Content-Type-Options" not in declarada["headers"]
+    assert e.doble.llamadas_generacion == llamadas

@@ -333,6 +333,20 @@ class APIClient:
     def get_demo_documents(self, token, params=None):
         return self._solicitar("GET", "/api/demo/documents", token=token, params=params)
 
+    def get_demo_generations(self, token):
+        return self._solicitar("GET", "/api/demo/generations", token=token)
+
+    def get_demo_generation(self, token, generation_id):
+        return self._solicitar("GET", "/api/demo/generations/" + quote(generation_id, safe=""), token=token)
+
+    def get_demo_generation_source(self, token, generation_id, chunk_id, *, image=False):
+        ruta = "/api/demo/generations/" + quote(generation_id, safe="") + "/sources/" + quote(chunk_id, safe="")
+        return self._solicitar("GET", ruta + ("/image" if image else ""), token=token, binary=image)
+
+    def answer_demo_quiz(self, token, generation_id, payload):
+        ruta = "/api/demo/generations/" + quote(generation_id, safe="") + "/answers"
+        return self._solicitar("POST", ruta, token=token, json=payload)
+
     def get_demo_document(self, token, document_id):
         return self._solicitar("GET", f"/api/demo/documents/{quote(document_id, safe='')}", token=token)
 

@@ -230,7 +230,7 @@ nuevamente-contenidos-educativos/
 
 Reglas de escritura: claves de objeto generadas por el backend (IDs), nombre original solo como metadata; reintentar persistencia conserva el mismo `objeto_id`; `MOCK_OCI=1` solo en desarrollo/CI (etiquetado en UI, sin `status_upload=completado`); un fallo real **nunca** degrada a mock.
 
-Presupuestos propios (§8.4): ≤1 GB total, ≤5.000 solicitudes/mes, 5 documentos y 20 generaciones por espacio, alerta al 80%, retención de 30 días de inactividad.
+Presupuestos propios (§8.4): ≤1 GB total, ≤20.000 solicitudes/mes, 5 documentos y 20 generaciones por espacio, alerta al 80%, retención de 30 días de inactividad.
 
 ---
 
