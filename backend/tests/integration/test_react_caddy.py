@@ -2,9 +2,11 @@
 
 import json
 import os
+import re
 import tempfile
 from importlib.resources import files
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from caddy_fixture import ROOT, SECRET, ProxyHarness, private_write
@@ -38,7 +40,23 @@ def test_react_browser_upload_through_caddy_without_external_requests():
                 context.route("**/*", route)
                 page = context.new_page()
                 page.on("pageerror", lambda _error: errors.append("page-error"))
-                page.on("console", lambda message: errors.append("console-error") if message.type == "error" else None)
+
+                def console(message):
+                    if message.type != "error":
+                        return
+                    status = re.search(r"status of (\d{3})", message.text)
+                    network = re.search(r"net::(ERR_[A-Z_]+)", message.text)
+                    errors.append(
+                        "console-http-" + status[1]
+                        if status
+                        else network[1]
+                        if network
+                        else "console-csp"
+                        if "Content Security Policy" in message.text
+                        else "console-other"
+                    )
+
+                page.on("console", console)
 
                 def response(result):
                     headers = result.headers
@@ -46,6 +64,9 @@ def test_react_browser_upload_through_caddy_without_external_requests():
                         violations.append("private-header")
                     if SECRET in json.dumps(headers):
                         violations.append("private-secret")
+                    if result.status >= 400:
+                        route = "/".join(urlsplit(result.url).path.split("/")[:3])
+                        errors.append(f"http-{result.status}:{route}")
 
                 page.on("response", response)
                 page.goto(proxy.url + "/")
@@ -63,7 +84,7 @@ def test_react_browser_upload_through_caddy_without_external_requests():
                 expect(page.get_by_text("Listo", exact=True).first).to_be_visible(timeout=30000)
                 expect(page.get_by_role("main").get_by_text("Prueba React por HTTPS local", exact=True)).to_be_visible()
                 assert page.evaluate("Object.keys(localStorage).length") == 0
-                assert not violations and not errors, "react-browser-or-private-origin-failure"
+                assert not violations and not errors, json.dumps({"violations": violations, "errors": errors})
                 assert any("/assets/" in url and ".woff2" in url for url in requests), "local-font-required"
                 context.close()
                 browser.close()
