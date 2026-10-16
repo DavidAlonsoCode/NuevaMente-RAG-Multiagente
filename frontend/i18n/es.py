@@ -446,5 +446,12 @@ CATALOGO_ES.update(
         "calidad.limitaciones": "Notas y limitaciones",
         "calidad.limites": "La revisión evalúa el material frente a esta fuente; no certifica la exactitud del documento original ni agrega evidencia externa.",
         "calidad.referencias": "Fragmentos citados: {total}. Podés consultarlos en Ver la fuente.",
+        "demo.ejemplos": "Explorá ejemplos preparados",
+        "demo.vacio": "Todavía no hay ejemplos publicados.",
+        "demo.ayuda": "Un mismo documento, distintas formas de aprender. Abrí el material, practicá y consultá sus fuentes.",
+        "demo.tiempo": "Preparación: {segundos} s",
+        "demo.abrir": "Explorar ejemplo",
+        "demo.practica": "La práctica de estos ejemplos no modifica tu progreso personal.",
+        "demo.diagrama": "Cómo interpretó el sistema el diagrama",
     }
 )

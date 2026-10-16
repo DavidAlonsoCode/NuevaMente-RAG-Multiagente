@@ -114,7 +114,7 @@ class Configuracion(BaseSettings):
     oci_auth_type: Literal["api_key", "instance_principal"] = "api_key"
     oci_always_free_confirmed: bool = False
     oci_timeout_seconds: float = Field(default=30, gt=0, le=60)
-    oci_max_requests_per_month: int = Field(default=5000, ge=1, le=5000)
+    oci_max_requests_per_month: int = Field(default=20000, ge=1, le=20000)
     oci_max_storage_bytes: int = Field(default=1_000_000_000, ge=1, le=1_000_000_000)
 
     # ------------------------------------------------------------------

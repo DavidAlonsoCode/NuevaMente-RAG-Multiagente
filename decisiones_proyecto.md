@@ -699,7 +699,11 @@ La documentación distingue 20 GB combinados para cuentas Always Free sin prueba
 Presupuestos propios iniciales, inferiores a las asignaciones verificadas:
 
 - Hasta 1 GB total de objetos del proyecto, incluidos originales, exportaciones y temporales.
-- Hasta 5.000 solicitudes de almacenamiento mensuales, contando lecturas, listados y borrados.
+- Hasta 20.000 solicitudes de almacenamiento mensuales, contando lecturas, listados y borrados.
+  Ajuste autorizado el 15/10/2026 para pruebas y demo; no reinicia los contadores.
+  Es un presupuesto propio, inferior a las 50.000 solicitudes mensuales publicadas
+  para Object Storage Always Free; el operador sigue verificando el consumo agregado
+  de la tenancy. Se conserva el 10% para limpieza y la alerta al 80%.
 - Hasta cinco documentos y veinte generaciones conservadas por espacio.
 - Reservar capacidad antes de aceptar un archivo o exportación.
 - Alertar al 80% y rechazar nuevas escrituras al límite del presupuesto.
@@ -1564,7 +1568,7 @@ OCI_CONFIG_PROFILE=DEFAULT
 OCI_AUTH_TYPE=api_key
 # Confirmar manualmente capacidad gratuita disponible; nunca asumir que el trial alcanza.
 OCI_ALWAYS_FREE_CONFIRMED=0
-OCI_MAX_REQUESTS_PER_MONTH=5000
+OCI_MAX_REQUESTS_PER_MONTH=20000
 OCI_MAX_STORAGE_BYTES=1000000000
 OCI_TIMEOUT_SECONDS=30
 

@@ -143,6 +143,7 @@ from components.documents import render_documentos_demo
 st.session_state.setdefault("session_token", "token")
 inicializar_estado_documentos()
 class API:
+    def get_demo_generations(self, *a): return {"items": []}
     def get_demo_documents(self, *a): return {"items": json.loads(DATOS), "next_cursor": None}
     def get_demo_document(self, token, cid): return next(d for d in json.loads(DATOS) if d["document_id"] == cid)
 render_documentos_demo("es", API())
@@ -167,6 +168,7 @@ from components.documents import render_documentos_demo
 st.session_state.setdefault("session_token", "token")
 inicializar_estado_documentos()
 class API:
+    def get_demo_generations(self, *a): return {"items": []}
     def get_demo_documents(self, *a):
         items = [json.loads(DATOS)]
         if st.session_state.get("cambio_catalogo"):

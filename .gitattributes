@@ -2,3 +2,4 @@
 backend/app/core/rag/assets/*.tiktoken -text
 infra/oci/*.sh text eol=lf
 documents/*.pdf binary
+documents/*.md text eol=lf

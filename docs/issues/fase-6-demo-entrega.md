@@ -74,11 +74,13 @@ reales. La publicación, recuperación y etiqueta de ejemplos en la app siguen
 siendo necesarias para cerrar el issue; no simular el catálogo ni sus resultados.
 
 **Criterios de aceptación**:
-- [ ] Los 3 escenarios + complementos están persistidos y recuperables desde la app con su etiqueta.
-- [ ] Todos los paquetes publicados pasaron por aprobación real (ningún JSON escrito a mano); el caso rechazado conserva solo diagnóstico.
-- [ ] El caso de rechazo por calidad queda registrado con su diagnóstico.
+- [x] Los 3 escenarios + complementos están persistidos en OCI y recuperables desde la app/API local, desde otra sesión y con su etiqueta.
+- [x] Todos los paquetes publicados pasaron por aprobación real (ningún JSON escrito a mano); el caso rechazado conserva solo diagnóstico.
+- [x] El caso de rechazo por calidad queda registrado con su diagnóstico.
 
-**Verificación**: listado de generaciones demo en la app pública + objetos en OCI.
+**Verificación**: catálogo, originales, citas y quiz comprobados desde otra sesión contra la API local con OCI real. Evidencia: [VCN v2 y complementos](../evidencia/issue-55/v2/README.md).
+
+**Aceptación pública diferida — 15/10/2026**: por decisión del responsable del proyecto, el cierre de este issue acredita preparación, aprobación, persistencia y recuperación real local. La comprobación de la biblioteca y sus etiquetas desde la URL pública se traslada al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). No se marca como ejecutada ni se acredita VM/HTTPS o revisión humana de #60. El seguimiento debe completarse para aceptar la entrega pública.
 
 ---
 
