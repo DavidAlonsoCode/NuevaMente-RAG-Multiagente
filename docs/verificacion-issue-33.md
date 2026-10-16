@@ -64,7 +64,10 @@ diagnóstico sin borrador. Sus resultados deben consultarse en el PR de esta ram
 
 ## Límites
 
-No se consumieron Gemini/OCI reales ni se aprovisionaron recursos. Esta evidencia
-no acredita la primera casilla de generación con proveedor real ni el despliegue
-público de #133. La rama no cierra automáticamente #33, #51 o #53. La interfaz
-Streamlit anterior permanece conservada; sus pruebas no sustituyen las de React.
+No se consumieron Gemini/OCI reales ni se aprovisionaron recursos. Por autorización
+del responsable del 16/10, el criterio de generación con proveedores reales y el
+recorrido público se aceptan en #133. El cierre de #33 acredita la implementación
+y los cuatro criterios locales ajustados, sin completar esa aceptación externa.
+#51 y #53 conservan sus propios criterios y no se cierran por este merge. La
+interfaz Streamlit anterior permanece conservada; sus pruebas no sustituyen las
+de React.

@@ -125,7 +125,7 @@ graph TD
 - [ ] `DELETE` borra original, chunks del índice y derivados; re-subir funciona limpio.
 - [ ] Acceso al documento de otro espacio por ID → 404.
 
-**Verificación**: `pytest backend/tests/test_api_documents.py` (mock storage + doble Gemini) + una corrida manual real con OCI.
+**Verificación de implementación**: `pytest backend/tests/test_api_documents.py` (mock storage + doble Gemini). La corrida manual con OCI pendiente en PR #103 se traslada a #133: carga, original/manifiesto, idempotencia, borrado y recuperación con la versión vigente. El cierre de #19 acredita implementación y pruebas locales, sin dar por realizada esa corrida.
 
 ---
 

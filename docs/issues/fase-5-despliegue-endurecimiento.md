@@ -141,10 +141,12 @@ graph TD
 
 **Criterios de aceptación**:
 - [ ] `https://<dominio>` sirve la UI con certificado válido y la app es usable desde una red externa.
-- [ ] El progreso SSE se ve en vivo **a través del proxy** (test con generación real).
+- [ ] El progreso SSE se ve en vivo **a través del proxy** (aceptación pública con proveedores reales en #133).
 - [ ] Desde una IP no administrativa solo se ven 80/443; SSH se permite exclusivamente a administradores.
 
 **Verificación**: acceso desde dispositivo externo + consulta SSE con Bearer e ID propio, sin registrar credenciales mostrando eventos en tiempo real.
+
+**Alcance de integración — 16/10/2026**: los tres criterios públicos anteriores se aceptan en #133. #48 integra la configuración, guía y pruebas con Caddy/TLS locales y proveedores simulados en x86/ARM64; su cierre no acredita DNS, VM, puertos públicos ni SSE con Gemini/OCI reales.
 
 ---
 
@@ -178,6 +180,8 @@ graph TD
 - [ ] El catálogo de fuentes funciona aún sin resultados; el estado vacío no simula ejemplos.
 
 **Verificación**: flujo manual en la URL pública.
+
+**Alcance de integración — 16/10/2026**: la activación pública y la generación desde demos con proveedores reales se aceptan en #133. #49 conserva la precarga, catálogo y puente de generación probados localmente con proveedores declarados; cerrar la implementación no completa sus criterios públicos.
 
 ---
 
@@ -268,7 +272,7 @@ la entrega; el plazo reservado para revisión no sustituye esa corrección.
 - Automatizables: ingestión de los 3 formatos + rechazos, recuperación de evidencia con ubicación, generación de los 5 formatos con contrato válido, aislamiento cruzado, bloqueo al 3.er intento sin aprobación por evaluador vacío/caído, quiz con feedback, exportaciones abribles, idempotencia SSE/re-petición, cancelar/reiniciar/borrar sin reaparición, ES/EN/PT en textos y citas.
 - Protocolo manual (checklist con capturas): 3 adaptaciones mismo documento, recuperación de historial con código, teclado/foco/contraste/320 px, PDF legible, diferencia aprobado/precargado/fallido.
 - Etiquetado de cada criterio §12.2 con su test o su paso de protocolo.
-- Ejecución contra el despliegue público (no solo local).
+- Preparar el recorrido contra el despliegue público; su ejecución con proveedores reales se acepta en #133, conservando los 14 criterios.
 
 - Las pruebas E2E simuladas llevan ambas marcas `e2e` e `integration_mock` y se ejecutan en CI ordinaria. Las pruebas reales llevan `integration_real`, usan credenciales explícitas y quedan fuera de PRs ordinarios. Reutilizar las pruebas de seguridad aportadas por Issue 51.
 
@@ -276,15 +280,17 @@ la entrega; el plazo reservado para revisión no sustituye esa corrección.
 (incluidos 51/52), casos nuevos sólo para huecos/regresiones y pasos manuales.
 No duplicar la suite de integración ni exigir todas las combinaciones posibles.
 Preparar y comprobar localmente antes de 48/49; conservar la aceptación pública
-para el cierre. Compartir evidencia aplicable con 48/54 y la demo, sin confundir
+en #133 para la entrega final. Compartir evidencia aplicable con 48/54 y la demo, sin confundir
 proveedores dobles con integración real ni retirar pruebas para obtener CI verde.
 
 **Criterios de aceptación**:
-- [ ] Los 14 criterios tienen cobertura (test o protocolo) y pasan.
+- [ ] Los 14 criterios tienen cobertura trazada (test o protocolo); pasan las comprobaciones locales y las externas pendientes están identificadas en #133.
 - [ ] La suite automatizada corre en CI con dobles.
-- [ ] El protocolo manual tiene evidencia archivada (capturas/video) sobre la URL pública.
+- [ ] El protocolo manual tiene evidencia local archivada (capturas/video), con proveedores declarados y firma de dos personas; su repetición pública y con proveedores reales queda trazada en #133.
 
 **Verificación**: `pytest -m "e2e and not integration_real"` + protocolo manual firmado por 2 personas.
+
+**Aceptación externa trasladada — 16/10/2026**: #53 mantiene sus 14 criterios, cobertura, ejecución local y revisión manual. #133 conserva su aceptación en la URL pública y registra commit, configuración, evidencias y revisores; ni la CI con dobles ni el cierre de #53 sustituyen esa ejecución.
 
 ---
 

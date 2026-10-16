@@ -145,7 +145,7 @@ graph TD
 - [ ] Página escaneada legible dentro de límites se procesa; ilegible se informa como omisión.
 - [ ] Las descripciones quedan separadas del texto extraído (colección/tipo propio).
 
-**Verificación**: `pytest backend/tests/test_multimodal.py` con PDF fixture con diagrama + corrida real sobre `documents/redes_vcn_oci.pdf`.
+**Verificación de implementación**: `pytest backend/tests/test_multimodal.py` con PDF fixture con diagrama. La comprobación real sobre la versión/hash vigente de `documents/redes_vcn_oci.pdf` se acepta en #133, reutilizando la consulta visual de VCN v2 registrada en #55 donde cubra el criterio. Debe trazar interpretación, índice, página original y juez visual; no confundir un rasterizado o una llamada fallida con una descripción válida.
 
 ---
 
@@ -169,13 +169,13 @@ graph TD
 - Reutilizar el gestor y los endpoints comunes de Issue 20; implementar aquí únicamente las rutas propias de generaciones. El grafo corre en segundo plano con proveedores síncronos, sin bloquear la API ni SSE.
 
 **Criterios de aceptación**:
-- [ ] El ejemplo del enunciado (VCN + Principiante + Flashcards) produce una respuesta con la forma de §16.3 vía API (con LLM real en la prueba manual).
+- [ ] El ejemplo del enunciado (VCN + Principiante + Flashcards) produce una respuesta con la forma de §16.3 vía API, comprobada con proveedores simulados explícitos; la comprobación con LLM real se acepta en #133.
 - [ ] El stream SSE muestra pasos e intentos; una reconexión no duplica el trabajo.
 - [ ] Fallo de storage inyectado → `failed` con `STORAGE_UNAVAILABLE`; `persist` lo recupera sin re-generar; `completed` jamás sin confirmación OCI.
 - [ ] Consultar el trabajo ajeno por ID → 404.
 - [ ] Estado `rejected_quality` se consulta con HTTP 200 + diagnóstico, sin `contenido_adaptado` (§7.3).
 
-**Verificación**: `pytest backend/tests/test_api_generate.py` (SSE framing incluido) + corrida manual real documentada.
+**Verificación de implementación**: `pytest backend/tests/test_api_generate.py` (SSE framing incluido). La corrida manual con proveedores reales se centraliza en #133 y reutiliza la evidencia compatible de #32/#54/#55. Mantener persistencia confirmada y reintento sin LLM; cerrar #31 no acredita la nueva interfaz pública.
 
 ---
 
@@ -196,7 +196,7 @@ graph TD
 - [ ] Idioma de contenido cambia sin regenerar materiales guardados ni perder la selección.
 - [ ] Alcance por sección lista las secciones reales del documento cargado.
 
-**Verificación**: flujo manual con doble de Gemini (previsibilidad) + una corrida real.
+**Verificación**: flujo manual con doble de Gemini (previsibilidad). La corrida real histórica se conserva en `docs/issue-32-gemini-real.json`; no se exige repetirla para integrar. La comprobación con proveedores reales desde React se traza en #133.
 
 ---
 
@@ -213,9 +213,11 @@ graph TD
 - Indicador «Contenido revisado con fuentes» al completar (§19.4).
 
 **Criterios de aceptación**:
-- [ ] Durante una generación real se ven las etapas avanzar e intentar (1/2/3).
-- [ ] Cancelar desde la UI detiene el trabajo y muestra estado cancelado conservando documentos.
-- [ ] Tras refrescar y perder el estado en memoria de la interfaz, recuperar con el código y listar/reconectar al trabajo existente, sin duplicarlo.
-- [ ] Un rechazo por calidad muestra diagnóstico sin exponer el borrador fallido.
+- [x] Durante una generación del backend con proveedores simulados explícitos se ven las etapas y la redacción vigente (1/2/3).
+- [x] Cancelar desde la UI solicita cancelación cooperativa y muestra el estado cancelado confirmado conservando documentos.
+- [x] Tras refrescar y perder el estado en memoria de la interfaz, recuperar con el código y listar/reconectar al trabajo existente, sin duplicarlo.
+- [x] Un rechazo por calidad muestra diagnóstico sin exponer el borrador fallido.
 
 **Verificación**: trabajo ralentizado con proveedores simulados explícitos, Vitest del cliente SSE y navegador con Caddy/TLS locales. Evidencias y límites en [verificacion-issue-33.md](../verificacion-issue-33.md); no equivalen a una ejecución con proveedores reales ni a aceptación pública.
+
+**Aceptación externa trasladada — 16/10/2026**: por autorización del responsable, el avance SSE con Gemini/OCI reales y el recorrido desde la URL pública se aceptan en #133. El cierre de #33 acredita los cuatro criterios locales anteriores y permite continuar a sus sucesores; no declara realizadas esas comprobaciones externas.

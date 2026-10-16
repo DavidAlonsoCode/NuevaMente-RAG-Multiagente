@@ -154,7 +154,7 @@ graph TD
 - [ ] El historial no contamina: una respuesta anterior no se usa como evidencia de la siguiente.
 - [ ] Rechaza/corrige afirmaciones sin respaldo igual que la generación principal.
 
-**Verificación**: `pytest backend/tests/test_chat.py` con doble + casos manuales reales.
+**Verificación de implementación**: `pytest backend/tests/test_chat.py` con doble. Los casos manuales con proveedores reales se aceptan en #133, conservando citas, recuperación fresca, rechazo fuera de alcance y aislamiento. Un backend local en ejecución no demuestra por sí solo una llamada real a Gemini.
 
 ---
 

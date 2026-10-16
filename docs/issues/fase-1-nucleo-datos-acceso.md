@@ -234,7 +234,7 @@ La reconstrucción ante pérdida de volumen y las lápidas durables se verifican
 - [x] Error de red simulado (DNS roto) produce `failed`/`STORAGE_UNAVAILABLE`, no mock.
 - [x] Sin credenciales y `MOCK_OCI=0`: arranque falla con mensaje claro.
 
-**Verificación**: `pytest backend/tests/test_storage_oci.py backend/tests/test_storage_oci_sdk.py backend/tests/test_verify_oci.py` (SDK/HTTP simulados) + `python -m app.tools.verify_oci` contra OCI real. Guía: `docs/oci-storage.md`. La aceptación completa exige el reporte manual satisfactorio; los dobles no lo sustituyen.
+**Verificación de implementación**: `pytest backend/tests/test_storage_oci.py backend/tests/test_storage_oci_sdk.py backend/tests/test_verify_oci.py` (SDK/HTTP simulados). La comprobación real de `python -m app.tools.verify_oci`, sus permisos mínimos y prefijos se trazan en #133, reutilizando la evidencia válida ya registrada. Guía: `docs/oci-storage.md`. No se borra esa evidencia ni se ejecutan nuevas solicitudes para cerrar administrativamente el issue; cualquier hueco real queda pendiente en #133 y los dobles no lo acreditan.
 
 **Evidencia manual — 2026-10-08**: prueba real en la home region `sa-vinhedo-1` con usuario técnico y grupo dedicado, sin Administrators. Dos objetos técnicos (original y JSON) escritos, leídos y listados; bytes verificados y temporales eliminados. Se contabilizaron 16 solicitudes, sin reservas inciertas. También se verificó la denegación de `ListUsers` y `ListBuckets`. Esto acredita almacenamiento real del Issue 14; no acredita Gemini ni despliegue completo.
 
