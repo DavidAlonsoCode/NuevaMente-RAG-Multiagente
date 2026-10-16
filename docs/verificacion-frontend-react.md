@@ -28,6 +28,8 @@ de los issues de entrega.
 - Inter y JetBrains Mono se sirven desde dependencias npm fijadas, bajo la CSP
   local, sin Google Fonts. La CI añade navegador React con carga documental
   detrás de Caddy y TLS locales, además de conservar los checks históricos.
+  Esa prueba detectó una fuente pequeña convertida por Vite a `data:`: el
+  build desactiva el inlining de assets para conservar `font-src 'self'`.
 
 ## Pruebas automáticas
 
