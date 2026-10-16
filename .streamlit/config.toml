@@ -1,5 +1,5 @@
-# Arranque documentado desde la raíz: streamlit run frontend/app.py.
-# Docker frontend/ conserva la misma configuración en .streamlit/.
+# Interfaz histórica: streamlit run frontend_streamlit_viejo/app.py.
+# Alineado con frontend_streamlit_viejo/.streamlit/config.toml para sus pruebas.
 [theme]
 primaryColor = "#5e6ad2"
 backgroundColor = "#010102"

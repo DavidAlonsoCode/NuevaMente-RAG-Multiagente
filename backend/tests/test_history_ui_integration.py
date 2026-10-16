@@ -110,7 +110,7 @@ def test_navegacion_desde_home_al_historial(entorno, api):
     recibo = generaciones.generar(e).json()
     # El primer arranque del worker en Windows puede superar 15 s.
     generaciones.esperar(e, recibo, timeout=30)
-    a = AppTest.from_file(str(Path(__file__).resolve().parents[2] / "frontend" / "app.py"))
+    a = AppTest.from_file(str(Path(__file__).resolve().parents[2] / "frontend_streamlit_viejo" / "app.py"))
     a.session_state.workspace_id = e.ws["workspace_id"]
     a.session_state.session_token = e.ws["token"]
     a.run()

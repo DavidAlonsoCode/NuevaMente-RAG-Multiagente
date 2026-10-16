@@ -133,7 +133,7 @@ La API de Embedding 2 distingue el envío agregado de contenidos de los embeddin
 | RAG | langchain-community, langchain-text-splitters, langchain-chroma, chromadb |
 | Ingestión | pypdf para texto y pypdfium2 para rasterizar páginas |
 | Backend | fastapi, uvicorn, pydantic v2 |
-| Frontend | streamlit, requests |
+| Frontend | React, TypeScript, Vite; Streamlit/requests conservados para pruebas históricas |
 | Cloud | oci |
 | Exportación | genanki, reportlab; csv de la biblioteca estándar |
 | Calidad | ruff, pytest, httpx, pytest-mock |
@@ -151,11 +151,16 @@ Las librerías de extracción y renderizado se validan en ARM64 antes de conside
 
 Se mantienen dos servicios de aplicación:
 
-- Streamlit presenta documentos, parámetros, resultados, historial y actividades.
+- El frontend React presenta documentos, parámetros, resultados, historial y actividades.
 - FastAPI valida contratos, gestiona acceso, ejecuta RAG y agentes, y persiste en OCI.
 
 El frontend consume HTTP y no accede directamente al bucket, al índice ni a las claves del proveedor.
 Esta separación permite trabajo independiente con contratos compartidos y pruebas sin la interfaz.
+El 15 de octubre de 2026 se autorizó reemplazar la presentación Streamlit por
+React/TypeScript/Vite, conservando FastAPI y el alcance funcional del plan.
+La implementación anterior y sus pruebas quedan en `frontend_streamlit_viejo/`;
+las referencias históricas a Streamlit no acreditan la interfaz React.
+Arranque, límites de la verificación y migración: [frontend/README.md](frontend/README.md).
 Los agentes del producto son nodos del grafo LangGraph; Supervisor y Finalizer pueden ser deterministas.
 No se necesita una llamada LLM por cada nodo.
 

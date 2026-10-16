@@ -8,6 +8,7 @@ import json
 import subprocess
 import textwrap
 import uuid
+from html.parser import HTMLParser
 from urllib.request import ProxyHandler, Request, build_opener
 
 
@@ -44,8 +45,26 @@ def main():
     with http.open("http://127.0.0.1:8000/api/health", timeout=5) as r:
         assert json.load(r)["status"] == "ok"
     with http.open("http://127.0.0.1:8501/", timeout=5) as r:
-        assert r.status == 200 and b"<html" in r.read().lower()
-    with http.open(Request("http://127.0.0.1:8000/api/workspaces", method="POST"), timeout=5) as r:
+        html = r.read().decode()
+        assert r.status == 200 and 'id="root"' in html
+
+    class Assets(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            values = dict(attrs)
+            if tag == "script" and values.get("src"):
+                self.scripts.append(values["src"])
+
+    assets = Assets()
+    assets.scripts = []
+    assets.feed(html)
+    assert assets.scripts, "Build React sin JavaScript"
+    for asset in assets.scripts:
+        assert asset.startswith("/assets/") and asset.endswith(".js")
+        with http.open("http://127.0.0.1:8501" + asset, timeout=5) as r:
+            assert r.status == 200 and r.headers.get_content_type() == "text/javascript" and r.read()
+    with http.open("http://127.0.0.1:8501/api/health", timeout=5) as r:
+        assert json.load(r)["status"] == "ok"
+    with http.open(Request("http://127.0.0.1:8501/api/workspaces", method="POST"), timeout=5) as r:
         espacio = json.load(r)  # Código y token quedan solamente en memoria.
     marcador = "issue26-" + uuid.uuid4().hex
     compose(
@@ -109,9 +128,9 @@ def main():
         "frontend",
         "python",
         "-c",
-        "from streamlit.testing.v1 import AppTest; app = AppTest.from_file('app.py').run(timeout=20); assert not app.exception",
+        "from pathlib import Path; import importlib.util; assert Path('dist/index.html').is_file(); assert importlib.util.find_spec('streamlit') is None",
     )
-    print("OK: API/UI, loopback, usuario sin root, SQLite WAL y volumen tras recreación")
+    print("OK: React compilado, proxy API, loopback, usuario sin root, SQLite WAL y volumen tras recreación")
 
 
 if __name__ == "__main__":

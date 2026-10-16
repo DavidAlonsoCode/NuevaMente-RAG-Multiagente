@@ -33,7 +33,7 @@ def private_write(path, content):
 def clean_environment():
     allowed = {"PATH", "SYSTEMROOT", "TEMP", "TMP", "HOME", "PLAYWRIGHT_BROWSERS_PATH", "NM_BROWSER_EXECUTABLE"}
     env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
-    paths = [str(ROOT / "backend"), str(ROOT / "backend/tests"), str(ROOT / "frontend")]
+    paths = [str(ROOT / "backend"), str(ROOT / "backend/tests"), str(ROOT / "frontend_streamlit_viejo")]
     tools = os.environ.get("NM_TEST_TOOLS_PYTHONPATH")
     if tools:
         paths.insert(0, tools)
@@ -127,7 +127,9 @@ def native_policy(base, local, ports):
 
 
 class ProxyHarness:
-    def __init__(self, directory):
+    def __init__(self, directory, *, frontend="streamlit"):
+        assert frontend in {"streamlit", "react"}
+        self.frontend = frontend
         self.directory = Path(directory)
         self.processes, self.handles = {}, []
         self.evidence = {"platform": sys.platform, "caddy": "2.11.7", "checks": []}
@@ -239,6 +241,32 @@ class ProxyHarness:
         self.wait_http("http://127.0.0.1:" + str(self.ports["backend_port"]) + "/api/health", "backend")
         self.start("caddy", [self.binary, "run", "--config", str(self.config)], self.env)
         self.wait_http(self.url + "/api/health", "caddy")
+        self.launch_ui()
+        with self.client() as client:
+            self.owner = self.workspace(client)
+            self.other = self.workspace(client)
+        self.evidence["initial_state"] = {
+            "data": "fresh",
+            "workspaces": 2,
+            "generation_calls": self.counters()["generation_calls"],
+            "providers": "explicit-doubles",
+        }
+
+    def launch_ui(self):
+        if self.frontend == "react":
+            assert (ROOT / "frontend/dist/index.html").is_file(), "react-build-required"
+            self.start(
+                "react",
+                [sys.executable, str(ROOT / "frontend/entrypoint.py")],
+                clean_environment()
+                | {
+                    "API_URL": "http://127.0.0.1:" + str(self.ports["backend_port"]),
+                    "PORT": str(self.ports["ui_port"]),
+                    "FRONTEND_HOST": "127.0.0.1",
+                },
+            )
+            self.wait_http(self.url + "/healthz", "react")
+            return
         env = clean_environment() | {
             "HOME": str(self.directory),
             "USERPROFILE": str(self.directory),
@@ -268,15 +296,6 @@ class ProxyHarness:
             env,
         )
         self.wait_http(self.url + "/_stcore/health", "streamlit")
-        with self.client() as client:
-            self.owner = self.workspace(client)
-            self.other = self.workspace(client)
-        self.evidence["initial_state"] = {
-            "data": "fresh",
-            "workspaces": 2,
-            "generation_calls": self.counters()["generation_calls"],
-            "providers": "explicit-doubles",
-        }
 
     def wait_http(self, url, process):
         deadline = time.monotonic() + 35

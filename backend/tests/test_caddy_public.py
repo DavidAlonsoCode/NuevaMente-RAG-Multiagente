@@ -695,6 +695,24 @@ def test_deadline_partial_evidence_remains_inconclusive(monkeypatch):
     assert response.closed
 
 
+@pytest.mark.parametrize("elapsed,expired", [(0.6, True), (0.2, False)])
+def test_native_timeout_uses_elapsed_budget_even_with_coarse_monotonic(monkeypatch, elapsed, expired):
+    ticks = iter([100.0, 100.0 + elapsed])
+    monkeypatch.setattr(public, "time", SimpleNamespace(monotonic=lambda: 10.0, perf_counter=lambda: next(ticks)))
+
+    def timeout(_buffer):
+        raise TimeoutError("synthetic-native-timeout")
+
+    raw = SimpleNamespace(readinto=timeout, close=lambda: None)
+    reader = public.DeadlineSocketReader(raw, SimpleNamespace(settimeout=lambda _value: None))
+    reader.deadline = 10.5
+    expected = public.WindowEnded if expired else TimeoutError
+    with pytest.raises(expected) as captured:
+        reader.readinto(bytearray(1))
+    assert isinstance(captured.value, public.WindowEnded) is expired
+    reader.close()
+
+
 def test_request_uses_deadline_response_and_closes_resources(monkeypatch):
     response = Response()
     closed = []

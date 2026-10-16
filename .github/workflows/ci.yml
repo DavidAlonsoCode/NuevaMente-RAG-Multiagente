@@ -99,7 +99,7 @@ jobs:
           cache-dependency-path: |
             requirements-dev.txt
             backend/requirements.txt
-            frontend/requirements.txt
+            frontend_streamlit_viejo/requirements.txt
 
       # Pasos 3-5: instalación de dependencias SEPARADA por servicio (lo pide
       # el issue). Ventaja: si mañana el backend necesita dependencias
@@ -111,15 +111,27 @@ jobs:
       - name: Instalar dependencias del backend
         run: python -m pip install -r backend/requirements.txt
 
-      - name: Instalar dependencias del frontend
-        run: python -m pip install -r frontend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Compilar, probar y auditar React
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npm test
+          npm audit
+      - name: Instalar dependencias de las pruebas Streamlit conservadas
+        run: python -m pip install -r frontend_streamlit_viejo/requirements.txt
 
       # Paso 6: política de versiones exactas (§12.3 y §14.3). El script
       # revisa cada requirements y falla si aparece una dependencia sin
       # "==" (rangos como >= hacen que la CI y producción instalen cosas
       # distintas). Hoy los requirements están vacíos y debe pasar igual.
       - name: Verificar versiones fijadas en requirements
-        run: python .github/scripts/check_pinned_requirements.py backend/requirements.txt frontend/requirements.txt requirements-dev.txt
+        run: python .github/scripts/check_pinned_requirements.py backend/requirements.txt frontend_streamlit_viejo/requirements.txt requirements-dev.txt
 
       # Etapa 1 de #59: comprobar, nunca regenerar automáticamente el snapshot.
       # Validez estructural no acredita fidelidad contractual ni aceptación pública.

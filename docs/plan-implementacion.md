@@ -61,6 +61,11 @@ H2 verifica indexación y recuperación con fuentes textuales. Una fuente con vi
 
 ### 2.1 Prioridad de cierre y alcance operativo — 14 de octubre de 2026
 
+Actualización del 15/10: el rediseño autorizado migra la presentación a React,
+TypeScript y Vite, preservando los 60 issues, contratos y criterios. La nueva
+interfaz requiere sus propias pruebas; las pruebas Streamlit conservadas no
+equivalen a validación de React. Ver [guía del frontend](../frontend/README.md).
+
 Ajuste autorizado del 15/10: integrar #54 y #55 con la evidencia real local ya registrada. Su aceptación se delimita en los archivos de fase: la captura de consola OCI y constancia de dos integrantes de #54, y la comprobación pública de #55, se trasladan al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133), junto con la aceptación del entorno OCI. Integrar o cerrar esos issues no acredita esos pendientes ni el despliegue. También se traslada la ejecución pública de los ejemplos de #59: su documentación/OpenAPI se validan localmente y ya no dependen de #48. Se conservan los 60 issues, los 14 criterios de #53 y la revisión humana de #60.
 
 - **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
