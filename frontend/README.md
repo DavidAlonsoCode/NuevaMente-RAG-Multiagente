@@ -16,6 +16,8 @@ archivos estáticos con el pequeño servidor Python de `entrypoint.py` y redirig
 `/api` a `API_URL`. La receta existente de Caddy conserva el enrutamiento directo
 de `/api` al backend y su protección de cabeceras. Las claves de origen nunca
 se agregan al JavaScript ni se envían como variables `VITE_*`.
+Las tipografías Inter y JetBrains Mono se incluyen en el build y se sirven
+localmente, sin solicitudes del navegador a Google Fonts.
 
 ## Uso local
 
@@ -73,7 +75,8 @@ Resultados y límites de la revisión: [verificación de React](../docs/verifica
 Se conservan los contratos HTTP y los cinco formatos, el quiz, chat, glosario,
 progreso, historial, comparación y los ejemplos publicados. El seguimiento de
 generación todavía usa consultas de estado: esto no acredita el cierre completo
-de SSE/reconexión del #33. Tampoco cierra automáticamente #46, #53, #54 o #55.
+de SSE/reconexión del #33. Tampoco cierra automáticamente #46 o #53.
 La generación directa desde fuentes compartidas demo sigue pendiente. La VM y
-el HTTPS público requieren sus verificaciones propias. Los checks Caddy
-conservados usan su fixture Streamlit; no equivalen a un E2E público de React.
+el HTTPS público se verifican en #133. La CI conserva las pruebas históricas
+Caddy/Streamlit y añade una prueba del build React en navegador detrás de
+Caddy/TLS locales con proveedores simulados; no equivale a aceptación pública.

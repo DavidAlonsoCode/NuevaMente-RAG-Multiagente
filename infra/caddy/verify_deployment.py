@@ -944,11 +944,6 @@ def validate_model(model, deployment, backend, env):
         == {
             "API_URL": "http://backend:8000",
             "API_HEALTH_WAIT_SECONDS": "60",
-            "STREAMLIT_BROWSER_SERVER_ADDRESS": env["NUEVAMENTE_DOMAIN"],
-            "STREAMLIT_BROWSER_SERVER_PORT": "443",
-            "STREAMLIT_SERVER_ENABLE_CORS": "true",
-            "STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION": "true",
-            "STREAMLIT_SERVER_ENABLE_STATIC_SERVING": "false",
         },
         "frontend-effective-environment-changed",
     )
@@ -1172,7 +1167,7 @@ class HostOperations:
                 identities = current
             require(current == identities, "container-observation-invalidated")
             http_ready = True
-            for port, path in ((8000, "/api/health"), (8501, "/_stcore/health")):
+            for port, path in ((8000, "/api/health"), (8501, "/healthz")):
                 try:
                     remaining = deadline - time.monotonic()
                     require(remaining > 0, "upstream-health-timeout")

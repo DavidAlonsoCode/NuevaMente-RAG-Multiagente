@@ -1,7 +1,7 @@
 # Verificación de la migración a React
 
 Fecha: 15 de octubre de 2026. Rama local: `feature/frontend-react-redwood`,
-con correcciones sobre `8602096`. No acredita un despliegue público ni el cierre
+con correcciones sobre `8602096` e integración de develop `b95c0ec`. No acredita un despliegue público ni el cierre
 de los issues de entrega.
 
 ## Correcciones verificadas
@@ -22,6 +22,12 @@ de los issues de entrega.
 - Rutas de pruebas y CI adaptadas al archivo histórico `frontend_streamlit_viejo/`.
   Las pruebas ordinarias aíslan el `.env` personal; los proveedores simulados
   siguen requiriendo inyección explícita.
+- Compose sirve el build React y verifica sus assets y proxy API; se retiran las
+  variables de Streamlit del overlay de producción. La configuración histórica
+  de `.streamlit/` sigue alineada con la carpeta anterior para sus pruebas.
+- Inter y JetBrains Mono se sirven desde dependencias npm fijadas, bajo la CSP
+  local, sin Google Fonts. La CI añade navegador React con carga documental
+  detrás de Caddy y TLS locales, además de conservar los checks históricos.
 
 ## Pruebas automáticas
 
@@ -83,14 +89,14 @@ sin errores ni advertencias en la consola del navegador.
 - Docker Desktop no tenía un motor disponible. No se ejecutaron localmente
   build de contenedores, ARM64 ni Compose. Los cambios de CI requieren su corrida.
 - No hubo OCI/Gemini reales, VM, DNS, HTTPS público, interpretación visual real
-  ni evaluación humana. Los checks públicos conservados usan una fixture
-  Streamlit y no constituyen E2E de React.
+  ni evaluación humana. Las pruebas históricas Caddy/Streamlit se conservan;
+  la nueva prueba React/Caddy local tampoco constituye aceptación pública.
 - El seguimiento de generación sigue consultando estado periódicamente; no
   completa SSE, reconexión y recuperación de #33. Las descargas comprobadas no
   cierran por sí solas todos los criterios de #46.
 - El catálogo demo sigue siendo de lectura; no se habilitó generación directa
   desde fuentes compartidas. No se certificó una biblioteca OCI real desde React.
-- No se hicieron push, merge ni cambios en GitHub. `.env` y el material del
-  usuario en `scripts/` se conservaron.
+- La integración se entrega mediante PR a develop. `.env` y el material del
+  usuario en `scripts/` se conservan; no forman parte del commit.
 
 Para arquitectura y arranque local, ver la [guía del frontend](../frontend/README.md).

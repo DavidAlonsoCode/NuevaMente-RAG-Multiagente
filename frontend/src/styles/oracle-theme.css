@@ -1,3 +1,6 @@
+@import '@fontsource-variable/inter/wght.css';
+@import '@fontsource-variable/jetbrains-mono/wght.css';
+
 :root {
   /* Paleta Oracle Redwood Dark: Obsidiana, Grafito, Rojo Oracle, Terracota y Coral */
   --bg-canvas: #090b0f;
@@ -58,7 +61,7 @@ html, body {
     radial-gradient(circle at 12% 18%, rgba(199, 70, 52, 0.14) 0%, transparent 42%),
     linear-gradient(160deg, #090b0f 0%, #0e1117 60%, #121015 100%);
   color: var(--ink-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter Variable', -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.55;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
@@ -67,7 +70,7 @@ html, body {
 select, input, textarea { max-width: 100%; min-width: 0; }
 
 code, pre, .mono {
-  font-family: 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-family: 'JetBrains Mono Variable', Menlo, Consolas, monospace;
 }
 
 /* Foco accesible WCAG AA */

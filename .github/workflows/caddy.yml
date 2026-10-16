@@ -57,6 +57,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Compilar React para la prueba con Caddy
+        working-directory: frontend
+        run: npm ci && npm run build
       - name: Dependencias fijadas y herramientas Python verificadas
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/nm48-playwright-download
@@ -270,6 +278,13 @@ jobs:
           bash -n infra/caddy/deploy.sh
           python -m py_compile .github/scripts/smoke_caddy.py backend/tests/integration/caddy_backend.py backend/tests/integration/caddy_browser.py
           python .github/scripts/smoke_caddy.py
+      - name: React compilado en navegador por Caddy y TLS locales
+        env:
+          CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
+          COMPOSE_BIN: ${{ runner.temp }}/caddy-tools/docker-compose
+          PLAYWRIGHT_BROWSERS_PATH: /nm48-playwright-ci/browsers
+          NM_CADDY_EVIDENCE_DIR: .data/caddy-evidence
+        run: python -m pytest -o addopts= -q backend/tests/integration/test_react_caddy.py
       - name: Evidencia saneada (sin logs crudos, TLS, tokens ni perfiles)
         if: always()
         uses: actions/upload-artifact@v4
@@ -278,5 +293,6 @@ jobs:
           path: |
             .data/caddy-evidence/observations.json
             .data/caddy-evidence/required-tests.xml
+            .data/caddy-evidence/react-observations.json
           if-no-files-found: error
           retention-days: 14

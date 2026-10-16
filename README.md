@@ -26,7 +26,7 @@ El diagrama representa la arquitectura objetivo, definida en [las decisiones](de
 
 ```mermaid
 flowchart TB
-    subgraph UI ["Frontend (Streamlit) — [Linear Dark Design System]"]
+    subgraph UI ["Frontend (React + TypeScript + Vite)"]
         DocInput["Document Ingestion<br/>(PDF / Markdown / TXT)"]
         Params["Param Selector<br/>(Persona, Format, Niche, Detail)"]
         Display["Real-time Viewer<br/>(Markdown, Quiz UI, Flashcards)"]
@@ -179,7 +179,7 @@ Inspirado en la interfaz de Linear (`awesome-design-md`):
 
 ## ⚙️ Estructura del Repositorio y Ejecución
 
-Monorepo con dos servicios (sección 15 de `decisiones_proyecto.md`): `backend/` (FastAPI, paquete `app`) y `frontend/` (Streamlit). Flujo Git: `main` protegida (solo PRs) ← `develop` (integración) ← `feature/<nombre>`.
+Monorepo con dos servicios (sección 15 de `decisiones_proyecto.md`): `backend/` (FastAPI, paquete `app`) y `frontend/` (React + TypeScript + Vite). La interfaz anterior queda archivada en `frontend_streamlit_viejo/`. Flujo Git: `main` protegida (solo PRs) ← `develop` (integración) ← `feature/<nombre>`.
 
 ```bash
 # 1. Clonar y crear entorno virtual (Python 3.11)
