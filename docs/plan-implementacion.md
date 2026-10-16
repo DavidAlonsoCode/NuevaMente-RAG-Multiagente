@@ -61,6 +61,8 @@ H2 verifica indexación y recuperación con fuentes textuales. Una fuente con vi
 
 ### 2.1 Prioridad de cierre y alcance operativo — 14 de octubre de 2026
 
+Ajuste autorizado del 15/10: integrar #54 y #55 con la evidencia real local ya registrada. Su aceptación se delimita en los archivos de fase: la captura de consola OCI y constancia de dos integrantes de #54, y la comprobación pública de #55, se trasladan al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133), junto con la aceptación del entorno OCI. Integrar o cerrar esos issues no acredita esos pendientes ni el despliegue. Se conservan los 60 issues, los 14 criterios de #53 y la revisión humana de #60.
+
 - **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
   40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
   microinteracciones y efectos forman parte del acabado visual; deben conservar

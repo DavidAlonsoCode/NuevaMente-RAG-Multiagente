@@ -44,5 +44,5 @@ aprobados y el rechazo válido se conservaron.
 
 La prueba se ejecutó contra la API local con almacenamiento real. No acredita
 una VM pública, una auditoría del consumo global de la cuenta ni las revisiones
-humanas del #60. La comprobación desde el despliegue público del #55 sigue
-pendiente; los materiales y su recuperación real ya están preparados.
+humanas del #60. La comprobación desde el despliegue público sigue pendiente
+en el [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). El ajuste de aceptación del 15/10 permite integrar y cerrar #55 con esta evidencia local; no convierte esa comprobación pública en una prueba realizada.
