@@ -17,8 +17,10 @@ No guarda tokens de sesión en las funciones del worker.
 - `POST /api/generations/{id}/persist`: mismo aprobado y objeto, cero llamadas
   LLM, retención local de hasta 24 horas desde la primera aprobación. Si se pierde
   el volumen local, este aprobado no publicado no se recupera desde OCI.
-- `GET /api/exports/{id}?format=json`: canónico completo autorizado. Los demás
-  formatos quedan para #43; aquí responden `EXPORT_INCOMPATIBLE`.
+- `GET /api/exports/{id}?format=json`: canónico completo autorizado. El runtime
+  actual también ofrece `md` y `pdf` para los cinco formatos pedagógicos, y
+  `csv`, `tsv`, `apkg` sólo para flashcards (#43/#44/#45). Formato desconocido o
+  incompatible conserva 422 `EXPORT_INCOMPATIBLE`. Ver [referencia actual](api_reference.md).
 
 Los proveedores síncronos requieren cuotas explícitas de generación y revisión
 del proyecto de Google. Los modelos compartidos usan un único contador y límites
@@ -38,5 +40,7 @@ desde el código instalado. Una ingesta sin esa identidad no habilita generació
 Verificación automatizada: `backend/tests/test_api_generate.py`, con Chroma,
 StateGraph, worker y transporte HTTP reales y dobles explícitos de IA/OCI. La
 corrida manual VCN con Gemini y OCI reales sigue pendiente: no se acredita con CI
-simulada. Windows bloquea la DLL de una dependencia de Chroma; no se elude esa
-política. Las anteriores pruebas reales del #30 no lograron respuesta de Gemini.
+simulada. Una corrida histórica en Windows registró un bloqueo de DLL de Chroma;
+no se eludió esa política. Las comprobaciones locales actuales con dobles se
+detallan en la [referencia](api_reference.md) y no acreditan proveedores reales.
+Las anteriores pruebas reales del #30 no lograron respuesta de Gemini.

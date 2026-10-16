@@ -12,6 +12,7 @@ from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
 from app.api.deps import get_sesion_actual
+from app.api.openapi_metadata import IDEMPOTENCIA_UPLOAD, parametros, respuestas
 from app.core.rag.raster import RasterError
 from app.core.rag.vectorstore import IndiceInconsistenteError
 from app.documents.admission import AdmisionNoConfirmadaError
@@ -28,12 +29,11 @@ from app.schemas.documents_http import (
     RetiradaDocumentoResponse,
     UploadDocumentoResponse,
 )
-from app.schemas.errors import ErrorAplicacion, ErrorCode, ErrorResponse
+from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.requests import UploadRequest
 from app.storage.provider import StorageUnavailable
 
 router = APIRouter(prefix="/api/documents", tags=["Documentos"])
-ERRORES = {codigo: {"model": ErrorResponse} for codigo in (400, 401, 404, 409, 413, 422, 429, 503)}
 MARGEN_TRANSPORTE = 64 * 1024
 
 
@@ -148,8 +148,14 @@ def _admitir(servicio, funcion, token, entrada, clave, *archivo):
     "/upload",
     status_code=202,
     response_model=UploadDocumentoResponse,
-    responses=ERRORES,
+    responses=respuestas(400, 401, 409, 413, 422, 429, 503, exito=202),
+    description="JSON documento_titulo/documento_contenido (TXT), o multipart con un file PDF/MD/TXT y titulo opcional. "
+    "Campos extra/repetidos, contenido vacío o firma inválida se rechazan. 20 MiB PDF, 5 MiB MD/TXT; "
+    "100 páginas y 100k tokens se comprueban durante procesamiento. El transporte multipart admite 64 KiB extra; "
+    "JSON se acota a 6 × 5 MiB + 64 KiB. 202 confirma admisión, no documento ready: consultar el job y el documento. "
+    "Un espacio ocupado responde 429 RATE_LIMITED. Las precisiones documentales conservan su estado de revisión contractual.",
     openapi_extra={
+        **parametros(),
         "requestBody": {
             "required": True,
             "content": {
@@ -161,18 +167,23 @@ def _admitir(servicio, funcion, token, entrada, clave, *archivo):
                         "additionalProperties": False,
                         "properties": {
                             "file": {"type": "string", "format": "binary"},
-                            "titulo": {"type": "string", "maxLength": 300},
+                            "titulo": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 300,
+                                "description": "Texto no vacío ni sólo espacios; opcional.",
+                            },
                         },
                     }
                 },
             },
-        }
+        },
     },
 )
 async def upload(
     request: Request,
     sesion: dict = Depends(get_sesion_actual),
-    clave: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    clave: Annotated[str | None, Header(alias="Idempotency-Key", description=IDEMPOTENCIA_UPLOAD)] = None,
 ) -> UploadDocumentoResponse:
     servicio = request.app.state.documents_admission
     if servicio is None:
@@ -219,7 +230,14 @@ async def upload(
         await form.close()
 
 
-@router.get("", response_model=DocumentosResponse, responses=ERRORES)
+@router.get(
+    "",
+    response_model=DocumentosResponse,
+    responses=respuestas(400, 401, 409, 422, 503),
+    openapi_extra=parametros(),
+    description="Documentos propios, orden ascendente por creación UTC e ID. limit=20 (1..100); cursor opaco firmado "
+    "ligado al espacio, no un offset ni snapshot. Metadata/cobertura desconocida se representa con null.",
+)
 def listar(
     sesion: dict = Depends(get_sesion_actual),
     consulta: ServicioConsultaDocumental = Depends(get_consulta),
@@ -234,7 +252,14 @@ def listar(
     return DocumentosResponse(items=[_documento(d) for d in pagina.documentos], next_cursor=pagina.siguiente_id)
 
 
-@router.get("/{document_id}", response_model=DocumentoResponse, responses=ERRORES)
+@router.get(
+    "/{document_id}",
+    response_model=DocumentoResponse,
+    responses=respuestas(401, 404, 409, 422, 503),
+    openapi_extra=parametros(),
+    description="Estado y metadata propios. processing/failed no habilitan fuentes. "
+    "document_id es un identificador opaco; no acepta workspace_id para cambiar la autorización.",
+)
 def detalle(
     document_id: str,
     sesion: dict = Depends(get_sesion_actual),
@@ -246,7 +271,15 @@ def detalle(
         raise ErrorAplicacion(ErrorCode.STORAGE_UNAVAILABLE, "La lectura documental no pudo completarse.") from None
 
 
-@router.get("/{document_id}/sources/{chunk_id}", response_model=FuenteDocumentoResponse, responses=ERRORES)
+@router.get(
+    "/{document_id}/sources/{chunk_id}",
+    response_model=FuenteDocumentoResponse,
+    responses=respuestas(401, 404, 409, 422, 503),
+    openapi_extra=parametros(),
+    description="Fragmento autorizado del documento ready; chunk_id debe pertenecer a esa fuente vigente. "
+    "source_type=image_description identifica interpretación del modelo; imagen_url es una ruta autenticada "
+    "a la página original. En texto, imagen_url es null; ubicación desconocida también usa null.",
+)
 def fuente(
     document_id: str,
     chunk_id: str,
@@ -276,7 +309,28 @@ def fuente(
     )
 
 
-@router.get("/{document_id}/sources/{chunk_id}/image", responses=ERRORES, summary="Ver la página original autorizada")
+@router.get(
+    "/{document_id}/sources/{chunk_id}/image",
+    response_class=Response,
+    responses=respuestas(
+        401,
+        404,
+        409,
+        422,
+        503,
+        contenido={
+            "image/png": {"schema": {"type": "string", "format": "binary"}},
+        },
+        cabeceras={
+            "Cache-Control": {"schema": {"type": "string", "const": "no-store"}},
+            "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}},
+        },
+    ),
+    openapi_extra=parametros(),
+    summary="Ver la página original autorizada",
+    description="PNG binario de la página original rasterizada y verificada, no la descripción generada por IA. "
+    "Revalida sesión, pertenencia de documento/chunk, publicación y hash; fuente visual no disponible: 404/409.",
+)
 def imagen_original(
     document_id: str,
     chunk_id: str,
@@ -303,7 +357,18 @@ def imagen_original(
 @router.delete(
     "/{document_id}",
     status_code=204,
-    responses={**ERRORES, 202: {"model": RetiradaDocumentoResponse}},
+    responses={
+        **respuestas(401, 404, 422, 503, exito=204),
+        **respuestas(
+            exito=202,
+            modelo=RetiradaDocumentoResponse,
+            descripcion="Retirada lógica confirmada; cleanup_pending=true, limpieza física pendiente.",
+        ),
+    },
+    openapi_extra=parametros(),
+    description="204 sin cuerpo si se verifica limpieza; 202 si quedan efectos físicos pendientes. "
+    "Repetir sobre un retirado devuelve 404 sin eliminar la obligación durable de limpieza. No retira demo. "
+    "La precisión de retirada conserva su estado de revisión contractual.",
     summary="Retirar documento y limpiar sus recursos vinculados",
 )
 def retirar(document_id: str, request: Request, sesion: dict = Depends(get_sesion_actual)) -> Response:

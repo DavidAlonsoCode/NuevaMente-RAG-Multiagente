@@ -2,4 +2,9 @@
 backend/app/core/rag/assets/*.tiktoken -text
 infra/oci/*.sh text eol=lf
 documents/*.pdf binary
+docs/openapi.json text eol=lf
 documents/*.md text eol=lf
+
+# Conservar los bytes exactos de las descargas usadas como evidencia SHA-256.
+docs/evidencia/issue-54/resultado.json -text
+docs/evidencia/issue-54/resultado.md -text

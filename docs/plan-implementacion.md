@@ -66,6 +66,8 @@ TypeScript y Vite, preservando los 60 issues, contratos y criterios. La nueva
 interfaz requiere sus propias pruebas; las pruebas Streamlit conservadas no
 equivalen a validación de React. Ver [guía del frontend](../frontend/README.md).
 
+Ajuste autorizado del 15/10: integrar #54 y #55 con la evidencia real local ya registrada. Su aceptación se delimita en los archivos de fase: la captura de consola OCI y constancia de dos integrantes de #54, y la comprobación pública de #55, se trasladan al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133), junto con la aceptación del entorno OCI. Integrar o cerrar esos issues no acredita esos pendientes ni el despliegue. También se traslada la ejecución pública de los ejemplos de #59: su documentación/OpenAPI se validan localmente y ya no dependen de #48. Se conservan los 60 issues, los 14 criterios de #53 y la revisión humana de #60.
+
 - **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
   40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
   microinteracciones y efectos forman parte del acabado visual; deben conservar
@@ -246,7 +248,7 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 | `Issue 56` | Guion de demo, grabación de respaldo y evidencias | QAD | M | `Issue 55`, `Issue 53`, `Issue 54`, `Issue 60` |
 | `Issue 57` | README final con arquitectura y guía de instalación | QAD | M | `Issue 48`, `Issue 53`, `Issue 54`, `Issue 55`, `Issue 56`, `Issue 58`, `Issue 59`, `Issue 60` |
 | `Issue 58` | Guía de despliegue en OCI | INF | S | `Issue 48`, `Issue 49`, `Issue 50` |
-| `Issue 59` | Referencia de API (OpenAPI) | API | S | `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45`, `Issue 48` |
+| `Issue 59` | Referencia de API (OpenAPI) | API | S | `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45` |
 | `Issue 60` | Evaluación pedagógica multilingüe con anotación humana | QAD | L | `Issue 29`, `Issue 05`, `Issue 31` |
 
 ---

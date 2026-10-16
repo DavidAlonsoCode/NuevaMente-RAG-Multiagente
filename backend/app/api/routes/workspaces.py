@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from app.api.deps import get_sesion_actual, get_session_manager, get_workspace_actual
+from app.api.openapi_metadata import parametros, respuestas
 from app.api.security import (
     RateLimiter,
     intento_recuperacion,
@@ -24,7 +25,13 @@ class EstadoEspacio(BaseModel):
     almacenamiento: dict
 
 
-@router.get("/api/workspaces/current", response_model=EstadoEspacio, summary="Uso y vencimiento del espacio")
+@router.get(
+    "/api/workspaces/current",
+    response_model=EstadoEspacio,
+    summary="Uso y vencimiento del espacio",
+    responses=respuestas(401, 503),
+    openapi_extra=parametros(),
+)
 def estado_workspace(request: Request, workspace_id: str = Depends(get_workspace_actual)):
     db, storage = request.app.state.db, request.app.state.storage_provider
     datos = db.obtener_workspace(workspace_id)
@@ -50,6 +57,8 @@ def estado_workspace(request: Request, workspace_id: str = Depends(get_workspace
     status_code=status.HTTP_201_CREATED,
     summary="Crear espacio anónimo",
     dependencies=[Depends(limitar_creacion)],
+    responses=respuestas(400, 429, 503, exito=201),
+    openapi_extra=parametros(),
 )
 def create_workspace(manager: SessionManager = Depends(get_session_manager)) -> WorkspaceCreatedResponse:
     """
@@ -66,21 +75,27 @@ def create_workspace(manager: SessionManager = Depends(get_session_manager)) -> 
     status_code=status.HTTP_201_CREATED,
     summary="Recuperar espacio anónimo",
     dependencies=[Depends(limitar_recuperacion)],
+    responses=respuestas(400, 401, 409, 422, 429, 503, exito=201, recuperacion=True),
+    openapi_extra=parametros(),
 )
 def recover_workspace(
     request: Request, recovery_request: RecoverSessionRequest, manager: SessionManager = Depends(get_session_manager)
 ) -> SessionResponse:
     """
     Recupera un espacio anónimo existente.
-    Devuelve una sola vez el workspace_id, el código de recuperación
-    (≥128 bits, agrupado) y el token de sesión.
+    Devuelve workspace_id y un token nuevo. No devuelve el código de recuperación
+    ni prolonga tokens previos; el código se conserva hasta rotación o expiración del espacio.
     """
     with intento_recuperacion(request):
         return manager.recuperar_sesion(recovery_request.recovery_code)
 
 
 @router.delete(
-    "/api/sessions/current", status_code=status.HTTP_204_NO_CONTENT, summary="Cerrar y revocar la sesión actual"
+    "/api/sessions/current",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Cerrar y revocar la sesión actual",
+    responses=respuestas(401, exito=204),
+    openapi_extra=parametros(),
 )
 def close_session(
     sesion: str = Depends(get_sesion_actual), manager: SessionManager = Depends(get_session_manager)
@@ -97,6 +112,8 @@ def close_session(
     response_model=RotatedCodeResponse,
     status_code=status.HTTP_200_OK,
     summary="Rotar código y revocar sesiones previas",
+    responses=respuestas(401, 409, 503),
+    openapi_extra=parametros(),
 )
 def rotate_recovery_code(
     workspace_id: str = Depends(get_workspace_actual), manager: SessionManager = Depends(get_session_manager)
@@ -111,7 +128,11 @@ def rotate_recovery_code(
 
 
 @router.delete(
-    "/api/workspaces/current", status_code=status.HTTP_204_NO_CONTENT, summary="Borrar espacio y agendar limpieza"
+    "/api/workspaces/current",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Borrar espacio y agendar limpieza",
+    responses=respuestas(401, exito=204),
+    openapi_extra=parametros(),
 )
 def delete_workspace(
     workspace_id: str = Depends(get_workspace_actual), manager: SessionManager = Depends(get_session_manager)
