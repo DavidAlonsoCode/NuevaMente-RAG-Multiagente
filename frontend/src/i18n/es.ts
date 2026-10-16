@@ -410,5 +410,12 @@ export const CATALOGO_ES: Record<string, string> = {
   "live.step.writer": "Redactando el material",
   "live.step.critic": "Verificando fidelidad y calidad",
   "live.step.finalizer": "Preparando el contenido aprobado",
-  "live.step.persist": "Guardando el contenido aprobado"
+  "live.step.persist": "Guardando el contenido aprobado",
+  "live.cause.DEADLINE": "El trabajo superó el tiempo máximo de ejecución. Conservamos el documento para que revises la solicitud.",
+  "live.cause.COLA_EXPIRADA": "La espera en cola venció antes de empezar. Podés preparar otra solicitud.",
+  "live.cause.REINTENTOS_AGOTADOS": "Se agotaron los reintentos técnicos. El trabajo no se vuelve a ejecutar automáticamente.",
+  "live.cause.CUOTA_AGOTADA": "Se agotó la cuota disponible del proveedor. Esperá a que se renueve antes de hacer otra solicitud.",
+  "live.cause.PRESUPUESTO_AGOTADO": "Se agotó el presupuesto de solicitudes de este trabajo. El material no se aprobó.",
+  "live.cause.ORFANO": "El trabajo perdió su ejecución tras una interrupción. Podés revisar el documento y preparar otra solicitud.",
+  "live.cause.UNKNOWN": "El trabajo terminó por un fallo técnico. Revisá el diagnóstico y los parámetros antes de hacer otra solicitud."
 };

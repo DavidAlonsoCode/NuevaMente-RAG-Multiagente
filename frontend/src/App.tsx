@@ -1747,6 +1747,9 @@ export const ActiveGenerationPanel: React.FC<{
     );
   }
 
+  const cause = job.error?.details?.causa;
+  const diagnostic = typeof cause === 'string' && CATALOGOS[idioma][`live.cause.${cause}`]
+    ? `live.cause.${cause}` : 'live.cause.UNKNOWN';
   return (
     <div className="nm-card">
       <ErrorBanner error={err} idioma={idioma} />
@@ -1754,6 +1757,8 @@ export const ActiveGenerationPanel: React.FC<{
         error={new APIError(job.error?.code || 'INTERNAL', 'Trabajo fallido.', 500)}
         idioma={idioma}
       />
+      <p>{t(diagnostic, idioma)}</p>
+      <button type="button" className="nm-btn" onClick={onRefresh}>{t('material.actualizar', idioma)}</button>
       {job.error?.code === 'STORAGE_UNAVAILABLE' && (
         <div style={{ marginTop: '0.75rem' }}>
           <div style={{ fontSize: '0.84rem', color: 'var(--ink-secondary)', marginBottom: '0.5rem' }}>

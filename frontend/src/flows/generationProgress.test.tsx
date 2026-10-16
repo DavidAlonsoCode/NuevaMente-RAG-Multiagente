@@ -210,6 +210,16 @@ it('reintenta sólo persistencia con la misma clave tras una respuesta incierta'
   expect(props.onRefresh).toHaveBeenCalledOnce();
 });
 
+it('distingue un deadline técnico de rechazo de calidad y permite consultar estado', () => {
+  const props = base();
+  render(<ActiveGenerationPanel {...props} job={{ ...running, status: 'failed',
+    error: { code: 'INVALID_STATE', details: { causa: 'DEADLINE' } } }} />);
+  expect(screen.getByText(t('live.cause.DEADLINE'))).toBeTruthy();
+  expect(screen.queryByText(t('live.rejected_reason'))).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: t('material.actualizar') }));
+  expect(props.onRefresh).toHaveBeenCalledOnce();
+});
+
 it('sólo anuncia revisión cuando el paquete completado supera las validaciones', () => {
   const props = base();
   const packet = fixtures.flashcards;

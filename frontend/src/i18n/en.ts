@@ -410,5 +410,12 @@ export const CATALOGO_EN: Record<string, string> = {
   "live.step.writer": "Writing the material",
   "live.step.critic": "Checking faithfulness and quality",
   "live.step.finalizer": "Packaging the approved content",
-  "live.step.persist": "Saving the approved content"
+  "live.step.persist": "Saving the approved content",
+  "live.cause.DEADLINE": "The job exceeded its execution deadline. Your document is preserved so you can review the request.",
+  "live.cause.COLA_EXPIRADA": "The queue wait expired before execution started. You can prepare another request.",
+  "live.cause.REINTENTOS_AGOTADOS": "Technical retries were exhausted. The job will not run again automatically.",
+  "live.cause.CUOTA_AGOTADA": "The provider quota was exhausted. Wait for it to renew before submitting another request.",
+  "live.cause.PRESUPUESTO_AGOTADO": "This job exhausted its request budget. The material was not approved.",
+  "live.cause.ORFANO": "The job lost its execution after an interruption. You can review the document and prepare another request.",
+  "live.cause.UNKNOWN": "The job ended with a technical failure. Review the diagnosis and parameters before submitting another request."
 };
