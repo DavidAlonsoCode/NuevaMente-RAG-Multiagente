@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -10,7 +11,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--port", type=int, default=18080)
+    parser.add_argument("--delay-seconds", type=float, default=0)
+    parser.add_argument("--reject-quality", action="store_true")
     args = parser.parse_args()
+    if not 0 <= args.delay_seconds <= 10:
+        parser.error("La demora simulada debe estar entre 0 y 10 segundos")
     root = Path(__file__).resolve().parents[3]
     directory = Path(args.data_dir).resolve()
     if not directory.is_relative_to(root / ".data") or directory == root / ".data":
@@ -46,7 +51,14 @@ def main():
         embedding_dimensions=16,
         google_api_key="synthetic-test-only",
     )
-    provider = DobleEducativo(16)
+
+    class DobleDemo(DobleEducativo):
+        def generar_sync(self, prompt, **kwargs):
+            time.sleep(args.delay_seconds)
+            return super().generar_sync(prompt, **kwargs)
+
+    provider = DobleDemo(16)
+    provider.rechazar = args.reject_quality
     quotas = CuotasProveedor(
         {
             model: CuotasModelo(1000, 10_000_000, 1000)

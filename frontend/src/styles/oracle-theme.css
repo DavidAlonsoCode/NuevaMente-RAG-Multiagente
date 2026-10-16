@@ -47,6 +47,12 @@
   --shadow-glow: 0 6px 24px rgba(199, 70, 52, 0.22);
 }
 
+.nm-live-progress { margin-block: 1rem; padding: 0.75rem 1rem; border-left: 2px solid var(--oracle-coral); background: var(--surface-2); border-radius: 0.25rem; }
+.nm-live-progress p { margin-block: 0.4rem; }
+.nm-live-connection { color: var(--ink-secondary); font-size: 0.85rem; }
+.nm-live-connection span { color: var(--oracle-coral); }
+.nm-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; }
+
 * {
   box-sizing: border-box;
 }

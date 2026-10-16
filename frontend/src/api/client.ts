@@ -8,6 +8,7 @@ import {
   UploadResponse,
   WorkspaceResponse,
 } from './types';
+import { generationEvent, GenerationEvent, SseDecoder } from './sse';
 
 const SAFE_ID_REGEX = /^[A-Za-z0-9_.-]{1,128}$/;
 const ERROR_CODE_REGEX = /^[A-Z_]{1,64}$/;
@@ -511,6 +512,82 @@ export class APIClient {
     return this.solicitar('GET', `/api/generations/${encodeURIComponent(generationId)}`, {
       token,
     });
+  }
+
+  async *streamGenerationEvents(
+    token: string,
+    generationId: string,
+    options: { signal: AbortSignal; lastEventId: number; idleTimeoutMs?: number }
+  ): AsyncGenerator<GenerationEvent> {
+    const controller = new AbortController();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    const abort = () => { controller.abort(); void reader?.cancel().catch(() => {}); };
+    options.signal.addEventListener('abort', abort, { once: true });
+    if (options.signal.aborted) abort();
+    const timeout = options.idleTimeoutMs ?? 30000;
+    let timer = setTimeout(abort, timeout);
+    let cursor = options.lastEventId;
+    try {
+      const response = await fetch(`${this.baseUrl}/api/generations/${encodeURIComponent(generationId)}/events`, {
+        headers: { ...this.headers(token, false), Accept: 'text/event-stream',
+          ...(cursor > 0 ? { 'Last-Event-ID': String(cursor) } : {}) },
+        redirect: 'manual', signal: controller.signal,
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new APIError(body?.error?.code || (response.status === 401 ? 'SESSION_INVALID' : 'SERVICE_UNAVAILABLE'),
+          'Stream no disponible.', response.status, response.headers.get('X-Request-ID'),
+          body?.error?.details, response.headers.get('Retry-After'));
+      }
+      if (!/^text\/event-stream(?:\s*;|$)/i.test(response.headers.get('Content-Type') ?? '') || !response.body) {
+        throw new APIError('INVALID_RESPONSE', 'Stream incompatible.', 502);
+      }
+      reader = response.body.getReader();
+      const decoder = new SseDecoder();
+      yield { kind: 'open' };
+      while (!controller.signal.aborted) {
+        const { done, value } = await reader.read();
+        if (options.signal.aborted) return;
+        clearTimeout(timer);
+        timer = setTimeout(abort, timeout);
+        let frames;
+        try { frames = decoder.push(value ?? new Uint8Array(), done); }
+        catch { throw new APIError('INVALID_RESPONSE', 'Encuadre SSE incompatible.', 502); }
+        for (const frame of frames) {
+          if (frame.event === 'error') {
+            let error;
+            try { error = JSON.parse(frame.data).error; }
+            catch { throw new APIError('INVALID_RESPONSE', 'Error SSE incompatible.', 502); }
+            throw new APIError(error?.code || 'SERVICE_UNAVAILABLE', 'Stream interrumpido.',
+              error?.code === 'SESSION_INVALID' ? 401 : error?.code === 'NOT_FOUND' ? 404 : 503);
+          }
+          let event;
+          try { event = generationEvent(frame, generationId); }
+          catch { throw new APIError('INVALID_RESPONSE', 'Progreso SSE incompatible.', 502); }
+          if (!event) continue;
+          if (event.kind === 'progress') {
+            if (event.id <= cursor) continue;
+            cursor = event.id;
+          }
+          yield event;
+        }
+        if (done) {
+          if (controller.signal.aborted && !options.signal.aborted) {
+            throw new APIError('SERVICE_UNAVAILABLE', 'Stream sin actividad.', 503);
+          }
+          return;
+        }
+      }
+      if (!options.signal.aborted) throw new APIError('SERVICE_UNAVAILABLE', 'Stream sin actividad.', 503);
+    } catch (error) {
+      if (options.signal.aborted || error instanceof APIError) throw error;
+      throw new APIError('SERVICE_UNAVAILABLE', 'Progreso interrumpido.', 503);
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
+      options.signal.removeEventListener('abort', abort);
+      await reader?.cancel().catch(() => {});
+    }
   }
 
   async cancelGeneration(token: string, generationId: string): Promise<void> {

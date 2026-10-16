@@ -102,10 +102,12 @@ la integración activa o acreditan un despliegue inexistente.
 
 **Criterios de aceptación**:
 - [ ] Ensayo completo dentro del tiempo sin errores bloqueantes.
-- [ ] Cada ítem del checklist §18.2 tiene su evidencia enlazada.
-- [ ] La prueba funcional real está acreditada y el guion prevé ejecución en vivo con contingencia honesta, sin prometer disponibilidad del proveedor.
+- [ ] Cada ítem del checklist §18.2 enlaza su evidencia; los tramos que requieren proveedores reales o URL pública identifican su aceptación pendiente en #133, sin declararlos ejecutados.
+- [ ] El guion prevé ejecución en vivo con proveedores reales y contingencia honesta, sin prometer disponibilidad; su prueba funcional real se acepta en #133.
 
 **Verificación**: ensayo frente al equipo completo con retroalimentación.
+
+**Aceptación externa trasladada — 16/10/2026**: #56 conserva guion, ensayo, cronómetro, grabación de respaldo y evidencias propias. El ensayo local declara sus proveedores; los tramos de prueba/grabación que requieren Gemini/OCI reales o la URL de entrega se completan en #133. Una grabación simulada no se presenta como integración real ni sustituye la demostración funcional exigida para la entrega.
 
 ---
 
@@ -143,10 +145,10 @@ la integración activa o acreditan un despliegue inexistente.
 - Mantenimiento: actualización de imágenes con interrupción breve, backups del volumen, monitoreo mínimo.
 
 **Criterios de aceptación**:
-- [ ] La guía reproduce el despliegue desde cero (validada quien no lo hizo originalmente).
+- [ ] La guía completa se revisa por quien no la escribió; su reproducción desde cero sobre la VM de entrega se acepta en #133, con ese integrante identificado.
 - [ ] Incluye la verificación de costos $0 y el procedimiento de recuperación.
 
-**Verificación**: reproducción por un integrante que no hizo el despliegue original.
+**Verificación de documentación**: revisión por un integrante que no hizo el despliegue original. La ejecución real sobre OCI, Always Free y recuperación se acepta en #133; una revisión o simulación local no demuestra que exista VM.
 
 ---
 
