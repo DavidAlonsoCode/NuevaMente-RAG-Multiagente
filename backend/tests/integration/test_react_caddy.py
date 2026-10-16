@@ -61,7 +61,7 @@ def test_react_browser_upload_through_caddy_without_external_requests():
                 form.get_by_role("checkbox").check()
                 page.get_by_role("button", name="Cargar como documento de texto", exact=True).last.click()
                 expect(page.get_by_text("Listo", exact=True).first).to_be_visible(timeout=30000)
-                expect(page.get_by_text("Prueba React por HTTPS local", exact=True).first).to_be_visible()
+                expect(page.get_by_role("main").get_by_text("Prueba React por HTTPS local", exact=True)).to_be_visible()
                 assert page.evaluate("Object.keys(localStorage).length") == 0
                 assert not violations and not errors, "react-browser-or-private-origin-failure"
                 assert any("/assets/" in url and ".woff2" in url for url in requests), "local-font-required"
