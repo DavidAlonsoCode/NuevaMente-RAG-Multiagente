@@ -35,6 +35,10 @@ def render(api_client, idioma_actual: str):
         render_historial_completo(
             api_client, idioma_actual, render_resultado=partial(render_paquete, api_client=api_client)
         )
+    elif st.session_state.get("ejemplo_demo_id"):
+        from components.demo_examples import render_ejemplo
+
+        render_ejemplo(api_client, idioma_actual)
     elif (generacion := st.session_state.get("generacion_activa")) and not st.session_state.get("mostrando_documentos"):
         render_cabecera_resultado(generacion, idioma_actual)
         material, tutor, glosario, progreso = st.tabs(

@@ -482,7 +482,7 @@ Verificación: `pytest backend/tests/test_quiz_progress.py backend/tests/test_ap
 - `OCI_ALWAYS_FREE_CONFIRMED=1` declara que el operador verificó asignación/consumo
   agregado de la tenancy. No verifica facturación automáticamente. Un ledger SQLite
   en DATA_DIR reserva antes de cada intento, incluidos fallidos, con máximos iniciales
-  de 5.000 solicitudes/mes y 1 GB; conserva reservas de escrituras inciertas. Issue 50
+  de 20.000 solicitudes/mes y 1 GB; conserva reservas de escrituras inciertas. Issue 50
   completa auditoría agregada/conciliación/retención. `StorageBudgetExceeded` es un
   `StorageUnavailable`: no admite enviar otra solicitud por encima del presupuesto.
   En HTTP responde `503 / STORAGE_UNAVAILABLE`; en el worker termina `failed` con
@@ -572,6 +572,9 @@ completed del mismo workspace/documento/hash, acotados por
 `CHAT_HISTORY_TURNS`/`CHAT_HISTORY_MAX_TOKENS`; no es evidencia ni se envía al Critic.
 El resultado usa SQLite común, sin crear artefactos/exportaciones en `outputs/`.
 Su fuente se revalida al entregar el resultado y su retirada purga el historial.
+El adaptador interno conserva la pregunta original para Critic. Su rúbrica
+pedagógica evalúa la cobertura de esa pregunta, manteniendo los controles
+factuales y visuales del grafo compartido.
 Detalles de revisión y adaptador interno: [issue-37-document-chat.md](issue-37-document-chat.md).
 
 Corrección de consistencia junto a #39: chat acepta `Idempotency-Key` (1–128
@@ -948,6 +951,9 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
 - Revalida el documento antes de llamar y antes de devolver el borrador. Rechaza
   evidencia ajena/antigua, cambios de fuente, citas inventadas y ubicaciones falsas.
   Completa ubicaciones omitidas desde el chunk autorizado, sin agregar hechos nuevos.
+  La solicitud estructurada a Gemini limita las referencias a `chunk_id` de la
+  evidencia; página y sección se resuelven en el backend. El paquete público
+  conserva las referencias completas y una ubicación falsa recibida sigue fallando.
   Metadatos deben coincidir con perfil, formato, nicho, detalle, idiomas y alcance;
   no se puede inventar cobertura. Critic revisa su respaldo factual y pedagógico.
 - Parseo JSON estricto, sin cercas Markdown, claves duplicadas ni valores no finitos.
@@ -1099,6 +1105,29 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
   se revalida tras la consulta y durante selección; fallos/cuotas/cancelación se propagan.
   Estas pruebas con Chroma nativo y embeddings simulados no acreditan Gemini real.
 
+
+### Ejemplos generados previamente (Issue 55, extensión HTTP)
+
+- `GET /api/demo/generations` devuelve `CatalogoEjemplos`: etiqueta explícita,
+  proveedor, fecha de publicación, completitud e inventario finito curado (máximo
+  doce entradas; sin paginación). Cada entrada conserva fuente/hash, fecha,
+  parámetros, tiempo real y estado. `rejected_quality` sólo contiene diagnóstico.
+- `GET /api/demo/generations/{id}` devuelve la proyección estudiante del paquete
+  aprobado. No revela claves ni justificaciones iniciales del quiz.
+- `GET /api/demo/generations/{id}/sources/{chunk_id}` conserva la forma de
+  `FuenteDocumentoResponse`; `/image` entrega el PNG original verificado.
+- `POST /api/demo/generations/{id}/answers` recibe `QuizAnswerRequest` y devuelve
+  `QuizAnswerResponse`. Es una práctica sin persistencia de progreso privado;
+  repetir la respuesta devuelve la misma corrección, sin LLM ni escrituras.
+- Todas requieren sesión válida, sin renovar actividad. No aceptan workspace_id.
+  Sólo consultan snapshots publicados explícitamente bajo `demo/examples/`;
+  nunca utilizan el token del preparador ni leen recursos privados por fallback.
+  Ausente/ajeno/no aprobado: 404; sesión inválida: 401; OCI o integridad: 503.
+- Publicación administrativa: exclusivamente los tres originales del repositorio,
+  paquetes realmente aprobados y persistidos, con huellas verificadas. Publica el
+  catálogo al final, después de confirmar los objetos. Las mediciones corresponden
+  a la preparación, no al tiempo de apertura en la interfaz. `provider=mock` no
+  acredita entrega real. Biblioteca demo → generación nueva continúa fuera de este alcance.
 
 ### Researcher y cobertura (Issue 27, contrato interno)
 

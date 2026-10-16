@@ -40,8 +40,9 @@ El PDF se abrió con PyPDF y se renderizó con PDFium. El APKG se abrió como
 ZIP/SQLite; no se afirma que se haya importado manualmente en Anki Desktop.
 La prueba real se hizo localmente; no acredita despliegue en una VM.
 
-**Pendiente para cerrar el issue**: captura de los objetos en la consola OCI
-y constancia de dos integrantes que presencien/revisen la ejecución. No había
-una sesión OCI en el navegador conectado. Los archivos no contienen API keys,
+**Pendiente de aceptación final (#133)**: captura de los objetos en la consola OCI
+y constancia de dos integrantes que presencien/revisen la ejecución. Por decisión
+del responsable del proyecto del 15/10/2026, esos puntos se trasladan al
+[seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133) y no bloquean integrar/cerrar #54 con su smoke automatizado real. No se presentan como ejecutados. No había una sesión OCI en el navegador conectado. Los archivos no contienen API keys,
 tokens, códigos de recuperación ni URLs firmadas; sólo identificadores técnicos
 de recursos del espacio anónimo de demostración.

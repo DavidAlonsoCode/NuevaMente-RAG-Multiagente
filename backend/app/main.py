@@ -48,7 +48,18 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.error_i18n import mensaje_localizado
-from app.api.routes import chat, demo_documents, documents, exports, generations, glossary, jobs, progress, workspaces
+from app.api.routes import (
+    chat,
+    demo_documents,
+    demo_generations,
+    documents,
+    exports,
+    generations,
+    glossary,
+    jobs,
+    progress,
+    workspaces,
+)
 from app.config import Configuracion, config
 from app.jobs.manager import ControlesOperativos, CuotasProveedor, GestorTrabajos
 from app.jobs.quotas import cuotas_configuradas
@@ -483,6 +494,7 @@ def crear_app(
     app.include_router(jobs.router)
     app.include_router(documents.router)
     app.include_router(demo_documents.router)
+    app.include_router(demo_generations.router)
     app.include_router(generations.router)
     app.include_router(exports.router)
     app.include_router(chat.router)

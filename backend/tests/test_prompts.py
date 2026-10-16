@@ -63,6 +63,15 @@ def preparar(solicitud=None, **cambios):
     )
 
 
+def test_citas_permitidas_conservan_ubicacion_y_nulos():
+    fuentes = [evidencia(pagina=3, seccion=None), evidencia(chunk_id="ch_2", pagina=None, seccion="Architecture")]
+    prompt = preparar(evidencia=fuentes)
+    esperado = [f.como_referencia().model_dump(mode="json") for f in fuentes]
+    assert json.loads(prompt.writer.datos_json)["referencias_permitidas"] == esperado
+    assert json.loads(prompt.critic.datos_json)["referencias_permitidas"] == esperado
+    assert "Copiar las citas literalmente" in prompt.writer.system_instruction
+
+
 @pytest.mark.parametrize(
     "perfil,formato,nicho,idioma",
     tuple(product(RecipientProfile, PedagogicalFormat, IndustryNiche, OutputLanguage)),

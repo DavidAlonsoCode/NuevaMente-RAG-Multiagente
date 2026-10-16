@@ -4,7 +4,7 @@ Por qué un script y no un PDF hecho a mano en Word/Overleaf: el PDF es un
 INSUMO del proyecto (la fuente común de los tres escenarios de demo, §18.1),
 y regenerarlo tiene que ser reproducible y auditable. Este script usa
 ReportLab (decisión del issue: "Generado con ReportLab/LaTeX para control
-total del contenido") y produce 10-12 páginas A4 con:
+total del contenido") y produce páginas A4 con:
 
 - Los conceptos que los escenarios A/B/C enseñan:
   VCN y CIDR, subredes públicas/privadas,
@@ -15,7 +15,7 @@ total del contenido") y produce 10-12 páginas A4 con:
   vectores, rasteriza nítido a cualquier zoom — requisito del diferencial
   multimodal (§18.2: "descripción del diagrama + cita a la página
   original").
-- Una sección DELIBERADAMENTE INSUFICIENTE (§9 "Costos y límites"): dos
+- Una sección DELIBERADAMENTE INSUFICIENTE (§15 "Costos y límites"): dos
   frases vagas, sin cifras ni respaldo. NO es un descuido: es el caso
   negativo de prueba que pide el issue, para que la demo muestre el bloqueo
   por calidad (paso 10 del guion: "Rechazo intencional"). No lleva ninguna
@@ -28,11 +28,12 @@ Cómo regenerarlo (desde la raíz del repo):
     python documents/generar_pdf_vcn.py
 
 Verificación de aceptación (extracción con PyPDF):
-    python -c "from pypdf import PdfReader; r = PdfReader('documents/redes_vcn_oci.pdf'); print(len(r.pages), r.pages[3].extract_text()[:120])"
+    python -c "from pypdf import PdfReader; r = PdfReader('documents/redes_vcn_oci.pdf'); print(len(r.pages), r.pages[2].extract_text()[:120])"
 """
 
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -50,6 +51,7 @@ from reportlab.platypus import (
 )
 
 SALIDA = Path(__file__).resolve().parent / "redes_vcn_oci.pdf"
+VERSION_FUENTE = "v2"
 
 # Paleta sobria y legible (el documento se lee en pantalla y se imprime).
 AZUL = colors.HexColor("#1B3A5C")
@@ -84,6 +86,7 @@ def estilos() -> dict[str, ParagraphStyle]:
             fontName="Helvetica-Bold",
             fontSize=15,
             leading=19,
+            keepWithNext=True,
             textColor=AZUL,
             spaceBefore=14,
             spaceAfter=6,
@@ -94,6 +97,7 @@ def estilos() -> dict[str, ParagraphStyle]:
             fontName="Helvetica-Bold",
             fontSize=12,
             leading=15,
+            keepWithNext=True,
             textColor=GRIS,
             spaceBefore=10,
             spaceAfter=4,
@@ -115,7 +119,13 @@ def estilos() -> dict[str, ParagraphStyle]:
 
 def tabla(data: list[list[str]], anchos: list[float] | None = None) -> Table:
     """Tabla estándar del documento: encabezado azul, celdas claras, grillas finas."""
-    t = Table(data, colWidths=anchos)
+    cuerpo = ParagraphStyle("celda", fontName="Helvetica", fontSize=9, leading=11)
+    encabezado = ParagraphStyle("celda_titulo", parent=cuerpo, fontName="Helvetica-Bold", textColor=colors.white)
+    celdas = [
+        [Paragraph(escape(celda).replace("\n", "<br/>"), encabezado if fila == 0 else cuerpo) for celda in valores]
+        for fila, valores in enumerate(data)
+    ]
+    t = Table(celdas, colWidths=anchos, repeatRows=1)
     t.setStyle(
         TableStyle(
             [
@@ -353,7 +363,7 @@ class DiagramaVCN(Flowable):
         canv.drawString(0.6 * cm, leyenda_y, "Leyenda:")
         for indice, (color, texto) in enumerate(
             [
-                (VERDE, "subred pública (ruta a IGW)"),
+                (VERDE, "pública: permite IP pública"),
                 (AZUL, "subred privada (sin IP pública)"),
                 (NARANJA, "gateways y tablas de ruteo"),
             ]
@@ -371,6 +381,7 @@ def construir() -> None:
     doc = SimpleDocTemplate(
         str(SALIDA),
         pagesize=A4,
+        invariant=1,
         title="Redes VCN en Oracle Cloud Infrastructure — Guía de fundamentos",
         author="Equipo 38 — NuevaMente (documento demo, contenido público/simulado)",
         subject="Fuente común de los escenarios de demo (issue #05)",
@@ -381,7 +392,7 @@ def construir() -> None:
         Paragraph("Guía de fundamentos con diagrama de arquitectura", s["subtitulo"]),
         Spacer(1, 6),
         Paragraph(
-            "Documento público/simulado para fines educativos. Versión v1. "
+            f"Documento público/simulado para fines educativos. Versión {VERSION_FUENTE}. "
             "Fuente común de los tres escenarios de demostración del proyecto NuevaMente.",
             s["nota"],
         ),
@@ -389,8 +400,8 @@ def construir() -> None:
         Paragraph("1. Introducción y propósito", s["h1"]),
         Paragraph(
             "Una <b>Virtual Cloud Network (VCN)</b> es la red privada que aísla y organiza los "
-            "recursos de cómputo dentro de Oracle Cloud Infrastructure (OCI). Toda máquina virtual, "
-            "balanceador o base de datos que se crea en OCI vive dentro de alguna VCN: definir bien "
+            "recursos de cómputo dentro de Oracle Cloud Infrastructure (OCI). En el ejemplo de "
+            "esta guía los servidores web y de aplicaciones viven dentro de una VCN: definir bien "
             "la red es decidir quién puede hablar con quién, qué puede salir a Internet y qué queda "
             "completamente aislado. Este documento explica los fundamentos con un ejemplo concreto "
             "de referencia que se retoma en todas las secciones: una aplicación web de dos niveles "
@@ -407,15 +418,15 @@ def construir() -> None:
         Paragraph("2. Conceptos fundamentales: VCN y direccionamiento CIDR", s["h1"]),
         Paragraph(
             "La VCN es un contenedor <b>regional</b>: abarca todos los dominios de disponibilidad de "
-            "la región elegida, de modo que un fallo de un datacenter no aísla la red. Su extensión "
+            "la región elegida; la tolerancia a fallos depende de cómo se distribuyan los recursos. Su extensión "
             "se define con un bloque <b>CIDR</b> (Classless Inter-Domain Routing): una notación "
-            "'dirección/máscara' que indica cuántas direcciones IP privadas contiene. Las VCN usan "
+            "'dirección/máscara' que indica cuántas direcciones IP contiene. En este ejemplo usamos "
             "rangos privados definidos por el estándar RFC 1918, que no enrutan en Internet pública.",
             s["cuerpo"],
         ),
         tabla(
             [
-                ["Bloque CIDR", "Direcciones disponibles", "Uso típico"],
+                ["Bloque CIDR", "Direcciones totales", "Uso típico"],
                 ["10.0.0.0/16", "65.536", "VCN completa de un ambiente (el ejemplo de esta guía)"],
                 ["10.0.1.0/24", "256", "Subred pública de balanceadores y servidores web"],
                 ["10.0.2.0/24", "256", "Subred privada de aplicaciones y bases de datos"],
@@ -428,15 +439,16 @@ def construir() -> None:
             "Cómo se lee un CIDR en la práctica: la máscara indica cuántos bits de la dirección "
             "están fijos. En 10.0.2.0/24 los primeros 24 bits (los tres primeros números) son "
             "fijos y el último varía: la subred contiene las direcciones 10.0.2.0 a 10.0.2.255, de "
-            "las cuales la primera identifica la red y la última es el broadcast de difusión; las "
-            "254 restantes se asignan a interfaces. En 10.0.0.0/16 solo los dos primeros números "
+            "las cuales OCI reserva las dos primeras y la última. Quedan <b>253 direcciones "
+            "asignables</b> a interfaces, de 10.0.2.2 a 10.0.2.254. En 10.0.0.0/16 solo los dos primeros números "
             "están fijos, y por eso caben 256 subredes /24 como las del ejemplo.",
             s["cuerpo"],
         ),
         Paragraph(
             "Regla práctica: planificar el CIDR de la VCN con holgura desde el inicio. Cambiar el "
-            "bloque de una VCN en producción exige recrear la red y recablear sus recursos; ampliar "
-            "subredes dentro de un /16 es mucho más barato que empezar por un /24 ajustado.",
+            "bloque IPv4 está permitido con restricciones: el rango nuevo no puede solaparse con "
+            "otros bloques de la VCN o redes emparejadas ni excluir IPs en uso. No exige "
+            "recrear siempre la VCN; evaluar las restricciones antes de modificarla.",
             s["cuerpo"],
         ),
         # ----------------------------------------------------------------- 3
@@ -444,16 +456,17 @@ def construir() -> None:
         Paragraph(
             "Una <b>subred</b> es una porción del CIDR de la VCN. Puede pertenecer a un dominio de "
             "disponibilidad o cubrir toda la región. Lo que decide si una subred es pública o "
-            "privada NO es una casilla de configuración: es su <b>tabla de ruteo</b>. Si la tabla "
-            "envía el tráfico 0.0.0.0/0 (todo Internet) hacia un Internet Gateway, la subred es "
-            "pública; si no existe esa ruta, ninguna de sus instancias es alcanzable desde afuera.",
+            "privada es su <b>configuración</b>: una subred privada impide asignar IPv4 públicas; "
+            "una pública las permite. La conectividad directa requiere además IP pública, "
+            "Internet Gateway habilitado, ruta apropiada y reglas de seguridad y firewall que "
+            "permitan el tráfico. Una ruta por sí sola no cambia el tipo de subred.",
             s["cuerpo"],
         ),
         tabla(
             [
                 ["Aspecto", "Subred pública (10.0.1.0/24)", "Subred privada (10.0.2.0/24)"],
                 ["Ruta por defecto", "0.0.0.0/0 -> Internet Gateway", "0.0.0.0/0 -> NAT Gateway"],
-                ["IP públicas", "Opcional por instancia", "No aplica: sin ruta directa"],
+                ["IPv4 públicas", "Permitidas; asignación opcional", "Prohibidas por configuración"],
                 ["Qué aloja", "Balanceadores, servidores web, bastión", "Aplicaciones, bases de datos, cachés"],
                 ["Riesgo de exposición", "Debe filtrarse con reglas (sección 6)", "Mínimo: solo niveles internos"],
                 ["Actualizaciones salientes", "Directas", "Vía NAT o Service Gateway"],
@@ -692,7 +705,7 @@ def construir() -> None:
             "3. Crear la tabla de ruteo pública (0.0.0.0/0 -> IGW) y la privada (0.0.0.0/0 -> "
             "NAT; ruta a servicios -> Service Gateway).<br/>"
             "4. Crear la subred pública 10.0.1.0/24 asociada a la tabla pública y la privada "
-            "10.0.2.0/24 asociada a la tabla privada.<br/>"
+            "10.0.2.0/24 asociada a la tabla privada, configurando esta última para prohibir IPs públicas.<br/>"
             "5. Cargar la Security List de la subred pública con 443/80 desde 0.0.0.0/0 y SSH "
             "restringido a las IPs operativas.<br/>"
             "6. Crear los NSG por rol (web, aplicaciones, base de datos) con las reglas de la "
@@ -815,7 +828,7 @@ def construir() -> None:
                 [
                     "1",
                     "¿Qué hace pública a una subred?",
-                    "Su tabla de ruteo envía 0.0.0.0/0 a un Internet Gateway",
+                    "Permite IPs públicas por configuración;\nconectividad: rutas y seguridad",
                     "3 y 8",
                 ],
                 [
@@ -854,6 +867,7 @@ def construir() -> None:
         # ----------------------------------------------------------------- 14
         # SECCIÓN DELIBERADAMENTE INSUFICIENTE (ver comentario del encabezado
         # del script): caso negativo para el bloqueo por calidad de la demo.
+        PageBreak(),
         Paragraph("15. Costos y límites", s["h1"]),
         Paragraph(
             "En general, montar una VCN es bastante accesible y los costos suelen venir de otros "
@@ -862,6 +876,7 @@ def construir() -> None:
             s["cuerpo"],
         ),
         # ----------------------------------------------------------------- 15
+        PageBreak(),
         Paragraph("16. Glosario", s["h1"]),
         tabla(
             [

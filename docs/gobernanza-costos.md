@@ -1,11 +1,18 @@
 # Presupuestos y ciclo de vida (#50)
 
-Los límites de aplicación son 1.000.000.000 bytes de objetos, 5.000 solicitudes
+Los límites de aplicación son 1.000.000.000 bytes de objetos, 20.000 solicitudes
 mensuales, cinco documentos y veinte generaciones conservadas por espacio. Los
 dos primeros pueden reducirse en `OCI_MAX_STORAGE_BYTES` y
 `OCI_MAX_REQUESTS_PER_MONTH`; nunca ampliarse. La reserva de recursos ocurre en la
 misma transacción que la intención/idempotencia: una repetición no consume plazas,
 una lápida libera su plaza y dos solicitudes no pueden sobrepasar el límite.
+
+El presupuesto de solicitudes se amplió el 15/10/2026 de 5.000 a 20.000 con
+autorización del responsable del proyecto. Los contadores no se reinician:
+18.000 quedan disponibles para operaciones y 2.000 se reservan para limpieza.
+Es un límite preventivo de NuevaMente; Oracle publica 50.000 solicitudes/mes
+para Object Storage Always Free. El consumo externo de la tenancy se verifica
+por separado: [asignaciones oficiales](https://www.oracle.com/cloud/free/).
 
 El ledger SQLite `oci_budget.sqlite3` incluye inventario, reservas inciertas y
 contador mensual por operación SDK. Cada lectura, listado, intento de escritura,

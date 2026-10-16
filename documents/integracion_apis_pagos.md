@@ -1,7 +1,7 @@
 # Guía técnica: Integración de APIs de pagos
 
 > **Documento demo — contenido público/simulado.** Guía de referencia para equipos que integran una pasarela de pagos genérica. Todos los proveedores, dominios, claves y montos son ficticios; cualquier parecido con un proveedor real es coincidencia. No contiene datos personales reales.
-> **Proyecto**: NuevaMente · **Versión**: v1 · **Nicho**: Fintech
+> **Proyecto**: NuevaMente · **Versión**: v2 · **Nicho**: Fintech
 
 ---
 
@@ -27,7 +27,7 @@ Principios no negociables:
 
 ## 3. Autenticación
 
-Cada petición incluye dos cabeceras: la clave pública que identifica al comercio y una firma HMAC-SHA256 del cuerpo con la clave secreta. La firma cubre método, ruta, timestamp y cuerpo, lo que impide reinyecciones viejas.
+Cada petición incluye tres cabeceras: la clave pública que identifica al comercio, la firma HMAC-SHA256 y el timestamp. La firma usa la clave secreta y cubre método, ruta, timestamp y cuerpo. La comprobación del timestamp rechaza peticiones antiguas según la ventana indicada abajo.
 
 ```text
 X-Api-Key: pk_sim_7f3a...
@@ -49,7 +49,7 @@ import time
 
 
 def crear_cargo(secret: str, public_key: str, base_url: str, cargo: dict) -> dict:
-    """Crea un cobro en la pasarela demo con firma HMAC.
+    """Prepara la URL y firma de un cobro demo; no envía una solicitud HTTP.
 
     `cargo` ejemplo:
     {"monto_minor": 150000, "moneda": "ARS", "token": "tok_sim_9a2b",

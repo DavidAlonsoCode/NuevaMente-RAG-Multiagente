@@ -47,7 +47,6 @@ graph TD
     I37 --> I59
     I39 --> I59
     I45 --> I59
-    I48 --> I59
     I29 --> I60
     I05 --> I60
     I31 --> I60
@@ -74,11 +73,13 @@ reales. La publicación, recuperación y etiqueta de ejemplos en la app siguen
 siendo necesarias para cerrar el issue; no simular el catálogo ni sus resultados.
 
 **Criterios de aceptación**:
-- [ ] Los 3 escenarios + complementos están persistidos y recuperables desde la app con su etiqueta.
-- [ ] Todos los paquetes publicados pasaron por aprobación real (ningún JSON escrito a mano); el caso rechazado conserva solo diagnóstico.
-- [ ] El caso de rechazo por calidad queda registrado con su diagnóstico.
+- [x] Los 3 escenarios + complementos están persistidos en OCI y recuperables desde la app/API local, desde otra sesión y con su etiqueta.
+- [x] Todos los paquetes publicados pasaron por aprobación real (ningún JSON escrito a mano); el caso rechazado conserva solo diagnóstico.
+- [x] El caso de rechazo por calidad queda registrado con su diagnóstico.
 
-**Verificación**: listado de generaciones demo en la app pública + objetos en OCI.
+**Verificación**: catálogo, originales, citas y quiz comprobados desde otra sesión contra la API local con OCI real. Evidencia: [VCN v2 y complementos](../evidencia/issue-55/v2/README.md).
+
+**Aceptación pública diferida — 15/10/2026**: por decisión del responsable del proyecto, el cierre de este issue acredita preparación, aprobación, persistencia y recuperación real local. La comprobación de la biblioteca y sus etiquetas desde la URL pública se traslada al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). No se marca como ejecutada ni se acredita VM/HTTPS o revisión humana de #60. El seguimiento debe completarse para aceptar la entrega pública.
 
 ---
 
@@ -150,7 +151,7 @@ la integración activa o acreditan un despliegue inexistente.
 ---
 
 ### `Issue 59` — Referencia de API (OpenAPI)
-**F6** · **API** · **S** · **Depende de**: `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45`, `Issue 48` · **Referencia**: decisiones_proyecto.md §7.1
+**F6** · **API** · **S** · **Depende de**: `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45` · **Referencia**: decisiones_proyecto.md §7.1
 
 **Objetivo**: referencia humana de la API completa, exportada y versionada junto al repositorio.
 
@@ -161,9 +162,11 @@ la integración activa o acreditan un despliegue inexistente.
 
 **Criterios de aceptación**:
 - [ ] El OpenAPI exportado valida en un viewer estándar.
-- [ ] Los ejemplos `curl` del documento funcionan tal cual contra el despliegue público.
+- [ ] Los ejemplos `curl` del documento funcionan tal cual contra una instancia local de la API integrada, indicando URL base configurable y los requisitos de cada ejemplo.
 
-**Verificación**: ejecución de los ejemplos contra la URL pública.
+**Verificación**: validar el OpenAPI exportado y ejecutar los ejemplos contra la API local. No afirmar integración real cuando se usen proveedores simulados.
+
+**Comprobación pública diferida — 15/10/2026**: la ejecución de esos mismos ejemplos contra la URL HTTPS de entrega se traslada al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). No bloquea la documentación ni el cierre local de #59; permanece obligatoria para aceptar el despliegue. #59 conserva su alcance documental y sigue abierto hasta acreditar sus criterios propios.
 
 ---
 

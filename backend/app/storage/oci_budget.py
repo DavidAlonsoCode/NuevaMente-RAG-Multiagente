@@ -22,8 +22,8 @@ def mantenimiento_storage():
 
 
 class PresupuestoOCI:
-    def __init__(self, ruta: Path, *, solicitudes: int = 5000, bytes_maximos: int = 1_000_000_000):
-        if not 1 <= solicitudes <= 5000 or not 1 <= bytes_maximos <= 1_000_000_000:
+    def __init__(self, ruta: Path, *, solicitudes: int = 20000, bytes_maximos: int = 1_000_000_000):
+        if not 1 <= solicitudes <= 20000 or not 1 <= bytes_maximos <= 1_000_000_000:
             raise ValueError("El presupuesto OCI solo puede reducir los límites de §8.4")
         self.ruta, self.solicitudes, self.bytes_maximos = Path(ruta), solicitudes, bytes_maximos
         self.margen_limpieza = solicitudes // 10

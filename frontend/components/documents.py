@@ -174,6 +174,9 @@ def render_lista_documentos(api_client, idioma):
 
 
 def render_documentos_demo(idioma, api_client):
+    from components.demo_examples import render_catalogo
+
+    render_catalogo(api_client, idioma)
     st.subheader(t("onboarding.demo", idioma))
     token = st.session_state.session_token
     try:

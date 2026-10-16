@@ -21,8 +21,10 @@ más recientes del mismo workspace, documento y hash. Cero desactiva el historia
 
 El chat utiliza el mismo StateGraph Supervisor→Researcher→Writer→Critic y sus
 ciclos de revisión. El adaptador interno de pregunta/respuesta usa una sola
-flashcard tipada, cuyo dorso contiene el texto exacto de la respuesta; las etiquetas
-restantes son constantes localizadas sin hechos nuevos. No genera mazos ni cambia
+flashcard tipada: el frente conserva la pregunta original como dato no confiable
+y el dorso contiene el texto exacto de la respuesta. La revisión pedagógica mide
+si esa respuesta contesta la pregunta; no exige adaptar todo el documento.
+Las demás etiquetas son constantes localizadas sin hechos nuevos. No genera mazos ni cambia
 los cinco formatos canónicos. La entrada real completa, incluido historial, schema
 e instrucciones, se cuenta antes de reservar cuota en el contexto compartido.
 
@@ -45,8 +47,9 @@ Verificación: `backend/tests/test_chat.py` con dobles explícitos y componentes
 HTTP/Chroma/LangGraph/worker reales. Incluye ES/EN/PT, cita consultable, abstención,
 historial contaminado, cuota compartida, corrección de JSON, tres rechazos por
 rúbrica/cita o una contradicción con score 0.90, cancelación en espera y borrado.
-Los casos manuales con VCN y Gemini reales quedan pendientes y no se sustituyen
-por la CI simulada. Windows bloquea una dependencia nativa de Chroma por política.
+La preparación del #55 verificó una respuesta real sobre el diagrama de VCN v2,
+con Gemini, Chroma y revisión visual contra el original. Las pruebas con dobles
+siguen siendo simuladas y no sustituyen esa evidencia.
 
 Este PR apunta directamente a `develop`. Reutiliza el arranque de proveedores,
 cuotas, consulta documental y relación documento/trabajo del #31, que debe estar
