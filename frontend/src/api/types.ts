@@ -140,6 +140,7 @@ export interface Alcance extends AlcanceSolicitud {
 }
 
 export interface GenerateRequest {
+  modo_generacion?: 'multiagente' | 'basico';
   document_id: string;
   perfil_destinatario: RecipientProfile;
   formato_salida: PedagogicalFormat;
@@ -278,8 +279,9 @@ export interface DocumentoFuente {
   procedencia?: string | null;
 }
 
-export interface PedagogicalStudentOutput {
-  schema_version: '1.0';
+export interface ReviewedStudentOutput {
+  schema_version: '1.0' | '1.1';
+  modo_generacion?: 'multiagente';
   generation_id: string;
   status: 'aprobado';
   metadatos: Metadatos;
@@ -294,6 +296,18 @@ export interface PedagogicalStudentOutput {
     objeto_id: string;
   };
 }
+
+export type BasicStudentOutput = Omit<ReviewedStudentOutput,
+  'schema_version' | 'modo_generacion' | 'status' | 'evaluacion_calidad'> & {
+  schema_version: '1.1';
+  modo_generacion: 'basico';
+  status: 'no_evaluado';
+  evaluacion_calidad: { estado_evaluacion: 'no_realizada' } & {
+    [K in Exclude<keyof EvaluacionCalidad, 'estado_evaluacion'>]: null;
+  };
+};
+
+export type PedagogicalStudentOutput = ReviewedStudentOutput | BasicStudentOutput;
 
 export interface GenerationJobResponse {
   generation_id: string;

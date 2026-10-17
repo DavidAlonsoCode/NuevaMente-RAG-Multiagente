@@ -70,6 +70,8 @@ Ajuste autorizado del 15/10: integrar #54 y #55 con la evidencia real local ya r
 
 Ajuste autorizado del 16/10: las comprobaciones pendientes que requieren Gemini/OCI reales o el entorno público se centralizan en #133, con el issue de origen y su evidencia. Los issues de implementación pueden integrarse y cerrarse con sus criterios locales verificados y proveedores simulados explícitos; no se retiran controles ni se declara ejecutada la aceptación externa. Incluye almacenamiento/documentos (14/19), visión (30), generación y UI React (31/32/33), chat (37), proxy/demo (48/49), recorrido E2E (53), tramo real de la demo (56) y reproducción del despliegue (58). Se conserva la evidencia real ya registrada de 14/32/54/55, sin repetir llamadas por un cierre administrativo. Los 14 criterios y el protocolo de dos personas de 53, las revisiones propias de cada entregable y los 12 casos con dos revisores de 60 mantienen su alcance. #133 es obligatorio para aceptar la entrega final y no autoriza por sí solo consumo ni aprovisionamiento.
 
+**Complemento autorizado 33.1**: [modos de generación](modos-generacion.md) agrega básico con RAG sin evaluación independiente y conserva el multiagente. Ambos reutilizan el documento e índice; cambiar de modo crea otro material. Se integra antes de cerrar 51/53 y se documenta en 56/57/58; 46 puede avanzar en paralelo. La comparación real de consumo/calidad queda en #133; 60 conserva sus 12 casos y revisores.
+
 - **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
   40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
   microinteracciones y efectos forman parte del acabado visual; deben conservar

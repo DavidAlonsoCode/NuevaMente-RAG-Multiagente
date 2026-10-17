@@ -59,6 +59,8 @@ def _operar(funcion, *args):
     responses=respuestas(400, 401, 404, 409, 422, 429, 503, exito=202),
     openapi_extra=parametros(),
     description="JSON con documento propio ready y parámetros pedagógicos. 202 admite el trabajo, no acredita éxito. "
+    "modo_generacion: multiagente por defecto o basico sin evaluación independiente. Explicitarlo solicita paquete 1.1; "
+    "omitirlo conserva 1.0. En básico el artefacto es no_evaluado, con métricas nulas; no hay fallback desde multiagente. "
     "Usar status_url/events_url; contenido sólo se entrega al completar y confirmar persistencia. "
     "El quiz es la vista estudiante, sin correct_option_id ni justificacion; el export autorizado es canónico.",
 )

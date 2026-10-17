@@ -7,6 +7,8 @@
 > **Estado**: Decisiones de diseño acordadas; cumplimiento funcional sujeto a evidencia de ejecución
 > **Revisión**: 18 de septiembre de 2026
 
+> **Ampliación autorizada — 16/10/2026**: [modos de generación, complemento 33.1](docs/modos-generacion.md). Se conserva el multiagente predeterminado y se agrega un generador básico con RAG sin evaluación independiente. La excepción permite publicar material estructuralmente válido como `no_evaluado`, nunca como aprobado ni con score inventado; se mantiene el contrato 1.0 y se versiona la ampliación como 1.1. Los bloqueos y garantías de aprobación existentes siguen rigiendo al multiagente. Cambiar de modo crea otra adaptación sobre el mismo documento/índice y conserva los materiales anteriores.
+
 Este documento define la entrega completa: requisitos mínimos, todos los diferenciales del enunciado y los extras acordados. No constituye un plan de implementación ni acredita funcionalidades implementadas. La solución se orienta a capacitación técnica reutilizable; no presupone una adopción comercial por parte de Oracle.
 
 ---

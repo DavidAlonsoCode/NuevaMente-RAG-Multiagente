@@ -1,5 +1,7 @@
 # 🔌 Contratos API v1 — NuevaMente
 
+> **Ampliación 1.1 — complemento 33.1 (16/10/2026)**: [contrato de modos](modos-generacion.md). `GenerateRequest.modo_generacion` es opcional (`multiagente` por defecto, `basico` explícito). Omitirlo conserva el paquete 1.0; explicitarlo solicita 1.1. El básico tiene `status=no_evaluado`, evaluación `no_realizada`, métricas y modelo juez nulos. Cada variante tiene validación estricta; el paquete 1.0 aprobado no cambia. `completed` sigue requiriendo persistencia confirmada y no significa aprobación del básico. El [OpenAPI](openapi.json) incluye las variantes de respuesta y exportación. La compatibilidad de idempotencia y exportaciones históricas está detallada en el contrato de modos.
+
 > **Estado**: contrato v1 **CONGELADO** por el issue `Issue 03`. Implementación viva: [`backend/app/schemas/`](../backend/app/schemas/) (Pydantic v2); ejemplos ejecutables: `backend/tests/test_schemas.py` (round-trip + rechazo de inválidos). Cambios posteriores requieren PR etiquetado `contract-change` con revisión API+UI+AGT+RAG y este documento actualizado en el mismo PR.
 > **Fuente**: `decisiones_proyecto.md` §3.3, §7, §16, §17. La referencia navegable por HTTP será el OpenAPI en `/docs` (issue `Issue 59`).
 > **Uso**: backend implementa contra este documento; frontend construye contra este documento. Ambos lo tratan como la interfaz compartida.
@@ -14,7 +16,7 @@ y no bloquea los criterios locales de #59.
 
 ## Convenciones generales
 
-- **Base**: `/api` (sin `/v1`; el versionado vive en `schema_version=1.0` de los paquetes).
+- **Base**: `/api` (sin `/v1`; el versionado vive en `schema_version=1.0|1.1` de los paquetes).
 - **Autenticación**: `Authorization: Bearer <token_de_sesion>` en todas las rutas salvo creación de workspace, recuperación y `/health`.
 - **Autorización**: todo recurso se resuelve desde la sesión validada; un ID ajeno responde **404** (no 403).
 - **Idempotencia**: `POST` de upload, generación, persist y eventos de progreso aceptan header `Idempotency-Key`. Duplicado en curso → misma respuesta; mismo key con otro cuerpo → **409**.
@@ -405,7 +407,7 @@ Soporta `Last-Event-ID` mientras exista registro; cerrar el stream **no** cancel
 
 #### `POST /api/generations/{id}/cancel` · `POST /api/generations/{id}/persist`
 
-Cancelación explícita; reintento de **solo persistencia** de un aprobado retenido (≤24 h, mismo `objeto_id`, sin llamadas LLM).
+Cancelación explícita; reintento de **solo persistencia** del material retenido válido para su modo (≤24 h, mismo `objeto_id`, sin llamadas LLM).
 
 #### `GET /api/generations`
 

@@ -11,6 +11,9 @@ No aprueba las precisiones `contract-change` pendientes en [contratos-api.md](co
 | `info.version` | `0.1.0` | Versión declarada de la aplicación FastAPI; no es un prefijo de URL |
 | `openapi` | `3.1.0` | Versión de la especificación que describe la API |
 | `PedagogicalOutput.schema_version` | `1.0` | Versión del paquete pedagógico JSON, distinta de las anteriores |
+| Paquetes con modo explícito | `1.1` | Multiagente aprobado o básico sin evaluación independiente; ver [modos](modos-generacion.md) |
+
+`POST /api/generate` admite `modo_generacion=multiagente|basico`. Omitirlo conserva el modo y paquete anteriores; explicitarlo solicita 1.1. Los ejemplos curl de esta referencia omiten el campo y siguen comprobando 1.0. En básico, `completed` acredita guardado confirmado, el artefacto tiene `status=no_evaluado` y sus métricas son nulas. Una clave ya usada para otro modo devuelve 409. Los errores de evaluación del multiagente no activan el básico.
 
 Desde la raíz, con las dependencias Python del proyecto instaladas:
 
@@ -53,7 +56,7 @@ parámetros de adaptación, sin reenviar el texto.
 
 `status: "exito"` del ejemplo original no es un estado del contrato actual:
 202 sólo admite el trabajo; su estado `completed` confirma la finalización.
-El paquete canónico usa `status: "aprobado"`. La confirmación de escritura
+El paquete multiagente usa `status: "aprobado"`; el básico 1.1, `no_evaluado`. La confirmación de escritura
 se consulta como `persistencia.status_upload: "completado"` en la respuesta
 del trabajo, fuera del canónico; no como `almacenamiento_oci.status_upload`.
 
@@ -166,7 +169,7 @@ para localizarlos en el snapshot o en un viewer que lo soporte.
 | `GET /api/demo/documents/{document_id}` | Bearer | path `document_id`: string obligatorio | **200** `application/json` [DocumentoResponse](openapi.json#/components/schemas/DocumentoResponse) | 401, 404, 409, 422, 500, 503 |
 | `GET /api/demo/documents/{document_id}/sources/{chunk_id}` | Bearer | path `document_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `application/json` [FuenteDocumentoResponse](openapi.json#/components/schemas/FuenteDocumentoResponse) | 401, 404, 409, 422, 500, 503 |
 | `GET /api/demo/generations` | Bearer | Sin body/parámetros específicos | **200** `application/json` [CatalogoEjemplos](openapi.json#/components/schemas/CatalogoEjemplos) / [CatalogoVacio](openapi.json#/components/schemas/CatalogoVacio) | 401, 422, 500, 503 |
-| `GET /api/demo/generations/{generation_id}` | Bearer | path `generation_id`: string obligatorio | **200** `application/json` [PedagogicalStudentOutput](openapi.json#/components/schemas/PedagogicalStudentOutput) | 401, 404, 422, 500, 503 |
+| `GET /api/demo/generations/{generation_id}` | Bearer | path `generation_id`: string obligatorio | **200** `application/json` [PedagogicalStudentOutput](openapi.json#/components/schemas/PedagogicalStudentOutput) / [ReviewedPedagogicalStudentOutputV11](openapi.json#/components/schemas/ReviewedPedagogicalStudentOutputV11) | 401, 404, 422, 500, 503 |
 | `POST /api/demo/generations/{generation_id}/answers` | Bearer | path `generation_id`: string obligatorio<br>body `application/json` obligatorio: [QuizAnswerRequest](openapi.json#/components/schemas/QuizAnswerRequest) | **200** `application/json` [QuizAnswerResponse](openapi.json#/components/schemas/QuizAnswerResponse) | 401, 404, 422, 500, 503 |
 | `GET /api/demo/generations/{generation_id}/sources/{chunk_id}` | Bearer | path `generation_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `application/json` [FuenteDocumentoResponse](openapi.json#/components/schemas/FuenteDocumentoResponse) | 401, 404, 422, 500, 503 |
 | `GET /api/demo/generations/{generation_id}/sources/{chunk_id}/image` | Bearer | path `generation_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `image/png` string (binary) | 401, 404, 422, 500, 503 |
@@ -176,7 +179,7 @@ para localizarlos en el snapshot o en un viewer que lo soporte.
 | `GET /api/documents/{document_id}` | Bearer | path `document_id`: string obligatorio | **200** `application/json` [DocumentoResponse](openapi.json#/components/schemas/DocumentoResponse) | 401, 404, 409, 422, 500, 503 |
 | `GET /api/documents/{document_id}/sources/{chunk_id}` | Bearer | path `document_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `application/json` [FuenteDocumentoResponse](openapi.json#/components/schemas/FuenteDocumentoResponse) | 401, 404, 409, 422, 500, 503 |
 | `GET /api/documents/{document_id}/sources/{chunk_id}/image` | Bearer | path `document_id`: string obligatorio<br>path `chunk_id`: string obligatorio | **200** `image/png` string (binary) | 401, 404, 409, 422, 500, 503 |
-| `GET /api/exports/{generation_id}` | Bearer | path `generation_id`: string obligatorio<br>query `format`: string; default `"json"` | **200** `application/json` [PedagogicalOutput](openapi.json#/components/schemas/PedagogicalOutput); `application/octet-stream` string (binary); `application/pdf` string (binary); `text/csv` string; `text/markdown` string; `text/tab-separated-values` string | 401, 404, 409, 422, 500, 503 |
+| `GET /api/exports/{generation_id}` | Bearer | path `generation_id`: string obligatorio<br>query `format`: string; default `"json"` | **200** `application/json` [PaqueteExportado](openapi.json#/components/schemas/PaqueteExportado); `application/octet-stream` string (binary); `application/pdf` string (binary); `text/csv` string; `text/markdown` string; `text/tab-separated-values` string | 401, 404, 409, 422, 500, 503 |
 | `POST /api/generate` | Bearer | header `Idempotency-Key`: string / null<br>body `application/json` obligatorio: [GenerateRequest](openapi.json#/components/schemas/GenerateRequest) | **202** `application/json` [GenerationJobResponse](openapi.json#/components/schemas/GenerationJobResponse) | 400, 401, 404, 409, 422, 429, 500, 503 |
 | `GET /api/generations` | Bearer | query `limit`: integer; default `20`; minimum `1`; maximum `100`<br>query `cursor`: string / null<br>query `documento`: string / null<br>query `perfil`: [RecipientProfile](openapi.json#/components/schemas/RecipientProfile) / null<br>query `formato`: [PedagogicalFormat](openapi.json#/components/schemas/PedagogicalFormat) / null<br>query `idioma`: [OutputLanguage](openapi.json#/components/schemas/OutputLanguage) / null<br>query `desde`: string (date-time) / null<br>query `hasta`: string (date-time) / null | **200** `application/json` [PaginaGeneraciones](openapi.json#/components/schemas/PaginaGeneraciones) | 400, 401, 409, 422, 500, 503 |
 | `GET /api/generations/{generation_id}` | Bearer | path `generation_id`: string obligatorio | **200** `application/json` [GenerationJobResponse](openapi.json#/components/schemas/GenerationJobResponse) | 401, 404, 409, 422, 500, 503 |

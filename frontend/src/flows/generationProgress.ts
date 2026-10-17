@@ -116,6 +116,7 @@ export async function recoverActiveGeneration(api: APIClient, token: string) {
   const params = item.parametros;
   const scope = params?.alcance;
   if (typeof item.generation_id !== 'string' || !item.generation_id ||
+      (params?.modo_generacion !== undefined && !['multiagente', 'basico'].includes(params.modo_generacion)) ||
       typeof item.document_id !== 'string' || params?.document_id !== item.document_id ||
       !PERFILES.includes(params?.perfil_destinatario) || !FORMATOS.includes(params?.formato_salida) ||
       !NICHOS.includes(params?.nicho_sector) || !NIVELES_DETALLE.includes(params?.nivel_detalle) ||

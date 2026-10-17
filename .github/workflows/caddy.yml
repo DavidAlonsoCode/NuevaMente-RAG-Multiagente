@@ -295,5 +295,6 @@ jobs:
             .data/caddy-evidence/required-tests.xml
             .data/caddy-evidence/react-observations.json
             .data/caddy-evidence/generation-sse.json
+            .data/caddy-evidence/generation-modes.json
           if-no-files-found: error
           retention-days: 14

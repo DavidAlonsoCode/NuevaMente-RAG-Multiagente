@@ -15,6 +15,7 @@ from tempfile import TemporaryDirectory
 
 import genanki
 
+from app.exports.generation_mode import etiqueta_generacion
 from app.schemas.pedagogical import FlashcardDeck
 
 
@@ -57,6 +58,11 @@ def _mazo(paquete):
     return paquete.contenido_adaptado
 
 
+def _frente(paquete, valor):
+    etiqueta = etiqueta_generacion(paquete)
+    return (campo_html(etiqueta) + "<br><br>" if etiqueta else "") + campo_html(valor)
+
+
 def exportar_texto(paquete, formato):
     mazo = _mazo(paquete)
     if formato not in ("csv", "tsv"):
@@ -70,7 +76,7 @@ def exportar_texto(paquete, formato):
     for tarjeta in mazo.items:
         writer.writerow(
             (
-                campo_html(tarjeta.frente),
+                _frente(paquete, tarjeta.frente),
                 campo_html(tarjeta.dorso),
                 " ".join(etiquetas(tarjeta.etiquetas)),
                 guid(paquete.generation_id, tarjeta.id),
@@ -94,7 +100,7 @@ def exportar_apkg(paquete):
         deck.add_note(
             genanki.Note(
                 model=modelo,
-                fields=[campo_html(tarjeta.frente), campo_html(tarjeta.dorso)],
+                fields=[_frente(paquete, tarjeta.frente), campo_html(tarjeta.dorso)],
                 tags=etiquetas(tarjeta.etiquetas),
                 guid=guid(paquete.generation_id, tarjeta.id),
             )

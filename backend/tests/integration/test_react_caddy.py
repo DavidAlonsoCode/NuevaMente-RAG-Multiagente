@@ -236,3 +236,73 @@ def test_quality_rejection_in_browser_exposes_no_draft():
                 browser.close()
         finally:
             proxy.close()
+
+
+def test_basic_and_multiagent_reuse_document_without_relabeling_results():
+    from playwright.sync_api import expect, sync_playwright
+
+    with tempfile.TemporaryDirectory(prefix="modes-react-", dir=ROOT / ".data") as temporary:
+        proxy = ProxyHarness(Path(temporary), frontend="react")
+        try:
+            proxy.launch()
+            proxy.release_generation()
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
+                context = browser.new_context(ignore_https_errors=True, service_workers="block")
+                page = context.new_page()
+                modes, generation_ids, uploads, errors = [], [], [], []
+
+                def request(req):
+                    path = urlsplit(req.url).path
+                    if req.method == "POST" and path == "/api/generate":
+                        modes.append(req.post_data_json["modo_generacion"])
+                    if req.method == "POST" and path == "/api/documents/upload":
+                        uploads.append(1)
+
+                def response(res):
+                    if res.request.method == "POST" and urlsplit(res.url).path == "/api/generate":
+                        generation_ids.append(res.json()["generation_id"])
+
+                page.on("request", request)
+                page.on("response", response)
+                page.on("pageerror", lambda _error: errors.append("browser-error"))
+                upload_from_browser(page, proxy.url, "Documento compartido por ambos modos")
+                selector = page.get_by_label("Modo de generación", exact=True)
+                expect(selector).to_have_value("multiagente")
+                selector.select_option("basico")
+                assert not modes
+                generate_from_browser(page)
+                expect(page.get_by_role("note").filter(has_text="Sin evaluación independiente")).to_be_visible(
+                    timeout=30000
+                )
+                assert proxy.counters()["generation_calls"] == 1
+                assert proxy.counters()["verification_calls"] == 0
+                assert not page.get_by_text("Contenido revisado con fuentes", exact=True).count()
+                selector.select_option("multiagente")
+                assert modes == ["basico"]
+                assert not page.get_by_text("Contenido revisado con fuentes", exact=True).count()
+                generate_from_browser(page)
+                expect(page.get_by_text("Contenido revisado con fuentes", exact=True)).to_be_visible(timeout=30000)
+                assert modes == ["basico", "multiagente"]
+                assert len(set(generation_ids)) == 2 and len(uploads) == 1
+                assert proxy.counters()["generation_calls"] == 2
+                assert not errors
+                page.set_viewport_size({"width": 320, "height": 800})
+                assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+                private_write(
+                    ROOT / ".data/caddy-evidence/generation-modes.json",
+                    json.dumps(
+                        {
+                            "modes": modes,
+                            "independent_results": 2,
+                            "uploads": 1,
+                            "providers": "explicit-doubles",
+                            "public_acceptance": False,
+                        },
+                        indent=2,
+                    ),
+                )
+                context.close()
+                browser.close()
+        finally:
+            proxy.close()

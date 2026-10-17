@@ -4,8 +4,9 @@ import { CATALOGOS, t } from '../i18n';
 import { useGenerationProgress } from '../flows/generationProgress';
 import { ErrorBanner } from './ErrorBanner';
 
-export function GenerationLiveStatus({ stream, idioma }: {
+export function GenerationLiveStatus({ stream, idioma, modo = 'multiagente' }: {
   stream: ReturnType<typeof useGenerationProgress>; idioma: OutputLanguage;
+  modo?: 'multiagente' | 'basico';
 }) {
   const step = stream.progress?.step;
   const key = `live.step.${step}`;
@@ -14,7 +15,7 @@ export function GenerationLiveStatus({ stream, idioma }: {
     <div role="status" aria-live="polite" aria-atomic="true">
       <p>{t('generar.etapa', idioma, { etapa: stage })}</p>
       {step && ['supervisor', 'researcher', 'writer', 'critic', 'finalizer'].includes(step) &&
-        !!stream.progress?.iteration && <p>{t('live.draft', idioma, { numero: stream.progress.iteration })}</p>}
+        !!stream.progress?.iteration && <p>{t(modo === 'basico' ? 'modo.redaccion_unica' : 'live.draft', idioma, { numero: stream.progress.iteration })}</p>}
       <p className="nm-live-connection"><span aria-hidden="true">●</span> {t(`live.${stream.phase}`, idioma)}</p>
     </div>
     <ErrorBanner error={stream.error} idioma={idioma} />

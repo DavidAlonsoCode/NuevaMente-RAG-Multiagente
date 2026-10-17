@@ -6,7 +6,7 @@ import re
 from app.demo.models import CatalogoEjemplos, FuenteDemoGuardada
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.progress import QuizAnswerResponse
-from app.schemas.responses import PedagogicalOutput, PedagogicalStudentOutput
+from app.schemas.responses import PedagogicalStudentOutput, ReviewedPedagogicalStudentOutputV11, cargar_paquete_json
 from app.storage.object_keys import clave_demo
 from app.storage.provider import StorageNotFound, StorageUnavailable
 
@@ -70,12 +70,13 @@ class CatalogoResultadosDemo:
     def cargar(self, token, generation_id):
         ejemplo = self.buscar(token, generation_id)
         try:
-            paquete = PedagogicalOutput.model_validate_json(self.blob(ejemplo.paquete_sha256))
+            paquete = cargar_paquete_json(self.blob(ejemplo.paquete_sha256))
             fuente = FuenteDemoGuardada.model_validate_json(self.blob(ejemplo.fuente_sha256))
         except ValueError:
             raise StorageUnavailable("Ejemplo demo incompatible") from None
         if (
-            paquete.generation_id != generation_id
+            paquete.status != "aprobado"
+            or paquete.generation_id != generation_id
             or paquete.documento_fuente.document_id != ejemplo.parametros.document_id
             or paquete.documento_fuente.hash != ejemplo.document_hash
             or fuente.document_id != paquete.documento_fuente.document_id
@@ -94,7 +95,9 @@ class CatalogoResultadosDemo:
         return paquete, fuente
 
     def estudiante(self, token, generation_id):
-        return PedagogicalStudentOutput.desde_canonico(self.cargar(token, generation_id)[0])
+        paquete = self.cargar(token, generation_id)[0]
+        modelo = ReviewedPedagogicalStudentOutputV11 if paquete.schema_version == "1.1" else PedagogicalStudentOutput
+        return modelo.desde_canonico(paquete)
 
     def fuente(self, token, generation_id, chunk_id):
         paquete, fuentes = self.cargar(token, generation_id)
