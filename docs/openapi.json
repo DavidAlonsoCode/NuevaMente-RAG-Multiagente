@@ -99,6 +99,212 @@
         "title": "AlmacenamientoOCI",
         "type": "object"
       },
+      "BasicPedagogicalOutput": {
+        "additionalProperties": false,
+        "description": "Variante 1.1 explícita: un generador con RAG, sin evaluación independiente.",
+        "properties": {
+          "almacenamiento_oci": {
+            "$ref": "#/components/schemas/AlmacenamientoOCI"
+          },
+          "contenido_adaptado": {
+            "description": "Unión discriminada por 'tipo' de los 5 formatos pedagógicos.",
+            "discriminator": {
+              "mapping": {
+                "flashcards": "#/components/schemas/FlashcardDeck",
+                "guion_clase": "#/components/schemas/VideoLessonScript",
+                "quiz": "#/components/schemas/InteractiveQuiz",
+                "resumen_ejecutivo": "#/components/schemas/ExecutiveSummary",
+                "tutorial": "#/components/schemas/PracticalTutorial"
+              },
+              "propertyName": "tipo"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlashcardDeck"
+              },
+              {
+                "$ref": "#/components/schemas/InteractiveQuiz"
+              },
+              {
+                "$ref": "#/components/schemas/PracticalTutorial"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutiveSummary"
+              },
+              {
+                "$ref": "#/components/schemas/VideoLessonScript"
+              }
+            ],
+            "title": "Contenido Adaptado"
+          },
+          "created_at": {
+            "description": "Fecha UTC de creación.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "documento_fuente": {
+            "$ref": "#/components/schemas/DocumentoFuente"
+          },
+          "evaluacion_calidad": {
+            "$ref": "#/components/schemas/EvaluacionNoRealizada"
+          },
+          "generation_id": {
+            "description": "Identificador generado por el backend.",
+            "minLength": 1,
+            "title": "Generation Id",
+            "type": "string"
+          },
+          "metadatos": {
+            "$ref": "#/components/schemas/Metadatos"
+          },
+          "modo_generacion": {
+            "const": "basico",
+            "default": "basico",
+            "title": "Modo Generacion",
+            "type": "string"
+          },
+          "referencias": {
+            "description": "Chunks y ubicaciones verificadas usadas en total.",
+            "items": {
+              "$ref": "#/components/schemas/Referencia"
+            },
+            "minItems": 1,
+            "title": "Referencias",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1.1",
+            "default": "1.1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "const": "no_evaluado",
+            "default": "no_evaluado",
+            "title": "Status",
+            "type": "string"
+          },
+          "trazabilidad": {
+            "$ref": "#/components/schemas/TrazabilidadBasica"
+          }
+        },
+        "required": [
+          "generation_id",
+          "metadatos",
+          "documento_fuente",
+          "contenido_adaptado",
+          "evaluacion_calidad",
+          "referencias",
+          "created_at",
+          "trazabilidad",
+          "almacenamiento_oci"
+        ],
+        "title": "BasicPedagogicalOutput",
+        "type": "object"
+      },
+      "BasicPedagogicalStudentOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "almacenamiento_oci": {
+            "$ref": "#/components/schemas/AlmacenamientoOCI"
+          },
+          "contenido_adaptado": {
+            "discriminator": {
+              "mapping": {
+                "flashcards": "#/components/schemas/FlashcardDeck",
+                "guion_clase": "#/components/schemas/VideoLessonScript",
+                "quiz": "#/components/schemas/QuizVistaEstudiante",
+                "resumen_ejecutivo": "#/components/schemas/ExecutiveSummary",
+                "tutorial": "#/components/schemas/PracticalTutorial"
+              },
+              "propertyName": "tipo"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlashcardDeck"
+              },
+              {
+                "$ref": "#/components/schemas/QuizVistaEstudiante"
+              },
+              {
+                "$ref": "#/components/schemas/PracticalTutorial"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutiveSummary"
+              },
+              {
+                "$ref": "#/components/schemas/VideoLessonScript"
+              }
+            ],
+            "title": "Contenido Adaptado"
+          },
+          "created_at": {
+            "description": "Fecha UTC de creación.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "documento_fuente": {
+            "$ref": "#/components/schemas/DocumentoFuente"
+          },
+          "evaluacion_calidad": {
+            "$ref": "#/components/schemas/EvaluacionNoRealizada"
+          },
+          "generation_id": {
+            "description": "Identificador generado por el backend.",
+            "minLength": 1,
+            "title": "Generation Id",
+            "type": "string"
+          },
+          "metadatos": {
+            "$ref": "#/components/schemas/Metadatos"
+          },
+          "modo_generacion": {
+            "const": "basico",
+            "default": "basico",
+            "title": "Modo Generacion",
+            "type": "string"
+          },
+          "referencias": {
+            "description": "Chunks y ubicaciones verificadas usadas en total.",
+            "items": {
+              "$ref": "#/components/schemas/Referencia"
+            },
+            "minItems": 1,
+            "title": "Referencias",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1.1",
+            "default": "1.1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "const": "no_evaluado",
+            "default": "no_evaluado",
+            "title": "Status",
+            "type": "string"
+          },
+          "trazabilidad": {
+            "$ref": "#/components/schemas/TrazabilidadBasica"
+          }
+        },
+        "required": [
+          "generation_id",
+          "metadatos",
+          "documento_fuente",
+          "contenido_adaptado",
+          "evaluacion_calidad",
+          "referencias",
+          "created_at",
+          "trazabilidad",
+          "almacenamiento_oci"
+        ],
+        "title": "BasicPedagogicalStudentOutput",
+        "type": "object"
+      },
       "CatalogoEjemplos": {
         "additionalProperties": false,
         "properties": {
@@ -983,6 +1189,60 @@
         "title": "EvaluacionCalidad",
         "type": "object"
       },
+      "EvaluacionNoRealizada": {
+        "additionalProperties": false,
+        "description": "Ausencia deliberada de juez independiente; no equivale a un fallo del juez.",
+        "properties": {
+          "adecuacion_perfil": {
+            "title": "Adecuacion Perfil",
+            "type": "null"
+          },
+          "anclaje_fuente_score": {
+            "title": "Anclaje Fuente Score",
+            "type": "null"
+          },
+          "cantidad_afirmaciones": {
+            "title": "Cantidad Afirmaciones",
+            "type": "null"
+          },
+          "cantidad_respaldadas": {
+            "title": "Cantidad Respaldadas",
+            "type": "null"
+          },
+          "claridad_pedagogica": {
+            "title": "Claridad Pedagogica",
+            "type": "null"
+          },
+          "cobertura_objetivos": {
+            "title": "Cobertura Objetivos",
+            "type": "null"
+          },
+          "coherencia_didactica": {
+            "title": "Coherencia Didactica",
+            "type": "null"
+          },
+          "estado_evaluacion": {
+            "const": "no_realizada",
+            "default": "no_realizada",
+            "title": "Estado Evaluacion",
+            "type": "string"
+          },
+          "observaciones": {
+            "title": "Observaciones",
+            "type": "null"
+          },
+          "razones_bloqueo": {
+            "title": "Razones Bloqueo",
+            "type": "null"
+          },
+          "verificacion_visual": {
+            "title": "Verificacion Visual",
+            "type": "null"
+          }
+        },
+        "title": "EvaluacionNoRealizada",
+        "type": "object"
+      },
       "ExecutiveSummary": {
         "additionalProperties": false,
         "description": "Resumen ejecutivo TL;DR (formato_salida=resumen_ejecutivo).\n\nPensado para Gestor/Ejecutivo: valor de negocio e implicaciones antes\nque detalle técnico (§16.1: el perfil fija el vocabulario).",
@@ -1314,6 +1574,15 @@
           "idioma_salida": {
             "$ref": "#/components/schemas/OutputLanguage"
           },
+          "modo_generacion": {
+            "default": "multiagente",
+            "enum": [
+              "multiagente",
+              "basico"
+            ],
+            "title": "Modo Generacion",
+            "type": "string"
+          },
           "nicho_sector": {
             "$ref": "#/components/schemas/IndustryNiche"
           },
@@ -1337,7 +1606,7 @@
       },
       "GenerationJobResponse": {
         "additionalProperties": false,
-        "description": "Respuesta de GET /api/generations/{id}: el trabajo que transporta el paquete.\n\n``contenido`` (la proyección PedagogicalStudentOutput del aprobado) solo existe cuando el\nstatus es completed. Un rejected_quality se consulta con HTTP 200 y\ndiagnóstico en ``error`` — el problema es del resultado, no de la\nconsulta (§7.3).",
+        "description": "Respuesta de GET /api/generations/{id}: el trabajo que transporta el paquete.\n\n``contenido`` (la proyección estudiante de la variante generada) solo existe cuando el\nstatus es completed. Un rejected_quality se consulta con HTTP 200 y\ndiagnóstico en ``error`` — el problema es del resultado, no de la\nconsulta (§7.3).",
         "properties": {
           "cancel_url": {
             "anyOf": [
@@ -1356,10 +1625,17 @@
                 "$ref": "#/components/schemas/PedagogicalStudentOutput"
               },
               {
+                "$ref": "#/components/schemas/ReviewedPedagogicalStudentOutputV11"
+              },
+              {
+                "$ref": "#/components/schemas/BasicPedagogicalStudentOutput"
+              },
+              {
                 "type": "null"
               }
             ],
-            "description": "Paquete aprobado; solo presente cuando status=completed."
+            "description": "Paquete revisado 1.0/1.1 o básico no evaluado 1.1; solo cuando status=completed.",
+            "title": "Contenido"
           },
           "error": {
             "anyOf": [
@@ -1860,6 +2136,21 @@
         ],
         "title": "PaginaGeneraciones",
         "type": "object"
+      },
+      "PaqueteExportado": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/PedagogicalOutput"
+          },
+          {
+            "$ref": "#/components/schemas/ReviewedPedagogicalOutputV11"
+          },
+          {
+            "$ref": "#/components/schemas/BasicPedagogicalOutput"
+          }
+        ],
+        "description": "El JSON exportado conserva la variante canónica, sin envoltorio adicional.",
+        "title": "PaqueteExportado"
       },
       "PasoTutorial": {
         "additionalProperties": false,
@@ -2669,6 +2960,213 @@
         "title": "RetiradaDocumentoResponse",
         "type": "object"
       },
+      "ReviewedPedagogicalOutputV11": {
+        "additionalProperties": false,
+        "properties": {
+          "almacenamiento_oci": {
+            "$ref": "#/components/schemas/AlmacenamientoOCI"
+          },
+          "contenido_adaptado": {
+            "description": "Unión discriminada por 'tipo' de los 5 formatos pedagógicos.",
+            "discriminator": {
+              "mapping": {
+                "flashcards": "#/components/schemas/FlashcardDeck",
+                "guion_clase": "#/components/schemas/VideoLessonScript",
+                "quiz": "#/components/schemas/InteractiveQuiz",
+                "resumen_ejecutivo": "#/components/schemas/ExecutiveSummary",
+                "tutorial": "#/components/schemas/PracticalTutorial"
+              },
+              "propertyName": "tipo"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlashcardDeck"
+              },
+              {
+                "$ref": "#/components/schemas/InteractiveQuiz"
+              },
+              {
+                "$ref": "#/components/schemas/PracticalTutorial"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutiveSummary"
+              },
+              {
+                "$ref": "#/components/schemas/VideoLessonScript"
+              }
+            ],
+            "title": "Contenido Adaptado"
+          },
+          "created_at": {
+            "description": "Fecha UTC de creación.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "documento_fuente": {
+            "$ref": "#/components/schemas/DocumentoFuente"
+          },
+          "evaluacion_calidad": {
+            "$ref": "#/components/schemas/EvaluacionCalidad"
+          },
+          "generation_id": {
+            "description": "Identificador generado por el backend.",
+            "minLength": 1,
+            "title": "Generation Id",
+            "type": "string"
+          },
+          "metadatos": {
+            "$ref": "#/components/schemas/Metadatos"
+          },
+          "modo_generacion": {
+            "const": "multiagente",
+            "default": "multiagente",
+            "title": "Modo Generacion",
+            "type": "string"
+          },
+          "referencias": {
+            "description": "Chunks y ubicaciones verificadas usadas en total.",
+            "items": {
+              "$ref": "#/components/schemas/Referencia"
+            },
+            "minItems": 1,
+            "title": "Referencias",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1.1",
+            "default": "1.1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "const": "aprobado",
+            "description": "El artefacto canónico solo existe aprobado (§16.3).",
+            "title": "Status",
+            "type": "string"
+          },
+          "trazabilidad": {
+            "$ref": "#/components/schemas/Trazabilidad"
+          }
+        },
+        "required": [
+          "generation_id",
+          "status",
+          "metadatos",
+          "documento_fuente",
+          "contenido_adaptado",
+          "evaluacion_calidad",
+          "referencias",
+          "created_at",
+          "trazabilidad",
+          "almacenamiento_oci"
+        ],
+        "title": "ReviewedPedagogicalOutputV11",
+        "type": "object"
+      },
+      "ReviewedPedagogicalStudentOutputV11": {
+        "additionalProperties": false,
+        "properties": {
+          "almacenamiento_oci": {
+            "$ref": "#/components/schemas/AlmacenamientoOCI"
+          },
+          "contenido_adaptado": {
+            "discriminator": {
+              "mapping": {
+                "flashcards": "#/components/schemas/FlashcardDeck",
+                "guion_clase": "#/components/schemas/VideoLessonScript",
+                "quiz": "#/components/schemas/QuizVistaEstudiante",
+                "resumen_ejecutivo": "#/components/schemas/ExecutiveSummary",
+                "tutorial": "#/components/schemas/PracticalTutorial"
+              },
+              "propertyName": "tipo"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlashcardDeck"
+              },
+              {
+                "$ref": "#/components/schemas/QuizVistaEstudiante"
+              },
+              {
+                "$ref": "#/components/schemas/PracticalTutorial"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutiveSummary"
+              },
+              {
+                "$ref": "#/components/schemas/VideoLessonScript"
+              }
+            ],
+            "title": "Contenido Adaptado"
+          },
+          "created_at": {
+            "description": "Fecha UTC de creación.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "documento_fuente": {
+            "$ref": "#/components/schemas/DocumentoFuente"
+          },
+          "evaluacion_calidad": {
+            "$ref": "#/components/schemas/EvaluacionCalidad"
+          },
+          "generation_id": {
+            "description": "Identificador generado por el backend.",
+            "minLength": 1,
+            "title": "Generation Id",
+            "type": "string"
+          },
+          "metadatos": {
+            "$ref": "#/components/schemas/Metadatos"
+          },
+          "modo_generacion": {
+            "const": "multiagente",
+            "default": "multiagente",
+            "title": "Modo Generacion",
+            "type": "string"
+          },
+          "referencias": {
+            "description": "Chunks y ubicaciones verificadas usadas en total.",
+            "items": {
+              "$ref": "#/components/schemas/Referencia"
+            },
+            "minItems": 1,
+            "title": "Referencias",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1.1",
+            "default": "1.1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "const": "aprobado",
+            "description": "El artefacto canónico solo existe aprobado (§16.3).",
+            "title": "Status",
+            "type": "string"
+          },
+          "trazabilidad": {
+            "$ref": "#/components/schemas/Trazabilidad"
+          }
+        },
+        "required": [
+          "generation_id",
+          "status",
+          "metadatos",
+          "documento_fuente",
+          "contenido_adaptado",
+          "evaluacion_calidad",
+          "referencias",
+          "created_at",
+          "trazabilidad",
+          "almacenamiento_oci"
+        ],
+        "title": "ReviewedPedagogicalStudentOutputV11",
+        "type": "object"
+      },
       "RotatedCodeResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2941,6 +3439,43 @@
           "retrieval"
         ],
         "title": "Trazabilidad",
+        "type": "object"
+      },
+      "TrazabilidadBasica": {
+        "additionalProperties": false,
+        "properties": {
+          "modelo_embeddings": {
+            "title": "Modelo Embeddings",
+            "type": "string"
+          },
+          "modelo_generacion": {
+            "title": "Modelo Generacion",
+            "type": "string"
+          },
+          "modelo_verificacion": {
+            "title": "Modelo Verificacion",
+            "type": "null"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "retrieval": {
+            "$ref": "#/components/schemas/ConfiguracionRetrieval"
+          }
+        },
+        "required": [
+          "modelo_generacion",
+          "modelo_embeddings",
+          "prompt_version",
+          "parser_version",
+          "retrieval"
+        ],
+        "title": "TrazabilidadBasica",
         "type": "object"
       },
       "UploadDocumentoResponse": {
@@ -4041,7 +4576,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PedagogicalStudentOutput"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PedagogicalStudentOutput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ReviewedPedagogicalStudentOutputV11"
+                    }
+                  ],
+                  "title": "Response Detalle Api Demo Generations  Generation Id  Get"
                 }
               }
             },
@@ -5887,7 +6430,7 @@
     },
     "/api/exports/{generation_id}": {
       "get": {
-        "description": "Descarga autorizada de una generación completada con fuente vigente. JSON conserva los bytes del canónico completo, incluidas soluciones del quiz; no es GenerationJobResponse ni su vista estudiante. json/md/pdf admiten los cinco formatos pedagógicos; csv/tsv/apkg sólo flashcards. Markdown/CSV/TSV usan UTF-8. Validar sesión, pertenencia y estado precede a validar format: ajeno 404, no aprobado 409. No redirige a URLs públicas, ni llama al LLM. Revalida autorización y contenido después del I/O.",
+        "description": "Descarga autorizada de una generación completada con fuente vigente. JSON conserva los bytes del canónico completo, incluidas soluciones del quiz; no es GenerationJobResponse ni su vista estudiante. json/md/pdf admiten los cinco formatos pedagógicos; csv/tsv/apkg sólo flashcards. Markdown/CSV/TSV usan UTF-8. Validar sesión, pertenencia y estado precede a validar format: ajeno 404, no completado 409. No redirige a URLs públicas, ni llama al LLM. Revalida autorización y contenido después del I/O.",
         "operationId": "descargar_api_exports__generation_id__get",
         "parameters": [
           {
@@ -5935,7 +6478,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PedagogicalOutput"
+                  "$ref": "#/components/schemas/PaqueteExportado"
                 }
               },
               "application/octet-stream": {
@@ -6122,7 +6665,7 @@
     },
     "/api/generate": {
       "post": {
-        "description": "JSON con documento propio ready y parámetros pedagógicos. 202 admite el trabajo, no acredita éxito. Usar status_url/events_url; contenido sólo se entrega al completar y confirmar persistencia. El quiz es la vista estudiante, sin correct_option_id ni justificacion; el export autorizado es canónico.",
+        "description": "JSON con documento propio ready y parámetros pedagógicos. 202 admite el trabajo, no acredita éxito. modo_generacion: multiagente por defecto o basico sin evaluación independiente. Explicitarlo solicita paquete 1.1; omitirlo conserva 1.0. En básico el artefacto es no_evaluado, con métricas nulas; no hay fallback desde multiagente. Usar status_url/events_url; contenido sólo se entrega al completar y confirmar persistencia. El quiz es la vista estudiante, sin correct_option_id ni justificacion; el export autorizado es canónico.",
         "operationId": "generar_api_generate_post",
         "parameters": [
           {

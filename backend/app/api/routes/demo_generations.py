@@ -10,7 +10,7 @@ from app.demo.models import CatalogoEjemplos
 from app.schemas.documents_http import FuenteDocumentoResponse
 from app.schemas.progress import QuizAnswerResponse
 from app.schemas.requests import QuizAnswerRequest
-from app.schemas.responses import PedagogicalStudentOutput
+from app.schemas.responses import PedagogicalStudentOutput, ReviewedPedagogicalStudentOutputV11
 
 router = APIRouter(prefix="/api/demo/generations", tags=["Ejemplos demo"])
 
@@ -39,7 +39,7 @@ def listar(token=Depends(get_token), servicio=Depends(get_resultados)):
 
 @router.get(
     "/{generation_id}",
-    response_model=PedagogicalStudentOutput,
+    response_model=PedagogicalStudentOutput | ReviewedPedagogicalStudentOutputV11,
     responses=respuestas(401, 404, 422, 503),
     openapi_extra=parametros(),
     description="Proyección estudiante de un ejemplo completed publicado, sin claves ni justificaciones iniciales del quiz. "

@@ -11,6 +11,12 @@ Vite redirige esas solicitudes a FastAPI (`http://localhost:8000` por defecto).
 FastAPI sigue gestionando sesiones, documentos, el worker, RAG, Gemini y OCI.
 No hay claves de proveedores en React ni es necesario cambiar el backend a JavaScript.
 
+El selector de modo se aplica a la próxima generación: multiagente con revisión
+o básico con RAG sin evaluación independiente. Cambiarlo no reingesta documentos
+ni modifica un material guardado. Resultado, historial, comparación y exportaciones
+conservan la procedencia y muestran la ausencia de evaluación cuando corresponde.
+Ver [contrato y comportamiento](../docs/modos-generacion.md).
+
 En Docker, una etapa Node compila la interfaz. El contenedor final sirve los
 archivos estáticos con el pequeño servidor Python de `entrypoint.py` y redirige
 `/api` a `API_URL`. La receta existente de Caddy conserva el enrutamiento directo

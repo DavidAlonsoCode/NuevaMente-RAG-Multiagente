@@ -68,7 +68,8 @@ def test_cada_formato_y_perfil_respeta_generate_request(perfil, formato):
     for seccion_id in (None, "seccion:2"):
         peticion = construir_peticion("doc_vcn", perfil, formato, "fintech", "practico", "pt", seccion_id)
         validada = GenerateRequest.model_validate(peticion)
-        assert validada.model_dump(mode="json", exclude_none=True) == peticion
+        assert "modo_generacion" not in peticion  # El cliente histórico sigue omitiendo el selector.
+        assert validada.model_dump(mode="json", exclude_none=True) == {**peticion, "modo_generacion": "multiagente"}
 
 
 @pytest.mark.unit

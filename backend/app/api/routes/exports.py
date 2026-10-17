@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from app.api.deps import get_sesion_actual
 from app.api.openapi_metadata import parametros, respuestas
 from app.api.routes.generations import _operar
-from app.schemas.responses import PedagogicalOutput
+from app.schemas.responses import PaqueteExportado
 
 router = APIRouter(prefix="/api/exports", tags=["Exportaciones"])
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/exports", tags=["Exportaciones"])
         409,
         422,
         503,
-        modelo=PedagogicalOutput,
+        modelo=PaqueteExportado,
         contenido={
             "application/json": {},
             "text/markdown": {"schema": {"type": "string"}},
@@ -42,7 +42,7 @@ router = APIRouter(prefix="/api/exports", tags=["Exportaciones"])
     description="Descarga autorizada de una generación completada con fuente vigente. JSON conserva los bytes "
     "del canónico completo, incluidas soluciones del quiz; no es GenerationJobResponse ni su vista estudiante. "
     "json/md/pdf admiten los cinco formatos pedagógicos; csv/tsv/apkg sólo flashcards. Markdown/CSV/TSV usan UTF-8. "
-    "Validar sesión, pertenencia y estado precede a validar format: ajeno 404, no aprobado 409. "
+    "Validar sesión, pertenencia y estado precede a validar format: ajeno 404, no completado 409. "
     "No redirige a URLs públicas, ni llama al LLM. Revalida autorización y contenido después del I/O.",
 )
 def descargar(

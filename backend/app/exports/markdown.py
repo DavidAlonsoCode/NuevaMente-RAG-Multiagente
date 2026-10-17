@@ -3,6 +3,7 @@
 import html
 import re
 
+from app.exports.generation_mode import etiqueta_generacion
 from app.schemas.pedagogical import (
     ExecutiveSummary,
     FlashcardDeck,
@@ -222,6 +223,8 @@ class _Plantilla:
 def renderizar_markdown(paquete: PedagogicalOutput) -> bytes:
     p, contenido, m = _Plantilla(paquete), paquete.contenido_adaptado, paquete.metadatos
     p.agregar("# " + texto(contenido.titulo, una_linea=True))
+    if etiqueta := etiqueta_generacion(paquete):
+        p.agregar("> " + texto(etiqueta))
     p.campo("audiencia", p.l[m.perfil_aplicado.value])
     p.campo("idioma", _IDIOMAS[m.idioma_salida.value])
     p.campo("tiempo", f"{m.tiempo_estimado_estudio_minutos} {p.l['minutos']}")

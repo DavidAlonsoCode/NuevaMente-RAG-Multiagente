@@ -13,7 +13,10 @@
 
 **NuevaMente** es una solución inteligente de ingeniería pedagógica que ingiere documentaciones técnicas densas (manuales de software, especificaciones de arquitectura, artículos científicos o bases de conocimiento) y las transforma automáticamente en contenidos educativos altamente personalizados, estructurados y adaptados a las necesidades cognitivas del destinatario, su industria de aplicación y el formato formativo elegido.
 
+La generación ofrece **Multiagente** con revisión y **Básico** con un agente y RAG sin evaluación independiente. El selector se aplica a cada nuevo material; ambos reutilizan el documento preparado. Los básicos se identifican como no evaluados y no reciben score ni sello de revisión. Contratos, compatibilidad y límites: [modos de generación](docs/modos-generacion.md).
+
 ### Mapeo de Formaciones ONE
+
 - **Formaciones Indispensables**: Inteligencia de Datos y RAG Avanzado + Oracle Cloud Infrastructure (OCI).
 - **Formaciones de Refuerzo**: Ingeniería de Agentes y Automatización con IA + Desarrollo y Orquestación con IA Generativa.
 - **Núcleo Técnico**: Pipeline de RAG (Retrieval-Augmented Generation) con segmentación estructural recursiva (*chunking*), embeddings, almacenamiento en ChromaDB y verificación de fidelidad inspirada en Ragas, integrado a OCI Object Storage en la capa Always Free. Los embeddings se usan para indexación y recuperación; no determinan los cortes del documento.

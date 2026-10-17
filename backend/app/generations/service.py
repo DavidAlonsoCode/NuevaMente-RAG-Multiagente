@@ -6,6 +6,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from app.core.agents.basic import ejecutar_basico
 from app.core.agents.critic import DependenciasCritic
 from app.core.agents.graph import DependenciasOrquestacion, ejecutar_en_worker
 from app.core.agents.graph_state import DependenciasGrafo, EstadoGrafo
@@ -20,7 +21,7 @@ from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
 from app.schemas.enums import JobStatus
 from app.schemas.errors import ErrorAplicacion, ErrorBody, ErrorCode
 from app.schemas.requests import GenerateRequest
-from app.schemas.responses import GenerationJobResponse, PedagogicalOutput, PersistenciaInfo
+from app.schemas.responses import GenerationJobResponse, PersistenciaInfo, cargar_paquete_json
 from app.storage.object_keys import clave_output
 from app.storage.provider import StorageConflict, StorageUnavailable
 
@@ -171,7 +172,7 @@ class ServicioGeneraciones:
         if documento is None:
             raise TrabajoCanceladoError()
         if paquete is not None and documento.fuente != paquete.documento_fuente:
-            raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente del aprobado cambió.")
+            raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente del material cambió.")
         return documento
 
     def _persistir(self, paquete, contexto, *, retener=True):
@@ -186,7 +187,7 @@ class ServicioGeneraciones:
             self.storage.upload(clave, texto, crear_solo=True)
         except StorageConflict:
             if self.storage.get(clave) != texto.encode():
-                raise StorageUnavailable("El objeto no corresponde al aprobado retenido") from None
+                raise StorageUnavailable("El objeto no corresponde al material retenido") from None
         if self.storage.get(clave) != texto.encode():
             raise StorageUnavailable("La escritura no pudo confirmarse")
         self.exports.preparar(
@@ -207,6 +208,22 @@ class ServicioGeneraciones:
             investigador = DependenciasResearcher(
                 grafo, self.retriever, self.consulta.version_parser(contexto, solicitud.document_id)
             )
+            if solicitud.modo_generacion == "basico":
+                return ejecutar_basico(
+                    EstadoGrafo(
+                        workspace_id=contexto.workspace_id,
+                        generation_id=generation_id,
+                        document_id=solicitud.document_id,
+                        parametros=solicitud,
+                        deadline=contexto.deadline,
+                    ),
+                    grafo,
+                    investigador,
+                    DependenciasWriter(grafo, self.generador, self.cfg),
+                    self._persistir,
+                    bucket=self.cfg.oci_bucket_name,
+                    created_at=datetime.fromisoformat(creado_en),
+                )
             deps = DependenciasOrquestacion(
                 grafo,
                 lambda estado: researcher(estado, investigador),
@@ -218,6 +235,7 @@ class ServicioGeneraciones:
             )
             return ejecutar_en_worker(
                 EstadoGrafo(
+                    schema_version="1.1" if "modo_generacion" in solicitud.model_fields_set else "1.0",
                     workspace_id=contexto.workspace_id,
                     generation_id=generation_id,
                     document_id=solicitud.document_id,
@@ -242,7 +260,7 @@ class ServicioGeneraciones:
     def generar(self, token, solicitud: GenerateRequest, clave=None):
         clave = self._clave(clave)
         self.consulta._listo(token, solicitud.document_id)
-        cuerpo = json.dumps(solicitud.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+        cuerpo = json.dumps(solicitud.parametros_persistidos(), sort_keys=True, ensure_ascii=False)
         if clave is not None:
             with self.gestor.admision_serializada():
                 previo = self.db.idempotencia_consultar(self._sesion(token)["workspace_id"], "generate", clave, cuerpo)
@@ -250,7 +268,11 @@ class ServicioGeneraciones:
                 if previo[0] == "conflicto":
                     raise ErrorAplicacion(ErrorCode.IDEMPOTENCY_CONFLICT, "La clave ya corresponde a otro cuerpo.")
                 return self._propia(token, previo[1])
-        if self.generador is None or self.verificador is None or self.retriever is None:
+        if (
+            self.generador is None
+            or self.retriever is None
+            or (solicitud.modo_generacion == "multiagente" and self.verificador is None)
+        ):
             raise ErrorAplicacion(
                 ErrorCode.PROVIDER_UNAVAILABLE, "Generación requiere proveedores y cuotas explícitos."
             )
@@ -276,7 +298,7 @@ class ServicioGeneraciones:
                             return self._propia_db(token, anterior)
                     self.db.comprobar_limite_recursos(ctx.workspace_id, "generations", 20)
                     self.db.registrar_generacion(generation_id, ctx.workspace_id, solicitud.document_id)
-                    self.db.guardar_parametros_generacion(generation_id, solicitud.model_dump(mode="json"))
+                    self.db.guardar_parametros_generacion(generation_id, solicitud.parametros_persistidos())
                 fila = self.db.obtener_generacion(generation_id)
                 self.gestor.enqueue(
                     ctx.workspace_id,
@@ -308,9 +330,9 @@ class ServicioGeneraciones:
             texto = self.db.aprobado_retenido(generation_id)
             if fila["status"] != "failed" or texto is None:
                 raise ErrorAplicacion(
-                    ErrorCode.INVALID_STATE, "No hay un aprobado retenido vigente; iniciar otra generación."
+                    ErrorCode.INVALID_STATE, "No hay material retenido vigente; iniciar otra generación."
                 )
-            paquete = PedagogicalOutput.model_validate_json(texto)
+            paquete = cargar_paquete_json(texto)
             operacion = "persist:" + generation_id
             if clave is not None:
                 resultado, _ = self.db.idempotencia_iniciar(

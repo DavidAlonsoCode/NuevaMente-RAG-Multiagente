@@ -525,6 +525,12 @@ export const QualityPanel: React.FC<{
   const secciones = paquete.metadatos.alcance.secciones_cubiertas;
   const totalRefs = new Set((paquete.referencias || []).map((r) => r.chunk_id)).size;
 
+  if (ev.estado_evaluacion === 'no_realizada') {
+    return <div className="nm-alert nm-alert-warning" role="note" style={{ marginTop: '1rem' }}>
+      <strong>{t('modo.basico', idioma)}</strong><p>{t('modo.aviso', idioma)}</p>
+    </div>;
+  }
+
   return (
     <div className="nm-card" style={{ marginTop: '1.25rem' }}>
       <button
@@ -666,10 +672,11 @@ const PackageViewerView: React.FC<{
     <div>
       <div className="nm-card nm-card-terracotta" style={{ marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.55rem' }}>
-          <span className="nm-badge nm-badge-success">
-            <CheckCircle2 size={13} />
-            {t('material.revisado', idioma)}
+          <span className={`nm-badge ${paquete.status === 'aprobado' ? 'nm-badge-success' : 'nm-badge-neutral'}`}>
+            {paquete.status === 'aprobado' && <CheckCircle2 size={13} />}
+            {t(paquete.status === 'aprobado' ? 'material.revisado' : 'modo.basico', idioma)}
           </span>
+          {paquete.status === 'aprobado' && <span className="nm-badge nm-badge-neutral">{t('modo.multiagente', idioma)}</span>}
           <span className="nm-badge">{t(`formato.${contenido.tipo}`, idioma)}</span>
           <span className="nm-badge nm-badge-neutral">{t(`perfil.${meta.perfil_aplicado}`, idioma)}</span>
           <span className="nm-badge nm-badge-neutral">{t(`idioma.${meta.idioma_salida}`, idioma)}</span>
