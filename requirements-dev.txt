@@ -1,8 +1,8 @@
 # =============================================================================
 # Dependencias de DESARROLLO y CI (issue #02).
 #
-# Diferencia con backend/requirements.txt y frontend/requirements.txt: esos
-# dos archivos son lo que necesita cada SERVICIO para correr en producción;
+# Diferencia con backend/requirements.txt y frontend/package-lock.json: esos
+# archivos fijan las dependencias de cada servicio;
 # este archivo es lo que necesita una PERSONA (o la CI) para desarrollar y
 # verificar: linter, formateador y runner de tests. Por eso vive en la raíz.
 #
@@ -34,6 +34,7 @@ pytest-asyncio==1.4.0
 #   respalda TestClient del esqueleto FastAPI (#07): sin ella, la importacion
 #   de starlette.testclient explota en entornos limpios como la CI.
 httpx==0.28.1
+requests==2.34.2
 # - pypdf: verificacion/extraccion de PDFs en fixtures y generacion del cifrado.
 pypdf==6.19.0
 # - chromadb: prueba de indexacion de los embeddings del doble (ephemeral, sin red).

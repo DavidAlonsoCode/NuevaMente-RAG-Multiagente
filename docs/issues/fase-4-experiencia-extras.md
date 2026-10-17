@@ -70,11 +70,11 @@ graph TD
 **Objetivo**: componentes visuales definitivos para cada formato pedagógico según el design system, más los paneles de «Ver la fuente» y de calidad.
 
 **Tareas**:
-- `components/flashcard.py`: tarjeta con frente visible y botón nativo «Mostrar respuesta» (el estado de revisión debe ser registrable — no depender de eventos HTML no capturables).
-- `components/quiz.py` (vista estudiante): opciones radio; **sin** clave ni justificaciones hasta responder.
-- `components/tutorial.py`: pasos numerados con badges, bloques de código JetBrains Mono, resultado esperado y verificación.
-- `components/summary.py`: dos columnas (Impacto en Negocio + Implicaciones) con badges informativas.
-- `components/script.py`: escenas con duración, narración en itálica, puntos de diapositiva.
+- `FlashcardsRenderer` en `frontend/src/components/FormatRenderers.tsx`: tarjeta con frente visible y botón nativo «Mostrar respuesta» (el estado de revisión debe ser registrable — no depender de eventos HTML no capturables).
+- `QuizInteractiveRenderer` en `frontend/src/components/FormatRenderers.tsx` (vista estudiante): opciones radio; **sin** clave ni justificaciones hasta responder.
+- Tutorial en `frontend/src/components/FormatRenderers.tsx`: pasos numerados con badges, bloques de código JetBrains Mono, resultado esperado y verificación.
+- Resumen en `frontend/src/components/FormatRenderers.tsx`: dos columnas (Impacto en Negocio + Implicaciones) con badges informativas.
+- Guion en `frontend/src/components/FormatRenderers.tsx`: escenas con duración, narración en itálica, puntos de diapositiva.
 - Panel de fuentes: por cada elemento citado, fragmento/sección/página (o imagen original vía `sources/{chunk_id}`); ejemplos de nicho con etiqueta «Ejemplo ilustrativo» (§10.7).
 - Panel de calidad (§19.4): score, limitaciones, cobertura y referencias con explicación sencilla; el número **no** se presenta como probabilidad de verdad.
 - Estados §6.5 completos y accesibilidad (etiquetas, foco, contraste).
@@ -96,7 +96,7 @@ graph TD
 
 **Tareas**:
 - `POST /api/quizzes/{generation_id}/answers`: compara `option_id` contra el contenido aprobado; devuelve correcta/incorrecta + justificación; la vista inicial del estudiante jamás incluye la clave (§16.2).
-- `POST /api/progress/events`: eventos idempotentes (ID de evento estable por actividad) — un rerun de Streamlit no duplica progreso (§10.3).
+- `POST /api/progress/events`: eventos idempotentes (ID de evento estable por actividad) — un renderizado o reintento de React no duplica progreso (§10.3).
 - Tipos de evento: concepto revisado, flashcard vista (frente+dorso), respuesta de quiz (con acierto de primer intento vs. posterior).
 - `GET /api/progress`: agregados del espacio: conceptos revisados, flashcards vistas, aciertos/total primeros intentos, tiempo estimado restante.
 - Persistencia del estado agregado en `progress/{ws}/state.json` con control de versión (evita perder actualizaciones entre pestañas — §7.2).
@@ -164,7 +164,7 @@ graph TD
 **Objetivo**: panel de chat con historial visible, citas expandibles y estados de espera/cancelación.
 
 **Tareas**:
-- `components/chat.py`: hilo de mensajes (usuario/asistente), entrada de pregunta, espera cancelable.
+- `ChatTutorView` en `frontend/src/components/StudyAndHistoryViews.tsx`: hilo de mensajes (usuario/asistente), entrada de pregunta, espera cancelable.
 - Citas expandibles por respuesta (mismo componente de fuente de `Issue 34`).
 - Indicador de idioma/perfil aplicados; aviso cuando el documento no contiene la respuesta.
 - Historial de la sesión visible; reinicio de conversación.
@@ -226,7 +226,7 @@ graph TD
 **Objetivo**: barra/panel de progreso del espacio: conceptos revisados, flashcards vistas, aciertos de quiz y tiempo restante estimado.
 
 **Tareas**:
-- `components/progress.py`: métricas agregadas desde `GET /api/progress` (backend = fuente de verdad; `session_state` solo presentación — §10.3).
+- `ProgressView` en `frontend/src/components/StudyAndHistoryViews.tsx`: métricas agregadas desde `GET /api/progress` (backend = fuente de verdad; estado React sólo presentación — §10.3).
 - Registro de «concepto revisado» al abrir/marcar material; de «flashcard vista» al consultar frente y dorso.
 - Tiempo restante estimado a partir de actividades pendientes, con copy que aclare que es orientativo y que **no** otorga certificación ni afirma dominio (§10.3).
 - Recuperación del progreso al reingresar con el código.

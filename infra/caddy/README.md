@@ -1,5 +1,15 @@
 # Proxy del host — Issue 48, implementación y protocolo de aceptación
 
+> **Frontend vigente — #139, 17/10/2026:** sólo se despliega y prueba React.
+> El harness de proxy usa el build real para interacción, recarga, carga en el
+> área principal y auditoría de secretos; conserva HTTP/1.1, HTTP/2, SSE,
+> cancelación, subidas lentas y diagnósticos cerrados. No hay WebSocket de UI
+> ni configuración CORS/XSRF de Streamlit que activar. Las corridas anteriores
+> que mencionan Streamlit/WebSocket son evidencia histórica de sus commits,
+> no controles ejecutables del frontend actual. Para arranque y cobertura vigente,
+> ver [frontend](../../frontend/README.md) y [#139](../../docs/verificacion-issue-139.md).
+
+
 ## Guía principal: instalar → arrancar → comprobar
 
 Esta guía sigue el alcance vigente de [#48](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/48)
@@ -107,12 +117,12 @@ Ambos upstreams reciben `Host` y `X-Forwarded-Host` públicos,
 Se descartan `Forwarded` y `X-Real-IP` del cliente. Se conserva `Origin`.
 React solicita `/api` al mismo origen; el navegador no recibe la clave privada
 del proxy. El servidor estático agrega CSP y sirve las tipografías localmente.
-El overlay ya no configura variables de Streamlit; sus pruebas históricas
+El overlay no configura variables de Streamlit; las evidencias históricas de sus pruebas
 de WebSocket se conservan y no acreditan la nueva interfaz.
 No se alteran `Authorization`, `Idempotency-Key`, `Last-Event-ID`, `X-Request-ID`,
 `Retry-After`, `Content-Type`, `Cache-Control` ni `X-Accel-Buffering` del contrato.
 
-En API, UI y handshake WebSocket se **sobrescriben**, nunca se agregan a la cadena
+En API y UI se **sobrescriben**, nunca se agregan a la cadena
 del cliente, `X-NuevaMente-Client-IP` y `X-NuevaMente-Origin-Key`. Se retiran ambas
 de respuestas, incluida protección global sobre respuestas HTTP locales. El
 frontend existente transmite estas cabeceras desde `st.context.headers` al
@@ -1458,7 +1468,7 @@ metadatos públicos permitidos. Abrir la UI, crear/acceder al espacio de prueba,
 realizar una interacción que produzca cambio visible y navegar por contenido.
 Observar las solicitudes de React a `/api` y el efecto visible de la interacción,
 sin exportar tokens ni cuerpos privados. La UI React no usa el WebSocket de
-Streamlit. El seguimiento SSE de generación continúa pendiente de #33.
+React. El seguimiento SSE de generación está implementado en #33; su aceptación pública queda en #133.
 Interrumpir la red brevemente,
 restaurarla y confirmar reconexión **más** una nueva interacción funcional; 101
 aislado no sirve. Anotar navegador/versión, UTC, acciones y resultados saneados.

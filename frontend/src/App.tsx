@@ -496,23 +496,6 @@ export const App: React.FC = () => {
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--border-hairline)', width: '100%' }} />
 
-          {/* Subida rápida en Sidebar */}
-          {sessionToken && !mostrandoRecuperacion && (
-            <SidebarFileUpload
-              api={api}
-              token={sessionToken}
-              idioma={idiomaUi}
-              onUploaded={(docId, jobId) => {
-                setTrabajosDoc((prev) => ({
-                  ...prev,
-                  [docId]: { jobId, cursor: 0, estado: 'queued' },
-                }));
-                sincronizarEspacio();
-              }}
-              onError={setGlobalError}
-            />
-          )}
-
           {/* Panel de Parámetros de Adaptación */}
           {sessionToken && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1090,8 +1073,17 @@ export const App: React.FC = () => {
                     </button>
                   </div>
 
-                  {vistaOnboarding === 'upload' && (
-                    <div className="nm-alert nm-alert-info">{t('upload.ayuda_sidebar', idiomaUi)}</div>
+                  {vistaOnboarding === 'upload' && sessionToken && (
+                    <FileUpload
+                      api={api}
+                      token={sessionToken}
+                      idioma={idiomaUi}
+                      onUploaded={(docId, jobId) => {
+                        setTrabajosDoc((prev) => ({ ...prev, [docId]: { jobId, cursor: 0, estado: 'queued' } }));
+                        sincronizarEspacio();
+                      }}
+                      onError={setGlobalError}
+                    />
                   )}
 
                   {vistaOnboarding === 'texto' && sessionToken && (
@@ -1395,7 +1387,7 @@ export const App: React.FC = () => {
 };
 
 // Subcomponentes auxiliares
-const SidebarFileUpload: React.FC<{
+const FileUpload: React.FC<{
   api: APIClient;
   token: string;
   idioma: OutputLanguage;
@@ -1430,16 +1422,18 @@ const SidebarFileUpload: React.FC<{
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t('upload.titulo', idioma)}</div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--ink-muted)' }}>
+    <section className="nm-card" aria-labelledby="file-upload-title" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <h2 id="file-upload-title" style={{ margin: 0, fontSize: '1.2rem' }}>{t('upload.titulo', idioma)}</h2>
+      <div id="file-upload-help" style={{ fontSize: '0.85rem', color: 'var(--ink-muted)' }}>
         {t('upload.formatos_soportados', idioma)} · {t('upload.limite', idioma)}
       </div>
       <input
+        aria-labelledby="file-upload-title"
+        aria-describedby="file-upload-help"
         type="file"
         accept=".pdf,.md,.txt"
         className="nm-input"
-        style={{ fontSize: '0.8rem' }}
+        style={{ fontSize: '0.9rem' }}
         onChange={(e) => setFile(e.target.files?.[0] || null)}
       />
       {errClave && (
@@ -1464,7 +1458,7 @@ const SidebarFileUpload: React.FC<{
       >
         {t('upload.procesar', idioma)}
       </button>
-    </div>
+    </section>
   );
 };
 

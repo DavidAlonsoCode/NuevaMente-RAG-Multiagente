@@ -1,5 +1,10 @@
 # Verificación de la migración a React
 
+> **Actualización #139 (17/10):** Streamlit y sus pruebas exclusivas fueron
+> retirados. Los resultados inferiores conservan el alcance de sus corridas
+> originales. El estado actual se detalla en [verificación de #139](verificacion-issue-139.md).
+
+
 Fecha: 15 de octubre de 2026. Rama local: `feature/frontend-react-redwood`,
 con correcciones sobre `8602096` e integración de develop `b95c0ec`. No acredita un despliegue público ni el cierre
 de los issues de entrega.
@@ -98,7 +103,7 @@ sin errores ni advertencias en la consola del navegador.
 - Docker Desktop no tenía un motor disponible. No se ejecutaron localmente
   build de contenedores, ARM64 ni Compose. Los cambios de CI requieren su corrida.
 - No hubo OCI/Gemini reales, VM, DNS, HTTPS público, interpretación visual real
-  ni evaluación humana. Las pruebas históricas Caddy/Streamlit se conservan;
+  ni evaluación humana. Las pruebas históricas Caddy/Streamlit se conservaban en esta revisión; #139 migra el harness a React;
   la nueva prueba React/Caddy local tampoco constituye aceptación pública.
 - El seguimiento de generación sigue consultando estado periódicamente; no
   completa SSE, reconexión y recuperación de #33. Las descargas comprobadas no

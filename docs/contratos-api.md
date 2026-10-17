@@ -84,9 +84,9 @@ Los `code` son estables y no se traducen; los `message` se localizan según idio
 - La actividad autenticada renueva la retención del espacio con escrituras agrupadas cada cinco minutos. No prolonga el token. Los manifiestos pendientes se sincronizan al arrancar y cada minuto; la confirmación de una versión vieja no borra una actividad posterior.
 - El manifiesto privado conserva hash, versión, expiración, última actividad y lápidas. Las escrituras usan creación exclusiva o `if_match`; un manifiesto retirado no se reactiva. Si OCI falla al borrar, el acceso local queda bloqueado y la confirmación durable permanece pendiente, con diagnóstico y reintento. Se debe preservar SQLite hasta confirmar esa lápida: un borrado que nunca llegó a storage no puede reconstruirse después de perder también el volumen local.
 - `session/recovery.py` reconstruye el índice hash→espacio al arrancar un registro nuevo y retoma reconstrucciones interrumpidas. Pagina manifiestos, verifica identidad/ETag/hash y restaura documentos, registros de paquetes canónicos aprobados y el agregado privado de progreso; omite recursos retirados. No restaura tokens, colas, borradores ni invoca Gemini. Los documentos quedan `processing` hasta reconstruir índices (#17) y, cuando corresponda, visión (#30). La API de progreso corresponde a #35, su presentación a #41 y la gestión visual del espacio a #42.
-- `Accept-Language` selecciona mensajes ES/EN/PT; los códigos, detalles e idioma del contenido conservan su contrato. El cliente Streamlit envía el idioma de interfaz vigente.
+- `Accept-Language` selecciona mensajes ES/EN/PT; los códigos, detalles e idioma del contenido conservan su contrato. El cliente React envía el idioma de interfaz vigente.
 
-**Origen detrás de Streamlit/Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. Streamlit transmite ambas cabeceras al backend desde su contexto del servidor. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
+**Origen detrás de Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. El navegador solicita `/api` al mismo origen y Caddy agrega ambas cabeceras al reenviar a FastAPI. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
 
 Con React, el navegador solicita `/api` al mismo origen y Caddy aplica esas
 cabeceras al reenviar directamente a FastAPI. La clave permanece en el proxy
@@ -111,9 +111,9 @@ una única `origin.env` privada. `/api` y `/api/*` conservan su prefijo. Se pres
 `Authorization`, `Idempotency-Key`, `Last-Event-ID`, `X-Request-ID`, `Retry-After`
 y las cabeceras SSE; el proxy retira ambas cabeceras privadas de las respuestas.
 La confianza Uvicorn en `X-Forwarded-*` es independiente: requiere IPs de conexión
-comprobadas desde el contenedor, nunca `*` ni una gateway supuesta. CORS/XSRF de
-Streamlit permanecen activos; la clave solo circula en el contexto del servidor,
-incluido el handshake WebSocket, y nunca debe serializarse en mensajes o páginas.
+comprobadas desde el contenedor, nunca `*` ni una gateway supuesta. Los orígenes CORS permitidos se configuran explícitamente en FastAPI; la clave
+privada sólo circula entre servicios y nunca debe serializarse en páginas,
+JavaScript, almacenamiento del navegador ni mensajes SSE.
 
 ### Documentos (issues `Issue 19`, `Issue 11`)
 
