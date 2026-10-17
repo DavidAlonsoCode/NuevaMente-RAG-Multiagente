@@ -28,7 +28,11 @@ El harness de Caddy usa únicamente React. La comprobación del WebSocket de
 Streamlit se reemplaza por interacción, recarga e idioma conservado, mientras las
 pruebas de SSE verifican reconexión y cursor. Se mantienen la prueba de silencio
 mayor de 120 segundos, subida lenta, auditoría de cabeceras/logs y diagnósticos
-cerrados. No se cambian los timeouts ni las defensas del proxy de producción.
+cerrados. La cabecera Authorization sintética del control de filtraciones se
+inyecta sólo en la navegación inicial: las solicitudes autenticadas de React
+conservan su propio Bearer. La lista obligatoria conserva los diez controles
+y actualiza únicamente las identidades de las dos pruebas renombradas.
+No se cambian los timeouts ni las defensas del proxy de producción.
 
 Los tests exclusivos de widgets/controladores retirados dejan de contarse en
 pytest. Esa reducción no representa fallos corregidos ni valida React por sí

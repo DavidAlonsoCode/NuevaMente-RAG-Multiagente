@@ -464,6 +464,7 @@ def test_browser_child_diagnostic_tracks_real_probe_stage(
     package, api = ModuleType("playwright"), ModuleType("playwright.sync_api")
     package.__path__ = []
     api.sync_playwright = Manager
+    api.expect = lambda *_: pytest.fail("No debe alcanzar aserciones de interacción")
     monkeypatch.setitem(sys.modules, "playwright", package)
     monkeypatch.setitem(sys.modules, "playwright.sync_api", api)
     # POSIX options are simulated here, not evidence of native Ubuntu execution.

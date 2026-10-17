@@ -14,7 +14,7 @@ from caddy_fixture import CANARIES, SECRET, private_write
 
 def probe(url, directory, hold, progress):
     # Import/start errors belong in the same closed report as browser errors.
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     violations = []
     # Synthetic query/cookie canaries originate in the browser itself. Their
@@ -54,7 +54,10 @@ def probe(url, directory, hold, progress):
         # Limit functional traffic to this fixture, including bundled fonts.
         def route(request_route):
             if request_route.request.url.startswith(url + "/"):
-                request_route.continue_()
+                if request_route.request.is_navigation_request():
+                    request_route.continue_(headers=request_route.request.headers | {"Authorization": CANARIES["AUTH"]})
+                else:
+                    request_route.continue_()
             else:
                 host = urlsplit(request_route.request.url).hostname
                 violations.append("external-browser-request:" + str(host))
@@ -65,7 +68,6 @@ def probe(url, directory, hold, progress):
         context.set_extra_http_headers(
             {
                 "X-NuevaMente-Origin-Key": CANARIES["HEADER"],
-                "Authorization": CANARIES["AUTH"],
                 "X-NuevaMente-Client-IP": "192.0.2.7",
                 "Forwarded": "for=192.0.2.7;proto=http;host=evil.invalid",
                 "X-Real-IP": "192.0.2.7",
@@ -103,8 +105,8 @@ def probe(url, directory, hold, progress):
         progress.reached("second_interaction")
         selector.select_option("es")
         page.get_by_label("Idioma de la interfaz", exact=True).wait_for(timeout=15000)
-        assert page.locator('main input[type="file"]').count() == 1, "main-upload-missing"
-        assert page.locator('aside input[type="file"]').count() == 0, "sidebar-upload-present"
+        expect(page.locator('main input[type="file"]')).to_have_count(1)
+        expect(page.locator('aside input[type="file"]')).to_have_count(0)
         progress.reached("privacy_audit")
         inspect(page.content())
         # Browser state deliberately contains injected cookie/header canaries;
