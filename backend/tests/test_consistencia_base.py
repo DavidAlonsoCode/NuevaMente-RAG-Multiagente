@@ -12,7 +12,7 @@ from app.core.faithfulness.faithfulness import Afirmacion, EstadoEvaluacion, Jui
 from app.core.rag.chunker import trocear
 from app.core.rag.parser import LimitesIngesta, ParserError, parsear_archivo
 from app.jobs.manager import ControlesOperativos, CuotasModelo, CuotasProveedor, GestorTrabajos, ReintentableError
-from app.jobs.store import MIGRACIONES, RegistroOperativo, _ahora
+from app.jobs.store import MIGRACIONES, VERSION_ESQUEMA, RegistroOperativo, _ahora
 from app.main import crear_app
 from app.schemas.enums import DocumentStatus
 from app.schemas.errors import ErrorAplicacion, ErrorCode
@@ -41,7 +41,7 @@ def test_migracion_desde_v2_conserva_datos(tmp_path):
     con.close()
     registro = RegistroOperativo(ruta)
     try:
-        assert registro.version_esquema() == 3
+        assert registro.version_esquema() == VERSION_ESQUEMA
         fila = registro._conn.execute("SELECT * FROM jobs WHERE job_id='j'").fetchone()
         assert fila["status"] == "completed" and fila["generation_id"] is None
     finally:
@@ -223,6 +223,7 @@ def test_pdf_demo_solo_diagrama_requiere_vision(documento_demo_vcn):
 
 def test_factory_usa_configuracion_del_archivo(tmp_path, monkeypatch):
     monkeypatch.delenv("MOCK_OCI", raising=False)
+    monkeypatch.delenv("DATA_DIR", raising=False)
     archivo = tmp_path / "config.env"
     archivo.write_text(f"MOCK_OCI=true\nDATA_DIR={tmp_path.as_posix()}\n")
     ajustes = Configuracion(_env_file=archivo)

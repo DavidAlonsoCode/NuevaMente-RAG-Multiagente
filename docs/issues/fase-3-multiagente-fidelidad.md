@@ -60,10 +60,12 @@ graph TD
 - Evidencia tipada en el estado: chunks con `chunk_id`, texto, procedencia y notas de uso (§5.4).
 - Sin instrucciones del documento interpretadas como propias (evidencia = datos, no comandos).
 
+- Propagar el contexto a cada consulta de Issue 18. Si se usa Gemini para formular consultas, sus solicitudes también pasan por `ctx.llamar` y cuentan en el presupuesto de generación; la formulación determinista no consume llamadas.
+
 **Criterios de aceptación**:
-- [ ] Para el doc VCN con alcance completo, el estado lista evidencia de todas las secciones principales (cobertura reportada).
-- [ ] Alcance de una sección específica recupera solo evidencia de esa sección.
-- [ ] Presupuesto excedido → diagnóstico claro en el estado (secciones sin caber), no recorte invisible.
+- [x] Para el doc VCN con alcance completo, el estado lista evidencia de todas las secciones principales (cobertura reportada).
+- [x] Alcance de una sección específica recupera solo evidencia de esa sección.
+- [x] Presupuesto excedido → diagnóstico claro en el estado (secciones sin caber), no recorte invisible.
 
 **Verificación**: `pytest backend/tests/test_researcher.py` con doble de retrieval.
 
@@ -83,13 +85,15 @@ graph TD
 
 - Definir interfaz y doble del verificador visual; hasta conectar Issue 30, evidencia visual necesaria devuelve insuficiente, nunca aprobación por omisión.
 
+- El transporte Gemini del juez y de la verificación visual es síncrono y pasa cada solicitud por `ctx.llamar`. Mantener los métodos async del doble y añadir entradas sync reutilizando lógica/contadores. Probar que un retry del juez consume cuota y presupuesto, sin otra capa de retries.
+
 **Criterios de aceptación**:
 - [ ] Borrador con una afirmación inventada → veredicto con esa afirmación marcada y feedback de corrección, aunque el score quede ≥0.85 (bloqueo por afirmación, no solo por promedio).
 - [ ] Score 0.75 con intentos disponibles → feedback y no aprobación.
 - [ ] Doble que falla como juez → trabajo `failed` con causa técnica, sin score.
 - [ ] Quiz: distractores comprobados por separado (una sola respuesta defendible; explicación refuta errores).
 
-**Verificación**: `pytest backend/tests/test_critic.py` con dobles que cubren las tres bandas de score + fallo de juez.
+**Verificación**: `pytest backend/tests/test_critic.py` con dobles: tres bandas, falsedad con score alto, evaluación incompleta, rúbrica, quiz, imagen original, cancelación/deadline y cuota/presupuesto por retry. Contrato interno y límites de integración: `docs/contratos-api.md`, sección «Critic (Issue 28)». No acredita Gemini/OCI reales; las aristas y el loader documental se conectan en issues 29/30.
 
 ---
 
@@ -105,6 +109,8 @@ graph TD
 - Terminales: `completed` (solo tras persistencia), `rejected_quality` (diagnóstico breve: evidencia insuficiente / contradicción / cobertura incompleta / calidad pedagógica), `failed`, `cancelled`.
 - El grafo termina **siempre** en un estado terminal explícito (§19.3); sin ciclos sin salida.
 - Emisión de eventos de paso para el gestor de trabajos (paso, intento) — insumo del SSE.
+
+- Ejecutar el grafo con `invoke` en el worker de Issue 20 y compartir su contexto entre nodos. Contar cada solicitud real, incluidos retries técnicos, para el límite de 20; tres redacciones pedagógicas y tres intentos técnicos por solicitud son límites distintos. No reiniciar el pipeline por fallos transitorios.
 
 **Criterios de aceptación**:
 - [ ] Flujo feliz con doble: aprobación en 1.er intento → paquete `PedagogicalOutput` completo.
@@ -131,13 +137,15 @@ graph TD
 - Extensión del Critic: `verificacion_visual` contrasta afirmaciones derivadas de diagramas contra la página original (no la descripción contra sí misma — §19.2); evidencia visual indispensable no verificable → no aprobación.
 - Reporte de omisiones visuales: nunca se presenta una adaptación incompleta como completa (§4.2).
 
+- Visión y embeddings derivados usan adaptadores síncronos y el mismo contexto, timeout y cuotas centrales; sin retries adicionales. Completar el documento visual pendiente de Issue 19 y comprobar que el PDF VCN pasa a `ready` solo tras informar cobertura y omisiones.
+
 **Criterios de aceptación**:
 - [ ] El PDF VCN genera ≥1 descripción de diagrama con página de origen referenciable y visible en «Ver la fuente».
 - [ ] Una afirmación derivada del diagrama sin respaldo visual es bloqueada por Critic (`verificacion_visual=insuficiente`).
 - [ ] Página escaneada legible dentro de límites se procesa; ilegible se informa como omisión.
 - [ ] Las descripciones quedan separadas del texto extraído (colección/tipo propio).
 
-**Verificación**: `pytest backend/tests/test_multimodal.py` con PDF fixture con diagrama + corrida real sobre `documents/redes_vcn_oci.pdf`.
+**Verificación de implementación**: `pytest backend/tests/test_multimodal.py` con PDF fixture con diagrama. La comprobación real sobre la versión/hash vigente de `documents/redes_vcn_oci.pdf` se acepta en #133, reutilizando la consulta visual de VCN v2 registrada en #55 donde cubra el criterio. Debe trazar interpretación, índice, página original y juez visual; no confundir un rasterizado o una llamada fallida con una descripción válida.
 
 ---
 
@@ -158,14 +166,16 @@ graph TD
 
 - Ofrecer vista estudiante explícita de quiz, sin claves ni justificaciones iniciales; canónico completo mediante exportación autorizada.
 
+- Reutilizar el gestor y los endpoints comunes de Issue 20; implementar aquí únicamente las rutas propias de generaciones. El grafo corre en segundo plano con proveedores síncronos, sin bloquear la API ni SSE.
+
 **Criterios de aceptación**:
-- [ ] El ejemplo del enunciado (VCN + Principiante + Flashcards) produce una respuesta con la forma de §16.3 vía API (con LLM real en la prueba manual).
+- [ ] El ejemplo del enunciado (VCN + Principiante + Flashcards) produce una respuesta con la forma de §16.3 vía API, comprobada con proveedores simulados explícitos; la comprobación con LLM real se acepta en #133.
 - [ ] El stream SSE muestra pasos e intentos; una reconexión no duplica el trabajo.
 - [ ] Fallo de storage inyectado → `failed` con `STORAGE_UNAVAILABLE`; `persist` lo recupera sin re-generar; `completed` jamás sin confirmación OCI.
 - [ ] Consultar el trabajo ajeno por ID → 404.
 - [ ] Estado `rejected_quality` se consulta con HTTP 200 + diagnóstico, sin `contenido_adaptado` (§7.3).
 
-**Verificación**: `pytest backend/tests/test_api_generate.py` (SSE framing incluido) + corrida manual real documentada.
+**Verificación de implementación**: `pytest backend/tests/test_api_generate.py` (SSE framing incluido). La corrida manual con proveedores reales se centraliza en #133 y reutiliza la evidencia compatible de #32/#54/#55. Mantener persistencia confirmada y reintento sin LLM; cerrar #31 no acredita la nueva interfaz pública.
 
 ---
 
@@ -186,26 +196,43 @@ graph TD
 - [ ] Idioma de contenido cambia sin regenerar materiales guardados ni perder la selección.
 - [ ] Alcance por sección lista las secciones reales del documento cargado.
 
-**Verificación**: flujo manual con doble de Gemini (previsibilidad) + una corrida real.
+**Verificación**: flujo manual con doble de Gemini (previsibilidad). La corrida real histórica se conserva en `docs/issue-32-gemini-real.json`; no se exige repetirla para integrar. La comprobación con proveedores reales desde React se traza en #133.
 
 ---
 
 ### `Issue 33` — Progreso en vivo (SSE) en la UI
 **F3** · **UI** · **M** · **Depende de**: `Issue 32`, `Issue 31` · **Referencia**: decisiones_proyecto.md §3.3, §6.5
 
-**Objetivo**: consumo del stream SSE desde el servidor Streamlit (requests en streaming) mostrando etapa e intento, con cancelación y reconexión.
+**Objetivo**: consumir SSE en React mediante fetch autenticado, mostrando etapa e intento, con cancelación y reconexión. El retiro de la interfaz anterior en #139 conserva la cobertura vigente de React y API; las evidencias antiguas sólo acreditan su versión.
 
 **Tareas**:
-- Cliente SSE en `api_client.py`: lectura streaming con reconexión vía `status_url` y continuación por `Last-Event-ID` cuando exista.
+- Cliente SSE en `frontend/src/api/client.ts`: lectura incremental, reconciliación del estado HTTP y continuación por `Last-Event-ID` cuando exista. Reconexión y recuperación en `frontend/src/flows/generationProgress.ts`.
 - Render de etapas: en cola (posición + cancelar), procesando (etapa e intento, **sin porcentajes ficticios** — §3.3), y estados terminales con presentación de §6.5.
 - `rejected_quality`: motivo y acciones útiles (acotar sección / cargar versión más completa), sin botón de «aprobar igual».
 - Fallo técnico: causa recuperable + acción (reintentar persistencia si aplica).
 - Indicador «Contenido revisado con fuentes» al completar (§19.4).
 
 **Criterios de aceptación**:
-- [ ] Durante una generación real se ven las etapas avanzar e intentar (1/2/3).
-- [ ] Cancelar desde la UI detiene el trabajo y muestra estado cancelado conservando documentos.
-- [ ] Tras refrescar y perder session_state, recuperar con el código y listar/reconectar al trabajo existente, sin duplicarlo.
-- [ ] Un rechazo por calidad muestra diagnóstico sin exponer el borrador fallido.
+- [x] Durante una generación del backend con proveedores simulados explícitos se ven las etapas y la redacción vigente (1/2/3).
+- [x] Cancelar desde la UI solicita cancelación cooperativa y muestra el estado cancelado confirmado conservando documentos.
+- [x] Tras refrescar y perder el estado en memoria de la interfaz, recuperar con el código y listar/reconectar al trabajo existente, sin duplicarlo.
+- [x] Un rechazo por calidad muestra diagnóstico sin exponer el borrador fallido.
 
-**Verificación**: prueba manual con trabajo ralentizado (env de test) + `pytest` del cliente SSE con stream simulado.
+**Verificación**: trabajo ralentizado con proveedores simulados explícitos, Vitest del cliente SSE y navegador con Caddy/TLS locales. Evidencias y límites en [verificacion-issue-33.md](../verificacion-issue-33.md); no equivalen a una ejecución con proveedores reales ni a aceptación pública.
+
+**Aceptación externa trasladada — 16/10/2026**: por autorización del responsable, el avance SSE con Gemini/OCI reales y el recorrido desde la URL pública se aceptan en #133. El cierre de #33 acredita los cuatro criterios locales anteriores y permite continuar a sus sucesores; no declara realizadas esas comprobaciones externas.
+
+---
+
+### Complemento 33.1 — Modos de generación: multiagente y básico con RAG
+
+**AGT/API/UI** · Depende de 29/31/32/33/50, sin reabrirlos ni sustituir los 60 issues originales. Comportamiento y contrato: [modos de generación](../modos-generacion.md).
+
+- [ ] Selector por nueva adaptación, multiagente predeterminado; ambos modos reutilizan documento e índice.
+- [ ] Básico: una redacción sin LangGraph/Critic, validación estructural/citas y métricas nulas; nunca aprobación ficticia.
+- [ ] Cambiar de modo crea otra generación y conserva la anterior, sin reingesta ni promoción de un básico existente.
+- [ ] Contratos 1.0/1.1, idempotencia, SSE, persistencia, recuperación y ocultación de soluciones del quiz coherentes.
+- [ ] Resultado, historial, comparación y exportaciones identifican el modo y la ausencia de evaluación independiente.
+- [ ] Regresiones con proveedores simulados explícitos y OpenAPI actualizado. 51/53 contemplan ambos recorridos, 46/58 pueden avanzar en paralelo y 60 conserva su muestra/revisión humana.
+
+La comprobación comparativa con proveedores reales, consumo y latencia se acepta en #133 con autorización específica. Este complemento no acredita ahorro medido ni despliegue público. Publicación: PR independiente hacia develop, sin merge automático.

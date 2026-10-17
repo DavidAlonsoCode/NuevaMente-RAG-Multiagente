@@ -42,6 +42,22 @@ from app.jobs.manager import (
 )
 from app.jobs.store import RegistroOperativo
 from app.schemas.enums import JobStatus
+from app.storage.provider import StorageBudgetExceeded, StorageUnavailable
+
+
+def test_contexto_rechaza_async_sin_consumir_cuota():
+    cuotas = CuotasProveedor({"m": CuotasModelo(rpd=10)})
+    ctx = ContextoEjecucion("j", "ws", "chat", time.monotonic() + 10, cuotas=cuotas)
+
+    async def proveedor(*, timeout):
+        return "resultado"
+
+    with pytest.raises(TypeError, match="síncrono"):
+        ctx.llamar(proveedor, modelo="m")
+    assert cuotas.disponibles_hoy("m") == 10
+    with pytest.raises(TypeError, match="resuelto"):
+        ctx.llamar(lambda timeout: proveedor(timeout=timeout), modelo="m")
+
 
 pytestmark = pytest.mark.unit
 
@@ -142,6 +158,53 @@ def test_retry_after_no_se_recorta(store):
         assert len(intentos) == 1
     finally:
         gestor.detener()
+
+
+@pytest.mark.parametrize("deadline", [10.1, 30.0])
+def test_espera_despierta_antes_sin_adelantar_retry_ni_consumir_cuota(monkeypatch, deadline):
+    from unittest.mock import Mock
+
+    from app.jobs.manager import DeadlineExcedidoError
+
+    reloj = [10.0]
+    monkeypatch.setattr("app.jobs.manager.time.monotonic", lambda: reloj[0])
+    evento = Mock()
+    evento.is_set.return_value = False
+
+    def esperar(tiempo):
+        reloj[0] += tiempo / 2 if evento.wait.call_count == 1 else tiempo + 0.001
+        return False
+
+    evento.wait.side_effect = esperar
+    cuotas = CuotasProveedor({"m": CuotasModelo(rpd=3)})
+    ctx = ContextoEjecucion("j", "w", "chat", deadline, cuotas=cuotas, _evento_cancelacion=evento)
+    intentos = []
+
+    def solicitar(*, timeout):
+        intentos.append(reloj[0])
+        if len(intentos) == 1:
+            raise ReintentableError("esperar", retry_after=10)
+        return "ok"
+
+    if deadline < 20:
+        with pytest.raises(DeadlineExcedidoError):
+            ctx.llamar(solicitar, modelo="m")
+        assert len(intentos) == 1 and cuotas.disponibles_hoy("m") == 2
+    else:
+        assert ctx.llamar(solicitar, modelo="m") == "ok"
+        assert len(intentos) == 2 and intentos[1] >= 20 and cuotas.disponibles_hoy("m") == 1
+    assert evento.wait.call_count == 2
+
+
+def test_deadline_exacto_no_envia_solicitud_ni_reserva_cuota(monkeypatch):
+    from app.jobs.manager import DeadlineExcedidoError
+
+    monkeypatch.setattr("app.jobs.manager.time.monotonic", lambda: 10.0)
+    cuotas = CuotasProveedor({"m": CuotasModelo(rpd=3)})
+    ctx = ContextoEjecucion("j", "w", "chat", 10.0, cuotas=cuotas)
+    with pytest.raises(DeadlineExcedidoError):
+        ctx.llamar(lambda timeout: pytest.fail("No debe llamar al proveedor"), modelo="m")
+    assert cuotas.disponibles_hoy("m") == 3
 
 
 def test_llamadas_reciben_timeout_y_reservan_cuota():
@@ -412,6 +475,22 @@ def test_reintentos_agotados_falla_con_codigo(gestor, store):
     # La columna cuenta REINTENTOS efectuados (§7.5: hasta dos), no el
     # intento original: 2 reintentos => 3 ejecuciones de la función.
     assert final["intentos"] == 2
+
+
+@pytest.mark.parametrize("error", [StorageUnavailable, StorageBudgetExceeded])
+def test_persistencia_fallida_no_completa_ni_repite_pipeline(gestor, store, error):
+    llamadas = []
+
+    def persistir(ctx):
+        llamadas.append(ctx.job_id)
+        raise error("respuesta SDK con token-secreto")
+
+    job = gestor.enqueue("ws_a", "generacion", persistir)
+    final = esperarlo(store, job, JobStatus.FAILED)
+    assert final["error_code"] == "STORAGE_UNAVAILABLE"
+    assert final["resultado"] is None
+    assert final["intentos"] == 0 and llamadas == [job]
+    assert "token-secreto" not in final["error_message"]
 
 
 def test_error_permanente_no_reintenta(gestor, store):

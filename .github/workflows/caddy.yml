@@ -1,0 +1,300 @@
+name: Caddy / configuración y proxy
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "infra/caddy/**"
+      - "infra/oci/**"
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose*.yml"
+      - ".env*.example"
+      - ".github/scripts/**"
+      - ".github/requirements-caddy.*"
+      - ".github/workflows/caddy.yml"
+      - "requirements-dev.txt"
+      - "pytest.ini"
+  push:
+    branches: [develop, main]
+    paths:
+      - "infra/caddy/**"
+      - "infra/oci/**"
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose*.yml"
+      - ".env*.example"
+      - ".github/scripts/**"
+      - ".github/requirements-caddy.*"
+      - ".github/workflows/caddy.yml"
+      - "requirements-dev.txt"
+      - "pytest.ini"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: caddy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proxy:
+    name: Caddy real / ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    env:
+      APP_ENV: ci
+      MOCK_OCI: "1"
+      MOCK_GEMINI: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Compilar React para la prueba con Caddy
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Dependencias fijadas y herramientas Python verificadas
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/nm48-playwright-download
+        run: |
+          test ! -e "$PLAYWRIGHT_BROWSERS_PATH"
+          python -m pip install -r requirements-dev.txt -r backend/requirements.txt
+          python -m pip install --require-hashes --only-binary=:all: -r .github/requirements-caddy.lock
+          python .github/scripts/check_pinned_requirements.py .github/requirements-caddy.txt
+          python -m playwright install --with-deps chromium
+      - name: Caddy y Compose oficiales con versión y digest verificados
+        run: python .github/scripts/smoke_caddy.py --prepare-tools "${{ runner.temp }}/caddy-tools"
+      - name: Compatibilidad userns del Chromium fijado, solo VM efímera
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/nm48-playwright-download
+        run: |
+          test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+          # Resolve the pinned default headless shell, never an executable override.
+          relative_executable="$(python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          from importlib.resources import files
+          try:
+              assert not os.environ.get("NM_BROWSER_EXECUTABLE")
+              package = files("playwright").joinpath("driver/package/lib/coreBundle.js")
+              node = files("playwright").joinpath("driver/node")
+              query = "process.stdout.write(require(process.argv[1]).registry.registry.findExecutable('chromium-headless-shell').executablePath())"
+              result = subprocess.run([str(node), "-e", query, str(package)],
+                                      check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+              executable = Path(os.fsdecode(result.stdout))
+              print(executable.relative_to(Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"])).as_posix())
+          except Exception:
+              print("SANDBOX_CI_RESOLUTION_FAILED", file=sys.stderr)
+              sys.exit(1)
+          PY
+          )"
+          # Dedicated fixed locations; refuse pre-existing files, directories or profiles.
+          sudo -n /usr/bin/python3 - "$PLAYWRIGHT_BROWSERS_PATH" "$relative_executable" <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import stat
+          import subprocess
+          import sys
+
+          def protected(path):
+              global check
+              caller_check = check
+              check = "PATH_LSTAT"
+              info = path.lstat()
+              check = "PATH_NOT_SYMLINK"
+              assert not stat.S_ISLNK(info.st_mode)
+              check = "PATH_ROOT_OWNER_AND_MODE"
+              assert info.st_uid == info.st_gid == 0 and not info.st_mode & 0o6022
+              check = caller_check
+
+          def inventory(base, verify_protection=False):
+              global check
+              caller_check = check
+              rows = {}
+              check = "INVENTORY_WALK"
+              for path in [base, *sorted(base.rglob("*"))]:
+                  check = "INVENTORY_ENTRY_LSTAT"
+                  info = path.lstat()
+                  check = "INVENTORY_NO_SETID"
+                  assert not info.st_mode & 0o6000
+                  if verify_protection:
+                      check = "INVENTORY_ENTRY_PROTECTION"
+                      protected(path)
+                  if stat.S_ISDIR(info.st_mode):
+                      value = ["directory"]
+                  else:
+                      check = "INVENTORY_REGULAR_SINGLE_LINK"
+                      assert stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+                      check = "INVENTORY_FILE_OPEN"
+                      with path.open("rb") as stream:
+                          check = "INVENTORY_FILE_SHA256"
+                          value = ["file", bool(info.st_mode & 0o111),
+                                   hashlib.file_digest(stream, "sha256").hexdigest()]
+                          check = "INVENTORY_FILE_CLOSE"
+                  check = "INVENTORY_RELATIVE_PATH"
+                  rows[path.relative_to(base).as_posix()] = value
+              check = caller_check
+              return rows
+
+          def copy_file(source, destination):
+              global check
+              caller_check = check
+              check = "COPY_SOURCE_NOFOLLOW_OPEN"
+              descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+              check = "COPY_STREAMS_OPEN_EXCLUSIVE"
+              with os.fdopen(descriptor, "rb") as incoming, open(destination, "xb") as outgoing:
+                  check = "COPY_SOURCE_FSTAT"
+                  mode = os.fstat(incoming.fileno()).st_mode
+                  check = "COPY_REGULAR_NO_SETID"
+                  assert stat.S_ISREG(mode) and not mode & 0o6000
+                  check = "COPY_BYTES"
+                  shutil.copyfileobj(incoming, outgoing)
+                  check = "COPY_FILE_MODE"
+                  os.fchmod(outgoing.fileno(), 0o555 if mode & 0o111 else 0o444)
+                  check = "COPY_STREAMS_CLOSE"
+              check = caller_check
+
+          try:
+              phase, check = "root_identity", "ROOT_UID_GID"
+              assert os.geteuid() == os.getegid() == 0
+              phase, check = "input_paths", "SOURCE_ARGUMENT"
+              source = Path(sys.argv[1])
+              check = "EXECUTABLE_ARGUMENT"
+              relative = Path(sys.argv[2])
+              check = "SOURCE_DIRECTORY_NO_SYMLINK"
+              assert not source.is_symlink() and source.is_dir()
+              check = "EXECUTABLE_RELATIVE_NO_PARENT"
+              assert not relative.is_absolute() and ".." not in relative.parts
+              check = "EXECUTABLE_ALLOWED_CHARACTERS"
+              assert re.fullmatch(r"[A-Za-z0-9_./-]+", relative.as_posix())
+              root = Path("/nm48-playwright-ci")
+              bundle = root / "browsers"
+              profile = Path("/etc/apparmor.d/nm48-chromium-ci")
+              phase, check = "ancestor_protection", "ANCESTORS_WALK"
+              for path in [*root.parents, profile.parent, *profile.parent.parents]:
+                  check = "ANCESTOR_PROTECTED"
+                  protected(path)
+              phase, check = "destinations_absent", "BUNDLE_DESTINATION_ABSENT"
+              assert not root.exists() and not root.is_symlink()
+              check = "PROFILE_FILE_ABSENT"
+              assert not profile.exists() and not profile.is_symlink()
+              phase, check = "apparmor_available", "APPARMOR_ENABLED"
+              assert Path("/sys/module/apparmor/parameters/enabled").read_text().strip() == "Y"
+              loaded = Path("/sys/kernel/security/apparmor/profiles")
+              phase, check = "destinations_absent", "PROFILE_NAME_NOT_LOADED"
+              assert not any(line.startswith("nm48-chromium-ci ") for line in loaded.read_text().splitlines())
+              phase, check = "source_inventory", "SOURCE_INVENTORY"
+              before = inventory(source)
+              check = "PINNED_EXECUTABLE_PRESENT_AND_EXECUTABLE"
+              assert before[relative.as_posix()][:2] == ["file", True]
+              # New root-owned inodes, not a rename of files the runner may have open.
+              phase, check = "copy", "PRIVATE_ROOT_MKDIR"
+              root.mkdir(mode=0o700)
+              check = "PRIVATE_ROOT_MODE"
+              root.chmod(0o700)
+              check = "BUNDLE_COPYTREE"
+              shutil.copytree(source, bundle, symlinks=True, copy_function=copy_file)
+              phase, check = "inventory_comparison", "COPIED_INVENTORY_EQUAL"
+              assert inventory(bundle) == before
+              phase, check = "final_permissions", "BUNDLE_PERMISSION_WALK"
+              for path in [bundle, *bundle.rglob("*")]:
+                  check = "BUNDLE_ENTRY_LSTAT"
+                  mode = path.lstat().st_mode
+                  check = "BUNDLE_ENTRY_FINAL_MODE"
+                  path.chmod(0o555 if stat.S_ISDIR(mode) or mode & 0o111 else 0o444)
+              check = "ROOT_FINAL_MODE"
+              root.chmod(0o755)
+              check = "ROOT_PROTECTED"
+              protected(root)
+              check = "FINAL_INVENTORIES_EQUAL_AND_PROTECTED"
+              assert inventory(bundle, verify_protection=True) == before == inventory(source)
+              executable = bundle / relative
+              policy = 'abi <abi/4.0>,\nprofile nm48-chromium-ci "' + str(executable) + '" flags=(unconfined) {\n  userns,\n}\n'
+              phase, check = "profile_write", "PROFILE_OPEN_EXCLUSIVE"
+              with profile.open("x") as stream:
+                  check = "PROFILE_WRITE"
+                  stream.write(policy)
+                  check = "PROFILE_CLOSE"
+              check = "PROFILE_FILE_MODE"
+              profile.chmod(0o644)
+              check = "PROFILE_FILE_PROTECTED"
+              protected(profile)
+              # --add refuses replacement; no global reload, sysctl or setuid helper.
+              phase, check = "profile_load", "PARSER_ADD_NO_CACHE"
+              subprocess.run(["/usr/sbin/apparmor_parser", "--add", "--skip-cache", str(profile)],
+                             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              phase, check = "profile_confirmation", "PROFILE_LOADED_UNCONFINED"
+              assert "nm48-chromium-ci (unconfined)" in loaded.read_text().splitlines()
+              phase, check = "summary", "BUNDLE_MANIFEST_SHA256"
+              digest = hashlib.sha256(json.dumps(before, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+              check = "SUCCESS_JSON"
+              print(json.dumps({"sandbox_ci": "prepared", "bundle_manifest_sha256": digest}))
+          except Exception as error:
+              allowed = {AssertionError: "AssertionError", OSError: "OSError",
+                         FileNotFoundError: "FileNotFoundError", PermissionError: "PermissionError",
+                         FileExistsError: "FileExistsError", NotADirectoryError: "NotADirectoryError",
+                         IsADirectoryError: "IsADirectoryError", ValueError: "ValueError",
+                         TypeError: "TypeError", KeyError: "KeyError",
+                         subprocess.CalledProcessError: "CalledProcessError"}
+              kind = type(error)
+              report = {"phase": phase, "check": check,
+                        "exception_type": allowed.get(kind, "OtherError")}
+              if kind is subprocess.CalledProcessError:
+                  if type(error.returncode) is int:
+                      report["returncode"] = error.returncode
+              elif kind in (OSError, FileNotFoundError, PermissionError, FileExistsError,
+                            NotADirectoryError, IsADirectoryError):
+                  if type(error.errno) is int:
+                      report["errno"] = error.errno
+              print(json.dumps(report, separators=(",", ":")), file=sys.stderr)
+              sys.exit(1)
+          PY
+      - name: React compilado en navegador por Caddy y TLS locales
+        env:
+          CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
+          COMPOSE_BIN: ${{ runner.temp }}/caddy-tools/docker-compose
+          PLAYWRIGHT_BROWSERS_PATH: /nm48-playwright-ci/browsers
+          NM_CADDY_EVIDENCE_DIR: .data/caddy-evidence
+        run: python -m pytest -o addopts= -q backend/tests/integration/test_react_caddy.py
+      - name: Sintaxis de wrappers y smoke requerido, sin skips
+        env:
+          CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
+          COMPOSE_BIN: ${{ runner.temp }}/caddy-tools/docker-compose
+          PLAYWRIGHT_BROWSERS_PATH: /nm48-playwright-ci/browsers
+        run: |
+          test -z "${NM_BROWSER_EXECUTABLE:-}"
+          bash -n infra/caddy/install.sh
+          bash -n infra/caddy/deploy.sh
+          python -m py_compile .github/scripts/smoke_caddy.py backend/tests/integration/caddy_backend.py backend/tests/integration/caddy_browser.py
+          python .github/scripts/smoke_caddy.py
+      - name: Evidencia saneada (sin logs crudos, TLS, tokens ni perfiles)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caddy-${{ matrix.runner }}
+          path: |
+            .data/caddy-evidence/observations.json
+            .data/caddy-evidence/required-tests.xml
+            .data/caddy-evidence/react-observations.json
+            .data/caddy-evidence/generation-sse.json
+            .data/caddy-evidence/generation-modes.json
+          if-no-files-found: error
+          retention-days: 14

@@ -23,9 +23,12 @@ llama a la app sin abrir puerto ni red — FastAPI lo incluye para tests.
 servidor y devolver la respuesta 500 tal como la vería un cliente real.
 """
 
+from unittest.mock import Mock
+
 import pytest
 from app.config import Configuracion, ConfiguracionIncompleta
 from app.main import CABECERA_REQUEST_ID, crear_app
+from app.storage.provider import StorageBudgetExceeded, StorageProvider, StorageUnavailable
 from fastapi.testclient import TestClient
 
 # Marca del módulo completo: estos tests son de unidad (sin red, sin IO).
@@ -36,7 +39,7 @@ def config_desarrollo(**sobrescrituras) -> Configuracion:
     """Config de desarrollo con mocks explícitos, inyectable y aislada."""
     valores = {"app_env": "development", "mock_oci": True, "mock_gemini": True}
     valores.update(sobrescrituras)
-    return Configuracion(**valores)
+    return Configuracion(_env_file=None, **valores)
 
 
 @pytest.fixture
@@ -56,6 +59,20 @@ def test_health_responde_200_sin_secretos(cliente):
     texto = str(cuerpo).lower()
     for secreto_prohibido in ("placeholder", "api_key", "google", "oci_", "password"):
         assert secreto_prohibido not in texto
+
+
+@pytest.mark.parametrize("error", [StorageUnavailable, StorageBudgetExceeded])
+def test_storage_fallido_devuelve_503_sin_detalles_del_sdk(cliente, error):
+    @cliente.app.get("/prueba-storage")
+    def fallar():
+        raise error("SDK token-secreto")
+
+    respuesta = cliente.get("/prueba-storage")
+    assert respuesta.status_code == 503
+    cuerpo = respuesta.json()
+    assert cuerpo["error"]["code"] == "STORAGE_UNAVAILABLE"
+    assert cuerpo["request_id"] == respuesta.headers[CABECERA_REQUEST_ID]
+    assert "token-secreto" not in respuesta.text
 
 
 def test_toda_respuesta_lleva_request_id_generado(cliente):
@@ -108,15 +125,25 @@ def test_excepcion_no_manejada_responde_500_estandar():
         assert filtrado not in texto
 
 
-def test_produccion_incompleta_falla_al_arrancar_con_mensaje_accionable():
+def test_produccion_incompleta_falla_al_arrancar_con_mensaje_accionable(monkeypatch):
     """Criterio 3: APP_ENV=production + placeholders => no arranca, y el error
     nombra CADA variable faltante de una vez (arreglable en un ciclo)."""
+    for variable in (
+        "GOOGLE_API_KEY",
+        "OCI_COMPARTMENT_ID",
+        "OCI_CONFIG_FILE",
+        "OCI_REGION",
+        "OCI_ALWAYS_FREE_CONFIRMED",
+        "OCI_AUTH_TYPE",
+        "TRUSTED_ORIGIN_SECRET",
+    ):
+        monkeypatch.delenv(variable, raising=False)
     with pytest.raises(ConfiguracionIncompleta) as info:
         # mock_oci/mock_gemini EXPLICITOS en False: pydantic-settings tambien
         # lee el entorno, y la CI publica MOCK_OCI=1 a nivel job; sin esto, la
         # construccion heredaria el mock y reventaria por "production no admite
         # mocks" ANTES de llegar a la validacion que este test quiere probar.
-        crear_app(Configuracion(app_env="production", mock_oci=False, mock_gemini=False))
+        crear_app(Configuracion(_env_file=None, app_env="production", mock_oci=False, mock_gemini=False))
     mensaje = str(info.value)
     for variable in ("GOOGLE_API_KEY", "OCI_COMPARTMENT_ID", "OCI_CONFIG_FILE", "OCI_REGION"):
         assert variable in mensaje, f"el mensaje no nombra {variable}"
@@ -125,12 +152,20 @@ def test_produccion_incompleta_falla_al_arrancar_con_mensaje_accionable():
     assert "MOCK_OCI=1" in mensaje
 
 
-def test_produccion_completa_arranca(tmp_path):
-    """Camino positivo: producción con config real llega a construir la app.
-    OCI_CONFIG_FILE debe apuntar a un archivo existente (la validación
-    crítica lo exige), así que el test crea uno temporal."""
+def test_produccion_completa_arranca(tmp_path, monkeypatch):
+    """Config completa pasa la validación de producción con storage aislado.
+
+    El doble se inyecta solo en este test: no habilita mocks en producción
+    real ni prueba la integración OCI. Health no debe consultar storage.
+    """
     archivo_credenciales = tmp_path / "config"
     archivo_credenciales.write_text("[DEFAULT]\nuser=falso\n", encoding="utf-8")
+    proveedor = Mock(spec=StorageProvider)
+    from app.storage.provider import StoragePage
+
+    proveedor.list.return_value = StoragePage(items=[], next_cursor=None)
+    fabrica = Mock(return_value=proveedor)
+    monkeypatch.setattr("app.main.get_storage_provider", fabrica)
     app = crear_app(
         Configuracion(
             app_env="production",
@@ -138,13 +173,20 @@ def test_produccion_completa_arranca(tmp_path):
             mock_oci=False,
             mock_gemini=False,
             google_api_key="AIza_real_de_prueba",
+            trusted_origin_secret="secreto-del-proxy-solo-para-tests-32",
             oci_compartment_id="ocid1.compartment.oc1..x",
+            oci_always_free_confirmed=True,
             oci_region="us-ashburn-1",
             oci_config_file=str(archivo_credenciales),
+            data_dir=str(tmp_path / "datos"),
         )
     )
+    fabrica.assert_called_once_with(configuracion=app.state.config)
     with TestClient(app) as cliente:
+        # El arranque reconstruye el índice privado; health sigue sin consultar storage.
+        proveedor.reset_mock()
         assert cliente.get("/api/health").status_code == 200
+        assert proveedor.mock_calls == []
 
 
 def test_produccion_rechaza_mocks():

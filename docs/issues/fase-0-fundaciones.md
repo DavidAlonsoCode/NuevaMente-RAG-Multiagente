@@ -26,11 +26,11 @@ graph TD
 ### `Issue 01` — Inicializar monorepo y estructura de servicios
 **F0** · **INF** · **M** · **Depende de**: — · **Referencia**: decisiones_proyecto.md §15
 
-**Objetivo**: crear la estructura de repositorio objetivo (sección 15) con los dos servicios esqueleto (`backend/`, `frontend/`), vacíos pero importables.
+**Objetivo**: crear la estructura de repositorio objetivo (sección 15) con los dos servicios esqueleto (`backend/`, `frontend/`), con paquetes backend importables y frontend compilable.
 
 **Tareas**:
-- Crear árbol de directorios de `backend/app/` (api, core/rag, core/agents, core/faithfulness, core/exports, storage, schemas, jobs, session) y `frontend/` (components, i18n, pages) con `__init__.py`.
-- `backend/requirements.txt` y `frontend/requirements.txt` vacíos pero con comentario de política de versiones exactas.
+- Crear árbol de directorios de `backend/app/` (api, core/rag, core/agents, core/faithfulness, core/exports, storage, schemas, jobs, session) y `frontend/src/` (components, i18n, flows, api, styles); sólo los paquetes Python llevan `__init__.py`.
+- Dependencias Python en `backend/requirements.txt` y frontend en `frontend/package.json`/`package-lock.json`, con versiones fijadas.
 - `ruff.toml` (120 cols, target py311), `.gitignore` (`.env`, `.pem`, `.key`, `.data/`, índices, SQLite, uploads), `.env.example` con placeholders del Apéndice A.
 - Compose preliminar; conservar el README existente y actualizar solo instrucciones ejecutables.
 - Crear rama `develop` y proteger `main` (solo PRs).
@@ -143,7 +143,7 @@ graph TD
 **Objetivo**: catálogos de traducción completos de la UI en español (default), inglés y portugués (pt-BR), independientes del idioma del contenido generado.
 
 **Tareas**:
-- `frontend/i18n/`: estructura `{es,en,pt}.py` (o JSON) con todas las claves de UI previstas: navegación, sidebar, estados (§6.5), errores, onboarding, accesibilidad.
+- `frontend/src/i18n/`: catálogos `{es,en,pt}.ts` con todas las claves de UI previstas: navegación, sidebar, estados (§6.5), errores, onboarding, accesibilidad.
 - Convención de claves por área (`sidebar.*`, `upload.*`, `generate.*`, `quiz.*`, `errors.*`…) documentada en el módulo.
 - Helper `t(key, lang)` con fallback a español y detección de claves faltantes en test.
 - Cobertura: los términos de los estados de trabajo (queued, running, rejected_quality…) tienen etiqueta humana por idioma, separada del código de máquina (§17.3).
@@ -153,4 +153,4 @@ graph TD
 - [ ] Ningún string hardcodeado de UI queda fuera del catálogo (checklist de revisión).
 - [ ] Portugués redactado en pt-BR; español latinoamericano.
 
-**Verificación**: `pytest frontend/tests/test_i18n.py` (paridad de claves) + revisión de redacción.
+**Verificación**: `npm --prefix frontend test` (paridad de claves) + revisión de redacción.

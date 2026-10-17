@@ -26,6 +26,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from app.api import security
 from app.schemas.internal import Chunk
 from app.storage.oci_storage import LocalMockStorageProvider
 from doubles.gemini import DobleGemini
@@ -33,6 +34,31 @@ from fixtures.factuales import CASOS_FACTUALES
 
 # Raíz del repo: este archivo vive en backend/tests/, dos niveles abajo.
 RAIZ_REPO = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture
+def aislar_estado_seguridad():
+    """Aísla los límites entre tests, sin reiniciarlos durante las peticiones."""
+    registros = (
+        security._peticiones_globales,
+        security._peticiones_ip,
+        security._intentos_fallidos_ip,
+        security._intentos_en_curso,
+    )
+    with security._lock:
+        assert not security._intentos_en_curso, "Hay intentos de recuperación en curso antes de aislar el test"
+        for registro in registros:
+            registro.clear()
+    try:
+        yield
+    finally:
+        with security._lock:
+            try:
+                # No ocultar una plaza que una petición no haya liberado.
+                assert not security._intentos_en_curso
+            finally:
+                for registro in registros:
+                    registro.clear()
 
 
 # ---------------------------------------------------------------------------

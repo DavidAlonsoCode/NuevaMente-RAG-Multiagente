@@ -47,7 +47,6 @@ graph TD
     I37 --> I59
     I39 --> I59
     I45 --> I59
-    I48 --> I59
     I29 --> I60
     I05 --> I60
     I31 --> I60
@@ -67,12 +66,20 @@ graph TD
 - Registrar tiempos medidos de cada ejecución (para mostrar métricas reales — §18.3).
 - Guardar el caso intencional de evidencia insuficiente (sección débil de `Issue 05`) que se bloquea correctamente.
 
-**Criterios de aceptación**:
-- [ ] Los 3 escenarios + complementos están persistidos y recuperables desde la app con su etiqueta.
-- [ ] Todos los paquetes publicados pasaron por aprobación real (ningún JSON escrito a mano); el caso rechazado conserva solo diagnóstico.
-- [ ] El caso de rechazo por calidad queda registrado con su diagnóstico.
+**Preparación anticipada**: generar y revisar los escenarios desde un
+documento en un espacio propio autorizado antes de la activación de 49. Conservar
+el mismo ID/hash para A/B/C, todos los complementos y aprobación/persistencia
+reales. La publicación, recuperación y etiqueta de ejemplos en la app siguen
+siendo necesarias para cerrar el issue; no simular el catálogo ni sus resultados.
 
-**Verificación**: listado de generaciones demo en la app pública + objetos en OCI.
+**Criterios de aceptación**:
+- [x] Los 3 escenarios + complementos están persistidos en OCI y recuperables desde la app/API local, desde otra sesión y con su etiqueta.
+- [x] Todos los paquetes publicados pasaron por aprobación real (ningún JSON escrito a mano); el caso rechazado conserva solo diagnóstico.
+- [x] El caso de rechazo por calidad queda registrado con su diagnóstico.
+
+**Verificación**: catálogo, originales, citas y quiz comprobados desde otra sesión contra la API local con OCI real. Evidencia: [VCN v2 y complementos](../evidencia/issue-55/v2/README.md).
+
+**Aceptación pública diferida — 15/10/2026**: por decisión del responsable del proyecto, el cierre de este issue acredita preparación, aprobación, persistencia y recuperación real local. La comprobación de la biblioteca y sus etiquetas desde la URL pública se traslada al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). No se marca como ejecutada ni se acredita VM/HTTPS o revisión humana de #60. El seguimiento debe completarse para aceptar la entrega pública.
 
 ---
 
@@ -87,12 +94,20 @@ graph TD
 - Ensayo general con cronómetro y registro de desvíos; plan B técnico (si Gemini/VM fallan: resultados precargados + grabación + explicación honesta).
 - Checklist de evidencias por diferencial y por requisito mínimo, con enlaces (objetos OCI, capturas, video).
 
+**Trabajo en paralelo**: preparar el guion y ensayar tramos desde el inicio,
+sin esperar el cierre de todas las dependencias. La grabación final y el cierre
+conservan su evidencia y condiciones. Una contingencia local con proveedores
+reales identifica Compute pendiente; ni video ni resultados guardados sustituyen
+la integración activa o acreditan un despliegue inexistente.
+
 **Criterios de aceptación**:
 - [ ] Ensayo completo dentro del tiempo sin errores bloqueantes.
-- [ ] Cada ítem del checklist §18.2 tiene su evidencia enlazada.
-- [ ] La prueba funcional real está acreditada y el guion prevé ejecución en vivo con contingencia honesta, sin prometer disponibilidad del proveedor.
+- [ ] Cada ítem del checklist §18.2 enlaza su evidencia; los tramos que requieren proveedores reales o URL pública identifican su aceptación pendiente en #133, sin declararlos ejecutados.
+- [ ] El guion prevé ejecución en vivo con proveedores reales y contingencia honesta, sin prometer disponibilidad; su prueba funcional real se acepta en #133.
 
 **Verificación**: ensayo frente al equipo completo con retroalimentación.
+
+**Aceptación externa trasladada — 16/10/2026**: #56 conserva guion, ensayo, cronómetro, grabación de respaldo y evidencias propias. El ensayo local declara sus proveedores; los tramos de prueba/grabación que requieren Gemini/OCI reales o la URL de entrega se completan en #133. Una grabación simulada no se presenta como integración real ni sustituye la demostración funcional exigida para la entrega.
 
 ---
 
@@ -130,15 +145,15 @@ graph TD
 - Mantenimiento: actualización de imágenes con interrupción breve, backups del volumen, monitoreo mínimo.
 
 **Criterios de aceptación**:
-- [ ] La guía reproduce el despliegue desde cero (validada quien no lo hizo originalmente).
+- [ ] La guía completa se revisa por quien no la escribió; su reproducción desde cero sobre la VM de entrega se acepta en #133, con ese integrante identificado.
 - [ ] Incluye la verificación de costos $0 y el procedimiento de recuperación.
 
-**Verificación**: reproducción por un integrante que no hizo el despliegue original.
+**Verificación de documentación**: revisión por un integrante que no hizo el despliegue original. La ejecución real sobre OCI, Always Free y recuperación se acepta en #133; una revisión o simulación local no demuestra que exista VM.
 
 ---
 
 ### `Issue 59` — Referencia de API (OpenAPI)
-**F6** · **API** · **S** · **Depende de**: `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45`, `Issue 48` · **Referencia**: decisiones_proyecto.md §7.1
+**F6** · **API** · **S** · **Depende de**: `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45` · **Referencia**: decisiones_proyecto.md §7.1
 
 **Objetivo**: referencia humana de la API completa, exportada y versionada junto al repositorio.
 
@@ -148,10 +163,12 @@ graph TD
 - Ejemplos de solicitud/respuesta del enunciado verificados contra la implementación real.
 
 **Criterios de aceptación**:
-- [ ] El OpenAPI exportado valida en un viewer estándar.
-- [ ] Los ejemplos `curl` del documento funcionan tal cual contra el despliegue público.
+- [x] El OpenAPI exportado valida en un viewer estándar.
+- [x] Los ejemplos `curl` del documento funcionan tal cual contra una instancia local de la API integrada, indicando URL base configurable y los requisitos de cada ejemplo.
 
-**Verificación**: ejecución de los ejemplos contra la URL pública.
+**Verificación**: validar el OpenAPI exportado y ejecutar los ejemplos contra la API local. No afirmar integración real cuando se usen proveedores simulados.
+
+**Comprobación pública diferida — 15/10/2026**: la ejecución de esos mismos ejemplos contra la URL HTTPS de entrega se traslada al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). No bloquea la documentación ni el cierre local de #59; permanece obligatoria para aceptar el despliegue. #59 conserva su alcance documental; su cierre acredita los criterios locales. Evidencia: [verificación #59](../verificacion-issue-59.md).
 
 ---
 
@@ -165,6 +182,12 @@ graph TD
 - Anotación humana independiente (2 revisores): claridad, adecuación al perfil, cobertura, utilidad — separada del score de fidelidad (§12.2).
 - Contraste juez automático vs. anotación: registrar falsos aprobados y falsos rechazados; corregir prompts/recuperación/juez y reevaluar; no bajar umbrales ni cambiar decisiones sin acuerdo explícito.
 - Reporte final con resultados medidos, tamaño de muestra y configuración (sin promesas de calidad absoluta — §12.4).
+
+**Muestra acotada**: mantener los 12 casos y dos revisores previstos,
+cubriendo por idioma los perfiles y formatos exigidos. Reutilizar casos reales
+de 55 cuando satisfagan la cobertura; no ampliar a todas las combinaciones
+posibles. Mantener la corrección y reevaluación de falsos aprobados y un reporte
+breve con configuración, muestra y resultados medidos.
 
 **Criterios de aceptación**:
 - [ ] ≥12 casos anotados por 2 revisores en los 3 idiomas.

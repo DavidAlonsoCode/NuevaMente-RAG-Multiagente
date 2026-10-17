@@ -83,6 +83,8 @@ La lista completa está en el [plan maestro §9](plan-implementacion.md#9-defini
 4. `docs/` actualizado si cambia un contrato o un comportamiento documentado.
 5. Sin secretos en el diff (el revisor verifica con la checklist del PR).
 
+Desde el ajuste autorizado del 16/10, las comprobaciones pendientes con proveedores reales y entorno público se aceptan en #133. Cada issue conserva sus criterios locales, pruebas y revisiones; su cierre debe enlazar lo trasladado sin presentarlo como ejecutado. La entrega final exige completar #133. Ver el [alcance operativo del plan](plan-implementacion.md#21-prioridad-de-cierre-y-alcance-operativo--14-de-octubre-de-2026).
+
 ### Checklist de PR (plantilla en GitHub)
 
 ```markdown
@@ -113,7 +115,7 @@ Frecuencia de integración: merge a `develop` idealmente diario por carril; rama
 ## 6. Reglas de oro del hackathon (resumen)
 
 1. **Nada a main sin CI y revisión; hotfix sigue la excepción controlada de §1.**
-2. **Mock explícito siempre**: `MOCK_OCI=1` para desarrollo/CI; la entrega acredita lo real (`Issue 54`).
+2. **Mock explícito siempre**: `MOCK_OCI=1` para desarrollo/CI; la entrega acredita lo real (`Issue 54` y aceptación externa en #133).
 3. **No se cambia un contrato sin `contract-change`** — es lo que nos permite avanzar en paralelo.
 4. **Las dependencias de issues no se saltan**: ahorrar 1 día saltándolas cuesta 3 en integración.
 5. **Si un requisito del enunciado entra en riesgo, se escala ese día** (§8 del plan maestro exige reestimar o redistribuir; mínimos, diferenciales y extras acordados no se recortan automáticamente).

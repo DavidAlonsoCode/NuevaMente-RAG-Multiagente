@@ -82,7 +82,6 @@ graph TD
     I31 --> I54
     I44 --> I54
     I45 --> I54
-    I48 --> I54
     I50 --> I54
 ```
 
@@ -116,18 +115,38 @@ graph TD
 **Objetivo**: publicación segura de UI y API con dominio gratuito (o propio) y certificado válido, con SSE fluido.
 
 **Tareas**:
-- Caddy en el host como proxy: HTTPS público, HTTP solo redirección; rutas `/api/*` → backend, resto → Streamlit (websocket incluido).
+- Caddy en el host como proxy: HTTPS público, HTTP solo redirección; rutas `/api/*` → backend, resto → build React; SSE autenticado sin buffering.
 - Configuración anti-buffering para `text/event-stream` (flush inmediato + heartbeats ya implementados en `Issue 31`).
 - DNS: subdominio gratuito compatible con validación ACME (o dominio del equipo); sin compras automáticas (§9.2).
 - Puertos 8000/8501 vinculados a loopback únicamente; firewall/NSG acorde.
 - Redirección de logs del proxy sin cuerpos ni tokens (§11.5).
 
+**Alcance operativo de cierre**:
+- Guía principal breve para instalar, arrancar y comprobar el despliegue;
+  diagnóstico histórico y herramientas adicionales quedan como referencia.
+- Conservar los checks `Caddy real / ubuntu-24.04` y
+  `Caddy real / ubuntu-24.04-arm` junto con los checks ordinarios. Verifican
+  configuración/proxy en CI con proveedores dobles; no acreditan OCI público.
+  Los fallos requieren diagnóstico y corrección, sin omitir pruebas para obtener verde.
+- Una sesión sobre la VM de entrega puede compartir evidencia con 53 y 54.
+  No se exige una segunda VM ni ejecutar toda la suite en el host de entrega.
+- El escaneo exhaustivo de 1–65535 por IP es diagnóstico opcional. Acreditar
+  exposición mediante reglas efectivas de OCI y firewall del host, inventario
+  de listeners y pruebas externas de web, SSH y puertos internos. Considerar
+  todas las reglas/interfaces y direcciones publicadas; un timeout no demuestra
+  por sí solo puerto cerrado y una inconsistencia impide aprobar el criterio.
+- Bloqueo de capacidad Always Free: intentos manuales acotados y diagnóstico;
+  preparar demo local con Gemini/OCI reales sin marcar Compute como desplegado.
+  No cambiar a recursos pagos ni eliminar HTTPS, secreto de origen o permisos.
+
 **Criterios de aceptación**:
 - [ ] `https://<dominio>` sirve la UI con certificado válido y la app es usable desde una red externa.
-- [ ] El progreso SSE se ve en vivo **a través del proxy** (test con generación real).
+- [ ] El progreso SSE se ve en vivo **a través del proxy** (aceptación pública con proveedores reales en #133).
 - [ ] Desde una IP no administrativa solo se ven 80/443; SSH se permite exclusivamente a administradores.
 
 **Verificación**: acceso desde dispositivo externo + consulta SSE con Bearer e ID propio, sin registrar credenciales mostrando eventos en tiempo real.
+
+**Alcance de integración — 16/10/2026**: los tres criterios públicos anteriores se aceptan en #133. #48 integra la configuración, guía y pruebas con Caddy/TLS locales y proveedores simulados en x86/ARM64; su cierre no acredita DNS, VM, puertos públicos ni SSE con Gemini/OCI reales.
 
 ---
 
@@ -142,11 +161,27 @@ graph TD
 - Verificar que la demo distingue una ejecución nueva de una recuperación de contenido guardado (§18.3).
 - Documentar el runbook de recarga de la demo (para reinicios de VM).
 
+- Preindexar y reconstruir ejecutan embeddings síncronos bajo el gestor/contexto común, con cuotas por modelo y sin bucles extra de reintentos. Registrar solicitudes reales incluso en mantenimiento.
+
+**Etapas de preparación y activación**:
+- Preparar y probar la precarga antes de 48, con un comando administrativo y
+  runbook breve; reutilizar originales, índices e interpretaciones compatibles.
+  No ampliar a paneles de administración ni recargas periódicas automáticas.
+- Activar y comprobar las tres fuentes en la VM tras 48. La preparación local
+  no acredita todavía los criterios públicos de este issue.
+- Verificar el puente entre selección demo y generación autorizada: fuentes
+  preindexadas no habilitan por sí solas ese flujo. Conservar el criterio de
+  generar sin subir y no inventar admisiones privadas ni permisos.
+- 55 puede preparar adaptaciones reales en un espacio propio autorizado mientras
+  se completa la biblioteca; su publicación/etiquetado mantiene los criterios previstos.
+
 **Criterios de aceptación**:
 - [ ] Desde la app pública, «probar documento demo» permite generar sin subir nada.
 - [ ] El catálogo de fuentes funciona aún sin resultados; el estado vacío no simula ejemplos.
 
 **Verificación**: flujo manual en la URL pública.
+
+**Alcance de integración — 16/10/2026**: la activación pública y la generación desde demos con proveedores reales se aceptan en #133. #49 conserva la precarga, catálogo y puente de generación probados localmente con proveedores declarados; cerrar la implementación no completa sus criterios públicos.
 
 ---
 
@@ -156,7 +191,7 @@ graph TD
 **Objetivo**: presupuestos propios, alertas y retención/borrado completos para controlar consumo dentro de la asignación gratuita verificada.
 
 **Tareas**:
-- Presupuestos de aplicación: ≤1 GB total de objetos, ≤5.000 solicitudes mensuales, ≤5 documentos y ≤20 generaciones por espacio (§8.4); reservar capacidad antes de aceptar archivo/exportación.
+- Presupuestos de aplicación: ≤1 GB total de objetos, ≤20.000 solicitudes mensuales, ≤5 documentos y ≤20 generaciones por espacio (§8.4); reservar capacidad antes de aceptar archivo/exportación. El límite de solicitudes es preventivo, conserva el consumo previo y reserva 10% para limpieza.
 - Alerta al 80% del presupuesto y rechazo de nuevas escrituras al llegar al límite, con mensaje claro en la UI.
 - Contador de solicitudes de storage (por tipo) persistido; budget de regla en OCI si la tenancy lo permite.
 - Ciclo de vida §8.5: expiración de espacios a 30 días de inactividad (fecha visible en la UI), limpieza de temporales al terminar/cancelar, resultado aprobado retenido ≤24 h, borrado físico agenda-do con reintentos visibles.
@@ -188,10 +223,17 @@ graph TD
 - Logs sin cuerpos de documentos ni códigos; métricas con request_id/generation_id (§11.5).
 - Exportaciones: revisión anti-CSV-injection ya cubierta en `Issue 45` (re-verificación).
 
+**Revisión acotada**: agrupar las tareas anteriores en acceso/sesiones,
+archivos/contenido, secretos/logs y configuración/recursos. Reutilizar pruebas
+existentes y evidencia de red de 48; registrar criterio, comprobación, resultado
+y hallazgo en una tabla breve. No añadir una certificación formal ni un framework
+de auditoría. Conservar todos los controles y corregir hallazgos que afecten
+la entrega; el plazo reservado para revisión no sustituye esa corrección.
+
 **Criterios de aceptación**:
 - [ ] Checklist §11 completo con evidencia por ítem (documento de revisión en `docs/`).
 - [ ] Escaneo de secretos del historial de Git limpio.
-- [ ] Intentos de acceso cruzado entre espacios (documento, SSE, export, progreso) → todos 404 (suite de `Issue 53`).
+- [ ] Pruebas de seguridad de este issue: accesos cruzados entre espacios a documento, SSE, export y progreso devuelven 404. Issue 53 reutiliza estas pruebas; cerrar Issue 51 no depende de completar Issue 53.
 
 **Verificación**: documento de revisión + rerun de tests de aislamiento.
 
@@ -209,6 +251,8 @@ graph TD
 - Errores HTTP §7.3: 400/401/404/409/413/422/429/500/503 con envoltorio y `request_id`.
 - Aislamiento cruzado entre dos espacios sobre los mismos recursos.
 - Reintento de persistencia (`persist`) tras `STORAGE_UNAVAILABLE` simulado.
+
+- Cubrir proveedor síncrono → `ctx.llamar` → worker → API: cuota por intento, timeout propagado, retries limitados y no duplicados, cancelación sin publicación y reconexión SSE sin nueva ejecución. Probar los endpoints comunes de Issue 20 además de los de generación.
 
 **Criterios de aceptación**:
 - [ ] Cobertura de los estados de trabajo y códigos de error del contrato.
@@ -228,31 +272,55 @@ graph TD
 - Automatizables: ingestión de los 3 formatos + rechazos, recuperación de evidencia con ubicación, generación de los 5 formatos con contrato válido, aislamiento cruzado, bloqueo al 3.er intento sin aprobación por evaluador vacío/caído, quiz con feedback, exportaciones abribles, idempotencia SSE/re-petición, cancelar/reiniciar/borrar sin reaparición, ES/EN/PT en textos y citas.
 - Protocolo manual (checklist con capturas): 3 adaptaciones mismo documento, recuperación de historial con código, teclado/foco/contraste/320 px, PDF legible, diferencia aprobado/precargado/fallido.
 - Etiquetado de cada criterio §12.2 con su test o su paso de protocolo.
-- Ejecución contra el despliegue público (no solo local).
+- Preparar el recorrido contra el despliegue público; su ejecución con proveedores reales se acepta en #133, conservando los 14 criterios.
+
+- Las pruebas E2E simuladas llevan ambas marcas `e2e` e `integration_mock` y se ejecutan en CI ordinaria. Las pruebas reales llevan `integration_real`, usan credenciales explícitas y quedan fuera de PRs ordinarios. Reutilizar las pruebas de seguridad aportadas por Issue 51.
+
+**Cobertura incremental**: mapear los 14 criterios a pruebas existentes
+(incluidos 51/52), casos nuevos sólo para huecos/regresiones y pasos manuales.
+No duplicar la suite de integración ni exigir todas las combinaciones posibles.
+Preparar y comprobar localmente antes de 48/49; conservar la aceptación pública
+en #133 para la entrega final. Compartir evidencia aplicable con 48/54 y la demo, sin confundir
+proveedores dobles con integración real ni retirar pruebas para obtener CI verde.
 
 **Criterios de aceptación**:
-- [ ] Los 14 criterios tienen cobertura (test o protocolo) y pasan.
+- [ ] Los 14 criterios tienen cobertura trazada (test o protocolo); pasan las comprobaciones locales y las externas pendientes están identificadas en #133.
 - [ ] La suite automatizada corre en CI con dobles.
-- [ ] El protocolo manual tiene evidencia archivada (capturas/video) sobre la URL pública.
+- [ ] El protocolo manual tiene evidencia local archivada (capturas/video), con proveedores declarados y firma de dos personas; su repetición pública y con proveedores reales queda trazada en #133.
 
-**Verificación**: `pytest -m e2e` + protocolo manual firmado por 2 personas.
+**Verificación**: `pytest -m "e2e and not integration_real"` + protocolo manual firmado por 2 personas.
+
+**Aceptación externa trasladada — 16/10/2026**: #53 mantiene sus 14 criterios, cobertura, ejecución local y revisión manual. #133 conserva su aceptación en la URL pública y registra commit, configuración, evidencias y revisores; ni la CI con dobles ni el cierre de #53 sustituyen esa ejecución.
 
 ---
 
 ### `Issue 54` — Smoke tests reales contra OCI y Gemini
-**F5** · **QAD** · **M** · **Depende de**: `Issue 14`, `Issue 31`, `Issue 44`, `Issue 45`, `Issue 48`, `Issue 50` · **Referencia**: decisiones_proyecto.md §12.1, §18.3, §20.1
+**F5** · **QAD** · **M** · **Depende de**: `Issue 14`, `Issue 31`, `Issue 44`, `Issue 45`, `Issue 50` · **Referencia**: decisiones_proyecto.md §12.1, §18.3, §20.1
 
 **Objetivo**: evidencia de integración activa con servicios reales (requisito 6 del enunciado), fuera del CI público.
 
 **Tareas**:
 - Script manual/documentado: (1) subir original real a OCI y leerlo; (2) ejecutar una generación completa con Gemini real; (3) recuperar el paquete JSON desde OCI; (4) exportar y abrir MD/PDF/APKG.
 - Registro del consumo de solicitudes de storage generadas (insumo del presupuesto `Issue 50`).
-- Fotos/capturas de la cons OCI mostrando los objetos escritos (prefijos §8.3).
+- Evidencia de objetos OCI por lectura y hashes; captura de consola OCI trasladada a #133 (prefijos §8.3).
 - Marcado `integration_real`; nunca en PRs de terceros (§12.3).
 
-**Criterios de aceptación**:
-- [ ] Una corrida completa real queda documentada con evidencia (JSON de respuesta + objeto en OCI + captura).
-- [ ] El registro de solicitudes consumidas queda asentado.
-- [ ] Ninguna credencial en el material de evidencia.
+- La corrida real usa los mismos adaptadores síncronos y controles del worker que producción; verificar timeout, contador de solicitudes y ausencia de retries adicionales del SDK. No sirve como evidencia un cliente aislado que eluda el gestor.
 
-**Verificación**: ejecución presenciada por ≥2 integrantes; artefactos en `docs/evidencia/`.
+**Entorno y reutilización**: la corrida completa puede ejecutarse desde
+una instalación local con Gemini y OCI Object Storage reales, mediante los
+adaptadores y el worker normales. No requiere VM ni cierre de 48 para acreditar
+la integración obligatoria con proveedores. La aceptación pública del despliegue
+sigue perteneciendo a 48 y a los criterios públicos de 53. La misma generación,
+lecturas y exportaciones pueden reutilizarse como evidencia donde corresponda,
+identificando versión, configuración y resultado; no repetir llamadas reales
+por cada issue ni sustituirlas por clientes que eludan el gestor.
+
+**Criterios de aceptación**:
+- [x] Corrida real documentada con JSON, original/canónico verificados en OCI y exportaciones abiertas; se permite reutilizar una generación previa identificada del worker normal.
+- [x] El registro de solicitudes consumidas queda asentado, separando preparación y fase medida.
+- [x] Ninguna credencial en el material de evidencia.
+
+**Verificación**: informe, hashes y artefactos versionados en [evidencia #54](../evidencia/issue-54/README.md), con API local y proveedores reales.
+
+**Evidencia externa diferida — 15/10/2026**: por decisión del responsable del proyecto, la captura de consola OCI y la constancia de al menos dos integrantes se trasladan al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133). Permanecen pendientes; integrar o cerrar #54 acredita el smoke automatizado real registrado, no esa revisión humana ni una VM pública. El seguimiento debe completarse para aceptar la entrega.

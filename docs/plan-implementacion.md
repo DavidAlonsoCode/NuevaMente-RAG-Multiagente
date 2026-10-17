@@ -3,7 +3,7 @@
 > **Proyecto**: NuevaMente — Sistema Inteligente de Adaptación y Generación de Contenido Educativo
 > **Equipo**: Grupo 10 · Equipo 38 — Oracle Next Education (ONE) / Alura Latam
 > **Documento fuente**: [`decisiones_proyecto.md`](../decisiones_proyecto.md) (todas las decisiones de diseño ya están tomadas ahí)
-> **Estado**: Plan revisado — v1.1 · Septiembre 2026
+> **Estado**: Plan revisado — v1.2 · Octubre 2026
 
 Este plan traduce el documento de decisiones en **60 issues concretos**, organizados en **7 fases**, distribuidos en **6 carriles de trabajo paralelo**, con dependencias explícitas que permiten que varios integrantes avancen simultáneamente sin bloquearse entre sí.
 
@@ -37,7 +37,7 @@ Este plan traduce el documento de decisiones en **60 issues concretos**, organiz
 **Flujo de trabajo del equipo:**
 
 1. Crear los issues en GitHub desde los archivos de `docs/issues/` (título = encabezado del issue, cuerpo = resto).
-2. Cada integrante toma issues de **su carril** respetando la columna **Depende de** (un issue no se inicia si sus dependencias no están mergeadas en `develop`).
+2. Cada integrante toma issues de **su carril** respetando la columna **Depende de** para integración y cierre. Puede adelantar en draft tareas independientes desde contratos vigentes; debe identificar lo preparado y lo pendiente de integrar o validar.
 3. Al completar, marcar los criterios de aceptación y verificar contra **Verificación** del issue.
 
 ---
@@ -55,6 +55,59 @@ Los principios que ordenan este plan (derivados de `decisiones_proyecto.md`):
 
 ---
 
+Los contratos internos de ejecución están precisados en [contratos-api.md](contratos-api.md#contrato-de-ejecución-de-proveedores-issues-13-y-20): proveedores Gemini síncronos dentro del worker, reintentos y cuotas centralizados en Issue 20 y dobles compatibles. Los endpoints comunes de trabajos también pertenecen a Issue 20. Cada consumidor y sus tests deben conservar este contrato.
+
+H2 verifica indexación y recuperación con fuentes textuales. Una fuente con visión pendiente no pasa a `ready`; Issue 30 completa la ingestión del PDF VCN con diagrama en H3. La revisión de seguridad de Issue 51 aporta sus propias pruebas, que Issue 53 reutiliza sin crear una dependencia inversa.
+
+### 2.1 Prioridad de cierre y alcance operativo — 14 de octubre de 2026
+
+Actualización del 15/10: el rediseño autorizado migra la presentación a React,
+TypeScript y Vite, preservando los 60 issues, contratos y criterios. La nueva
+interfaz tiene sus propias pruebas. El 17/10, #139 retira Streamlit y sus
+pruebas exclusivas, mueve la carga al área principal y actualiza las guías.
+Los registros anteriores conservan su alcance histórico; no acreditan React. Ver [guía del frontend](../frontend/README.md).
+
+Ajuste autorizado del 15/10: integrar #54 y #55 con la evidencia real local ya registrada. Su aceptación se delimita en los archivos de fase: la captura de consola OCI y constancia de dos integrantes de #54, y la comprobación pública de #55, se trasladan al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133), junto con la aceptación del entorno OCI. Integrar o cerrar esos issues no acredita esos pendientes ni el despliegue. También se traslada la ejecución pública de los ejemplos de #59: su documentación/OpenAPI se validan localmente y ya no dependen de #48. Se conservan los 60 issues, los 14 criterios de #53 y la revisión humana de #60.
+
+Ajuste autorizado del 16/10: las comprobaciones pendientes que requieren Gemini/OCI reales o el entorno público se centralizan en #133, con el issue de origen y su evidencia. Los issues de implementación pueden integrarse y cerrarse con sus criterios locales verificados y proveedores simulados explícitos; no se retiran controles ni se declara ejecutada la aceptación externa. Incluye almacenamiento/documentos (14/19), visión (30), generación y UI React (31/32/33), chat (37), proxy/demo (48/49), recorrido E2E (53), tramo real de la demo (56) y reproducción del despliegue (58). Se conserva la evidencia real ya registrada de 14/32/54/55, sin repetir llamadas por un cierre administrativo. Los 14 criterios y el protocolo de dos personas de 53, las revisiones propias de cada entregable y los 12 casos con dos revisores de 60 mantienen su alcance. #133 es obligatorio para aceptar la entrega final y no autoriza por sí solo consumo ni aprovisionamiento.
+
+**Complemento autorizado 33.1**: [modos de generación](modos-generacion.md) agrega básico con RAG sin evaluación independiente y conserva el multiagente. Ambos reutilizan el documento e índice; cambiar de modo crea otro material. Se integra antes de cerrar 51/53 y se documenta en 56/57/58; 46 puede avanzar en paralelo. La comparación real de consumo/calidad queda en #133; 60 conserva sus 12 casos y revisores.
+
+- **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
+  40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
+  microinteracciones y efectos forman parte del acabado visual; deben conservar
+  foco, legibilidad, controles accesibles y movimiento reducido. No relegar la
+  presentación ni recortar funciones de estudio para ahorrar trabajo de infraestructura.
+- **Conservar ingeniería ya integrada**: no reescribir PDF, chat, glosario,
+  cuotas, persistencia ni ciclo de vida. Mantener fidelidad, permisos, límites,
+  idempotencia y protección de secretos.
+- **Acotar trabajo operativo nuevo**: issues 48, 49 y 51 utilizan procedimientos
+  breves y pruebas existentes. La VM de entrega requiere aceptación real; no
+  exige otra VM de laboratorio ni repetir allí toda la suite del repositorio.
+  Los checks de Caddy AMD64/ARM64 ya agregados se conservan; un fallo se corrige,
+  no se oculta mediante skips ni retirando controles.
+- **Compartir cobertura y evidencia**: issues 51–54 reutilizan pruebas y trazan
+  cada criterio a su comprobación. Una misma corrida real puede aportar a 48,
+  53, 54 y 55 si coincide su alcance, versión y configuración. Conservar los
+  14 criterios de E2E; agregar tests sólo para huecos de integración o regresiones.
+- **Preparación antes de despliegue**: 49 puede preparar la precarga, 53 la
+  cobertura y 55 los resultados desde un espacio autorizado antes de disponer
+  de la VM. El smoke de proveedores de 54 puede acreditarse localmente con
+  Gemini y OCI reales; 48 conserva su prueba pública por el proxy.
+  56 puede preparar guion y ensayos desde el inicio. Las dependencias restantes
+  siguen gobernando integración, aceptación y cierre, sin publicar borradores.
+- **Entrega demostrable**: conservar las tres adaptaciones del mismo documento,
+  complementos de demo y los 12 casos con dos revisores de 60; reutilizar casos
+  válidos de 55 en 60. El bloqueo de capacidad Always Free se documenta y no
+  frena preparar UI o validar proveedores; no acredita Compute, no habilita
+  gasto y no convierte una entrega parcial en cumplimiento completo.
+
+El orden de cierre prioriza integrar la pantalla principal (33/34/36/46) y los
+drafts de estudio, verificar pronto proveedores reales (54), preparar resultados
+y revisión humana (55/60), completar seguridad/E2E (51/53) y ensayar/grabar (56).
+Infraestructura (48/49) avanza en paralelo, con evidencias públicas cuando exista
+la VM. Se conserva la trazabilidad y los 60 issues del plan.
+
 ## 3. Carriles de trabajo paralelo
 
 Para un equipo de 6 personas. Cada carril tiene un área de código propia (límites de la sección 13.3 del documento de decisiones), lo que minimiza conflictos de merge.
@@ -64,7 +117,7 @@ Para un equipo de 6 personas. Cada carril tiene un área de código propia (lím
 | **API** | Backend FastAPI: contratos HTTP, sesiones, trabajos, cola, SQLite operativo | `backend/app/api/`, `backend/app/jobs/`, `backend/app/session/` |
 | **RAG** | Ingestión, parser, chunker, embeddings, ChromaDB, retrieval, multimodal | `backend/app/core/rag/` |
 | **AGT** | Grafo LangGraph, prompts, Writer/Critic, fidelidad Faithfulness | `backend/app/core/agents/`, `backend/app/core/faithfulness/` |
-| **UI** | Streamlit: tema Linear, componentes, i18n, flujos de usuario | `frontend/` |
+| **UI** | React/TypeScript/Vite: tema Oracle, componentes, i18n y flujos de usuario | `frontend/` |
 | **INF** | OCI Object Storage, Docker, VM A1, Caddy, presupuestos, hardening | `backend/app/storage/`, `docker-compose.yml`, guías de despliegue |
 | **QAD** | CI, fixtures, suites de tests, evaluación pedagógica, documentos demo, README y demo final | `.github/`, `backend/tests/`, `documents/`, `docs/`, `README.md` |
 
@@ -128,9 +181,9 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 | `Issue 09` | Workspaces anónimos, código de recuperación y sesiones | API | L | `Issue 08`, `Issue 04` |
 | `Issue 11` | Parser y validación de documentos (PDF/MD/TXT + texto pegado) | RAG | L | `Issue 03`, `Issue 05`, `Issue 10` |
 | `Issue 12` | Chunker estructural con metadatos y `chunk_id` estable | RAG | M | `Issue 11` |
-| `Issue 13` | Cliente de embeddings Gemini (768 d, batch, reintentos) | RAG | M | `Issue 03`, `Issue 10` |
+| `Issue 13` | Cliente de embeddings Gemini síncrono (768 d, solicitudes individuales, cuotas centralizadas) | RAG | M | `Issue 03`, `Issue 10` |
 | `Issue 14` | Proveedor OCI Object Storage real (bucket Always Free, prefijos) | INF | M | `Issue 04` |
-| `Issue 15` | Esqueleto Streamlit con tema Linear | UI | M | `Issue 03`, `Issue 06` |
+| `Issue 15` | Esqueleto de UI (migrado a React con tema Oracle) | UI | M | `Issue 03`, `Issue 06` |
 | `Issue 16` | Cliente de API y gestión de sesión en el frontend | UI | M | `Issue 15`, `Issue 09` |
 | `Issue 10` | Infraestructura de tests: conftest, fixtures y doble de Gemini | QAD | M | `Issue 02`, `Issue 03`, `Issue 05` |
 
@@ -141,7 +194,7 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 | `Issue 17` | Vector store ChromaDB con aislamiento por espacio | RAG | M | `Issue 12`, `Issue 13`, `Issue 14` |
 | `Issue 18` | Retriever MMR con presupuesto de evidencia | RAG | M | `Issue 17` |
 | `Issue 19` | Endpoints de documentos (upload, estado, listado, fuentes, borrado) | API | L | `Issue 09`, `Issue 17`, `Issue 14`, `Issue 20` |
-| `Issue 20` | Gestor de trabajos: cola, estados, deadline y cancelación | API | L | `Issue 08` |
+| `Issue 20` | Gestor de trabajos: cola, estados, deadline y cancelación | API | L | `Issue 08`, `Issue 09` |
 | `Issue 21` | Estado compartido del grafo y Supervisor | AGT | M | `Issue 03` |
 | `Issue 22` | Biblioteca de prompts por perfil/formato/nicho/idioma | AGT | L | `Issue 03` |
 | `Issue 23` | Writer con salida tipada y citas | AGT | L | `Issue 21`, `Issue 22`, `Issue 10` |
@@ -190,7 +243,7 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 | `Issue 51` | Revisión de seguridad y hardening | INF | M | `Issue 31`, `Issue 33`, `Issue 37`, `Issue 39`, `Issue 44`, `Issue 45`, `Issue 48`, `Issue 50` |
 | `Issue 52` | Tests de integración de API con dependencias simuladas | QAD | L | `Issue 31`, `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45` |
 | `Issue 53` | Suite E2E de criterios críticos | QAD | L | `Issue 25`, `Issue 30`, `Issue 33`, `Issue 36`, `Issue 38`, `Issue 40`, `Issue 41`, `Issue 42`, `Issue 46`, `Issue 49`, `Issue 50`, `Issue 51`, `Issue 52`, `Issue 54` |
-| `Issue 54` | Smoke tests reales contra OCI y Gemini | QAD | M | `Issue 14`, `Issue 31`, `Issue 44`, `Issue 45`, `Issue 48`, `Issue 50` |
+| `Issue 54` | Smoke tests reales contra OCI y Gemini | QAD | M | `Issue 14`, `Issue 31`, `Issue 44`, `Issue 45`, `Issue 50` |
 
 ### Fase 6 — Demo y entrega
 
@@ -200,7 +253,7 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 | `Issue 56` | Guion de demo, grabación de respaldo y evidencias | QAD | M | `Issue 55`, `Issue 53`, `Issue 54`, `Issue 60` |
 | `Issue 57` | README final con arquitectura y guía de instalación | QAD | M | `Issue 48`, `Issue 53`, `Issue 54`, `Issue 55`, `Issue 56`, `Issue 58`, `Issue 59`, `Issue 60` |
 | `Issue 58` | Guía de despliegue en OCI | INF | S | `Issue 48`, `Issue 49`, `Issue 50` |
-| `Issue 59` | Referencia de API (OpenAPI) | API | S | `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45`, `Issue 48` |
+| `Issue 59` | Referencia de API (OpenAPI) | API | S | `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45` |
 | `Issue 60` | Evaluación pedagógica multilingüe con anotación humana | QAD | L | `Issue 29`, `Issue 05`, `Issue 31` |
 
 ---
@@ -208,7 +261,7 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 ## 6. Oleadas de paralelismo
 
 El paralelismo ocurre entre integrantes disponibles; dos issues del mismo carril no equivalen a dos personas.
-Se puede adelantar diseño y preparar mocks desde el contrato, pero un issue no se cierra sin sus dependencias y criterios completos.
+Se puede adelantar diseño, componentes y pruebas independientes desde el contrato vigente, declarando lo pendiente de integración. Un issue no se cierra sin sus dependencias y criterios completos; la preparación de evidencia real sigue las etapas de §2.1.
 
 | Oleada | Trabajo que puede avanzar |
 |---|---|
@@ -284,7 +337,7 @@ Las duraciones de fase no se suman mecánicamente porque existen solapamientos.
 Un atraso requiere reestimar, redistribuir trabajo o consultar al equipo; no autoriza recortarlos ni declararlos completos.
 Se puede simplificar la implementación conservando sus criterios funcionales.
 
-**Puerta H6**: los 60 issues deben estar cerrados con evidencia aplicable, incluidos evaluación humana (60), integración real (54), seguridad (51) y E2E (53).
+**Puerta H6**: los 60 issues deben estar cerrados con evidencia aplicable, incluidos evaluación humana (60), integración real (54), seguridad (51) y E2E (53), y #133 debe acreditar las comprobaciones reales y públicas trasladadas. Cerrar la implementación no completa esa aceptación externa.
 Un requisito bloqueado mantiene la entrega incompleta; una grabación o mock no lo reemplaza.
 
 ---

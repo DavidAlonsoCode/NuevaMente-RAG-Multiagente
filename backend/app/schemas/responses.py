@@ -17,13 +17,17 @@ Dos modelos que es fácil confundir (§16.3 los separa a propósito):
   hechos diferentes").
 
 Las claves JSON van en español porque SON el contrato público (§16.3).
+
+El complemento 33.1 agrega las variantes explícitas 1.1: multiagente revisado
+y básico sin evaluación independiente. Los requisitos de aprobación del
+paquete 1.0 se conservan; completed exige persistencia para ambas variantes.
 """
 
 from datetime import datetime
 from math import isclose
 from typing import Literal
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, TypeAdapter, field_validator, model_validator
 
 from app.schemas.enums import (
     DetailLevel,
@@ -235,6 +239,88 @@ class PedagogicalStudentOutput(PaqueteEducativoBase):
         return cls.model_validate(datos)
 
 
+class ReviewedPedagogicalOutputV11(PedagogicalOutput):
+    schema_version: Literal["1.1"] = "1.1"
+    modo_generacion: Literal["multiagente"] = "multiagente"
+
+
+class ReviewedPedagogicalStudentOutputV11(ReviewedPedagogicalOutputV11):
+    contenido_adaptado: ContenidoEstudiante
+
+    @classmethod
+    def desde_canonico(cls, paquete):
+        datos = paquete.model_dump()
+        if paquete.contenido_adaptado.tipo == "quiz":
+            datos["contenido_adaptado"] = paquete.contenido_adaptado.vista_estudiante().model_dump()
+        return cls.model_validate(datos)
+
+
+class EvaluacionNoRealizada(ModeloContenido):
+    """Ausencia deliberada de juez independiente; no equivale a un fallo del juez."""
+
+    estado_evaluacion: Literal["no_realizada"] = "no_realizada"
+    anclaje_fuente_score: None = None
+    cantidad_afirmaciones: None = None
+    cantidad_respaldadas: None = None
+    claridad_pedagogica: None = None
+    adecuacion_perfil: None = None
+    cobertura_objetivos: None = None
+    coherencia_didactica: None = None
+    verificacion_visual: None = None
+    observaciones: None = None
+    razones_bloqueo: None = None
+
+
+class TrazabilidadBasica(Trazabilidad):
+    modelo_verificacion: None = None
+
+
+class BasicPedagogicalOutput(PaqueteEducativoBase):
+    """Variante 1.1 explícita: un generador con RAG, sin evaluación independiente."""
+
+    schema_version: Literal["1.1"] = "1.1"
+    modo_generacion: Literal["basico"] = "basico"
+    status: Literal["no_evaluado"] = "no_evaluado"
+    evaluacion_calidad: EvaluacionNoRealizada
+    trazabilidad: TrazabilidadBasica
+
+    @model_validator(mode="after")
+    def _paquete_aprobado_coherente(self):
+        if self.metadatos.formato_generado.value != self.contenido_adaptado.tipo:
+            raise ValueError("El formato de los metadatos no coincide con el contenido")
+        return self
+
+
+class BasicPedagogicalStudentOutput(BasicPedagogicalOutput):
+    contenido_adaptado: ContenidoEstudiante
+
+    @classmethod
+    def desde_canonico(cls, paquete):
+        datos = paquete.model_dump()
+        if paquete.contenido_adaptado.tipo == "quiz":
+            datos["contenido_adaptado"] = paquete.contenido_adaptado.vista_estudiante().model_dump()
+        return cls.model_validate(datos)
+
+
+# Ramas disjuntas por literales y extra=forbid. La unión plana también es válida
+# en OpenAPI: un discriminator anidado produciría mappings que no son referencias.
+PaqueteGenerado = PedagogicalOutput | ReviewedPedagogicalOutputV11 | BasicPedagogicalOutput
+PaqueteEstudiante = PedagogicalStudentOutput | ReviewedPedagogicalStudentOutputV11 | BasicPedagogicalStudentOutput
+_ADAPTADOR_PAQUETE = TypeAdapter(PaqueteGenerado)
+
+
+class PaqueteExportado(RootModel[PaqueteGenerado]):
+    """El JSON exportado conserva la variante canónica, sin envoltorio adicional."""
+
+
+def cargar_paquete_json(datos) -> PaqueteGenerado:
+    return _ADAPTADOR_PAQUETE.validate_json(datos)
+
+
+def modo_paquete(paquete) -> str:
+    return getattr(paquete, "modo_generacion", "multiagente")
+
+
 class PersistenciaInfo(ModeloContenido):
     """Estado de la escritura en OCI, SOLO en la respuesta del trabajo.
 
@@ -253,7 +339,7 @@ class PersistenciaInfo(ModeloContenido):
 class GenerationJobResponse(ModeloContenido):
     """Respuesta de GET /api/generations/{id}: el trabajo que transporta el paquete.
 
-    ``contenido`` (la proyección PedagogicalStudentOutput del aprobado) solo existe cuando el
+    ``contenido`` (la proyección estudiante de la variante generada) solo existe cuando el
     status es completed. Un rejected_quality se consulta con HTTP 200 y
     diagnóstico en ``error`` — el problema es del resultado, no de la
     consulta (§7.3).
@@ -267,8 +353,8 @@ class GenerationJobResponse(ModeloContenido):
     events_url: str = Field(description="URL del stream SSE de progreso (§3.3).")
     cancel_url: str | None = Field(default=None)
     posicion_cola: int | None = Field(default=None, ge=1, description="Visible mientras está en cola.")
-    contenido: PedagogicalStudentOutput | None = Field(
-        default=None, description="Paquete aprobado; solo presente cuando status=completed."
+    contenido: PaqueteEstudiante | None = Field(
+        default=None, description="Paquete revisado 1.0/1.1 o básico no evaluado 1.1; solo cuando status=completed."
     )
     persistencia: PersistenciaInfo | None = Field(
         default=None, description="Agregado por el backend cuando status=completed (§16.3)."
@@ -278,6 +364,14 @@ class GenerationJobResponse(ModeloContenido):
     @field_validator("contenido", mode="before")
     @classmethod
     def proyectar_contenido(cls, valor):
+        if isinstance(
+            valor, (PedagogicalStudentOutput, BasicPedagogicalStudentOutput, ReviewedPedagogicalStudentOutputV11)
+        ):
+            return valor
+        if isinstance(valor, BasicPedagogicalOutput):
+            return BasicPedagogicalStudentOutput.desde_canonico(valor)
+        if isinstance(valor, ReviewedPedagogicalOutputV11):
+            return ReviewedPedagogicalStudentOutputV11.desde_canonico(valor)
         if isinstance(valor, PedagogicalOutput) and not isinstance(valor, PedagogicalStudentOutput):
             return PedagogicalStudentOutput.desde_canonico(valor)
         return valor
@@ -286,7 +380,7 @@ class GenerationJobResponse(ModeloContenido):
     def _estado_y_contenido(self) -> "GenerationJobResponse":
         if self.status == JobStatus.COMPLETED:
             if self.contenido is None or self.persistencia is None or self.persistencia.status_upload != "completado":
-                raise ValueError("completed requiere contenido aprobado y persistencia confirmada")
+                raise ValueError("completed requiere contenido válido y persistencia confirmada")
             if self.contenido.generation_id != self.generation_id or self.error is not None:
                 raise ValueError("El resultado debe corresponder al trabajo y no contener error")
         elif self.contenido is not None:
@@ -294,3 +388,21 @@ class GenerationJobResponse(ModeloContenido):
         if self.posicion_cola is not None and self.status != JobStatus.QUEUED:
             raise ValueError("Solo queued tiene posición de cola")
         return self
+
+
+class SessionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(description="Identificador UUID del espacio")
+    token: str = Field(description="Token de sesión opaco de 256 bits")
+
+
+class WorkspaceCreatedResponse(SessionResponse):
+    recovery_code: str = Field(description="Código de recuperación de 128 bits (agrupado)")
+
+
+class RotatedCodeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recovery_code: str = Field(description="Código de recuperación de 128 bits (agrupado)")
+    token: str = Field(description="Token de sesión opaco de 256 bits")

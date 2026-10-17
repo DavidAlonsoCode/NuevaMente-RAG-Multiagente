@@ -39,32 +39,12 @@ PAQUETES_BACKEND = [
     "app.session",
 ]
 
-# Los paquetes del frontend viven sueltos en frontend/ (components, i18n,
-# pages): Streamlit no exige un paquete unico, por eso importan por nombre.
-PAQUETES_FRONTEND = [
-    "components",
-    "i18n",
-    "pages",
-]
-
 
 def test_paquetes_del_backend_importables():
     """Cada paquete de backend/ debe poder importarse como en produccion."""
     for nombre in PAQUETES_BACKEND:
         # Si el import falla, import_module lanza y pytest muestra el error
         # exacto (modulo faltante, sintaxis rota, etc.). No hace falta assert.
-        importlib.import_module(nombre)
-
-
-def test_paquetes_del_frontend_importables():
-    """Cada paquete de frontend/ debe poder importarse sin dependencias externas.
-
-    Nota: hoy los paquetes estan vacios, asi que importan gratis. Cuando el
-    issue #15 anada Streamlit, este test obliga a que las dependencias del
-    frontend esten instaladas tambien en quien corre la suite — si eso
-    molesta, el equipo podra mover esta parte a un marcador `frontend`.
-    """
-    for nombre in PAQUETES_FRONTEND:
         importlib.import_module(nombre)
 
 

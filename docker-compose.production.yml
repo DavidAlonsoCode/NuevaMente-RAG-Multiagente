@@ -1,0 +1,40 @@
+# Must be LAST: base + OCI + production. Requires Compose >= 2.24.4 (!override).
+name: nuevamente
+services:
+  backend:
+    env_file: !override
+      - path: ${NUEVAMENTE_BACKEND_ENV_FILE:?Required private backend.env path}
+        required: true
+      - path: ${NUEVAMENTE_ORIGIN_ENV_FILE:?Required canonical origin.env path}
+        required: true
+    ports: !override ["127.0.0.1:8000:8000"]
+    environment:
+      APP_ENV: production
+      MOCK_OCI: "0"
+      MOCK_GEMINI: "0"
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?Required verified Uvicorn peer IPs (no wildcard)}
+      NUEVAMENTE_DOMAIN: ${NUEVAMENTE_DOMAIN:?Required explicit public DNS hostname}
+    # Startup guard runs before importing providers; never prints environment values.
+    # Only literal IPs are allowed; operators must verify these peers on the target host.
+    command:
+      - python
+      - -c
+      - |
+        import ipaddress, os, re, sys
+        domain = os.environ.get('NUEVAMENTE_DOMAIN', '')
+        secret = os.environ.get('TRUSTED_ORIGIN_SECRET', '')
+        peers = os.environ.get('FORWARDED_ALLOW_IPS', '').split(',')
+        valid = len(domain) <= 253 and not domain.endswith(('.localhost', '.local', '.internal', '.home.arpa')) and re.fullmatch(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?', domain) and re.fullmatch(r'[0-9a-f]{64}', secret)
+        try:
+            valid = valid and bool(peers) and all(not ipaddress.ip_address(p).is_unspecified and not ipaddress.ip_address(p).is_multicast for p in peers)
+        except ValueError:
+            valid = False
+        if not valid:
+            sys.exit('Invalid production hostname, origin secret or verified proxy peers')
+        os.execvp(sys.executable, [sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000', '--workers', '1', '--proxy-headers', '--no-access-log'])
+  frontend:
+    env_file: !override []
+    ports: !override ["127.0.0.1:8501:8501"]
+volumes:
+  backend_data:
+    name: nuevamente_backend_data

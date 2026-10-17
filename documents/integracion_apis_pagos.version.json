@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "version": "v2",
+  "sha256": "a536a1c1f9960850cf0e7ffa80b946a0e9de5fde0104343fc98722c45aa90944",
+  "anterior_sha256_lf": "33425198b6dffdc2ccaff01d46e3ff1969f1267b1890e7fba41db8f1904280bf",
+  "correcciones": [
+    "Las tres cabeceras enumeradas coinciden con X-Api-Key, X-Signature y X-Timestamp.",
+    "Se separa la firma de la comprobación de antigüedad del timestamp.",
+    "El helper prepara URL y firma; no ejecuta una llamada HTTP."
+  ],
+  "alcance": "Protocolo ficticio de la demo, sin integración con una pasarela real."
+}

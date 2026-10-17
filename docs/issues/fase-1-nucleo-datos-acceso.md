@@ -20,7 +20,7 @@ graph TD
     I12["Issue 12 Chunker estructural con metadatos y chunk_id estable"]
     I13["Issue 13 Cliente de embeddings Gemini"]
     I14["Issue 14 Proveedor OCI Object Storage real"]
-    I15["Issue 15 Esqueleto Streamlit con tema Linear"]
+    I15["Issue 15 Esqueleto React con tema Oracle"]
     I16["Issue 16 Cliente de API y gestión de sesión en el frontend"]
     I03 --> I07
     I07 --> I08
@@ -87,6 +87,7 @@ graph TD
 - [ ] Un trabajo marcado `running` al matar el proceso queda `failed` al reiniciar.
 
 **Verificación**: `pytest backend/tests/test_jobs_store.py` (incluye test de reinicio simulado).
+La reconstrucción ante pérdida de volumen y las lápidas durables se verifican además en `backend/tests/test_workspace_recovery.py`, con storage explícitamente simulado. Índices, visión y UI de progreso mantienen sus issues respectivos.
 
 ---
 
@@ -106,6 +107,7 @@ graph TD
 
 - Persistir rotación/revocación con control de versión; devolver código y token nuevos. Índice privado hash→workspace reconstruible desde manifiestos, sin recorrer el bucket por intento.
 - Limitar creación y recuperación globalmente y por origen confiable. Actualizar actividad/expiración con escrituras agrupadas; espacios vencidos o borrados no se recuperan.
+- Precisiones implementadas en contratos-api.md: reserva de intentos en vuelo, origen autenticado por Caddy, actividad cada cinco minutos, sincronización de manifiestos y recuperación al arrancar. Regresiones: `test_access_regressions.py` y `test_workspace_recovery.py`.
 
 **Criterios de aceptación**:
 - [ ] Crear → cerrar sesión → recuperar con código → ver los mismos recursos, funciona.
@@ -194,9 +196,13 @@ graph TD
 **Tareas**:
 - Wrapper `google-genai` con `output_dimensionality=768` y tarea de preparación (retrieval document / retrieval query) según corresponda.
 - Planificar solicitudes individuales conservando un vector por chunk; no asumir que una lista en una llamada produce vectores independientes ni activar Batch pago.
-- Reintentos transitorios (2, backoff + jitter + Retry-After), error visible si la cuota se agota.
+- Reintentos transitorios centralizados en `ctx.llamar` de Issue 20 (2 adicionales, backoff + jitter + Retry-After), error visible si la cuota se agota.
 - Registro de modelo/dimensión/versión de preparación; el nombre de colección Chroma incorpora modelo+dimensión para obligar reindexado si cambian.
 - Integración con el doble de Gemini de `Issue 10` para tests sin red.
+
+- Usar el cliente síncrono de `google-genai` dentro del worker y `ctx.llamar` por **cada solicitud individual**. El adaptador recibe/aplica timeout y traduce errores transitorios a `ReintentableError`; cuota diaria agotada no se reintenta. El SDK/wrapper no añaden reintentos propios.
+- Agregar `DobleGemini.embed_sync` conservando `embed` async, con lógica y contadores compartidos. El doble no define el comportamiento del SDK real: comprobar con un mock del SDK que 100 chunks generan 100 solicitudes individuales y 100 vectores, sin enviar una lista como un único contenido.
+- Pruebas con `ContextoEjecucion`: resultado resuelto, timeout propagado, reserva por intento, máximo tres intentos técnicos y agotamiento visible de cuota.
 
 **Criterios de aceptación**:
 - [ ] 100 chunks → exactamente 100 vectores de 768 dimensiones.
@@ -216,37 +222,39 @@ graph TD
 - `OCIObjectStorageProvider` con `oci-sdk`: config por archivo o identidad de instancia; namespace por consulta; bucket privado `nuevamente-contenidos-educativos` en la home region.
 - Prefijos exactos de §8.3: `workspaces/`, `source_documents/{ws}/{doc}/original|manifest.json`, `outputs/`, `exports/`, `progress/`, `demo/`.
 - Claves de objeto generadas por el backend (IDs), nombre original solo como metadata — sin colisiones ni rutas manipulables.
-- Reintentos idempotentes máx. 3 con backoff; reintentar una escritura **conserva el mismo objeto_id** (§8.3).
+- Reintentos idempotentes: un intento inicial y hasta dos adicionales (tres intentos totales) con backoff; reintentar una escritura **conserva el mismo objeto_id** (§8.3). Contar cada solicitud del SDK y evitar reintentos duplicados entre SDK y wrapper.
 - Script de verificación: crear bucket si no existe (aprov. manual documentado), put/get/list sobre prefijo de prueba, y conteo de solicitudes para el presupuesto (§8.4).
 - `MOCK_OCI=0` + fallo de OCI → `StorageUnavailable` visible; cero fallback automático a mock.
 
 - Implementar escrituras condicionales y paginación de Issue 04; contabilizar solicitudes SDK incluidos reintentos y reservar presupuesto conservador desde la primera prueba real. Issue 50 completa la auditoría.
 
 **Criterios de aceptación**:
-- [ ] Un put + get + list reales contra el bucket funcionan con credenciales mínimas del compartimento.
-- [ ] Los prefijos creados coinciden 1:1 con §8.3.
-- [ ] Error de red simulado (DNS roto) produce `failed`/`STORAGE_UNAVAILABLE`, no mock.
-- [ ] Sin credenciales y `MOCK_OCI=0`: arranque falla con mensaje claro.
+- [x] Un put + get + list reales contra el bucket funcionan con credenciales mínimas del compartimento.
+- [x] Los prefijos creados coinciden 1:1 con §8.3.
+- [x] Error de red simulado (DNS roto) produce `failed`/`STORAGE_UNAVAILABLE`, no mock.
+- [x] Sin credenciales y `MOCK_OCI=0`: arranque falla con mensaje claro.
 
-**Verificación**: `pytest backend/tests/test_storage_oci.py` (mock de SDK) + ejecución manual del script real una vez configurada la tenancy.
+**Verificación de implementación**: `pytest backend/tests/test_storage_oci.py backend/tests/test_storage_oci_sdk.py backend/tests/test_verify_oci.py` (SDK/HTTP simulados). La comprobación real de `python -m app.tools.verify_oci`, sus permisos mínimos y prefijos se trazan en #133, reutilizando la evidencia válida ya registrada. Guía: `docs/oci-storage.md`. No se borra esa evidencia ni se ejecutan nuevas solicitudes para cerrar administrativamente el issue; cualquier hueco real queda pendiente en #133 y los dobles no lo acreditan.
+
+**Evidencia manual — 2026-10-08**: prueba real en la home region `sa-vinhedo-1` con usuario técnico y grupo dedicado, sin Administrators. Dos objetos técnicos (original y JSON) escritos, leídos y listados; bytes verificados y temporales eliminados. Se contabilizaron 16 solicitudes, sin reservas inciertas. También se verificó la denegación de `ListUsers` y `ListBuckets`. Esto acredita almacenamiento real del Issue 14; no acredita Gemini ni despliegue completo.
 
 ---
 
-### `Issue 15` — Esqueleto Streamlit con tema Linear
+### `Issue 15` — Esqueleto React con tema Oracle
 **F1** · **UI** · **M** · **Depende de**: `Issue 03`, `Issue 06` · **Referencia**: decisiones_proyecto.md §6.1–§6.3
 
-**Objetivo**: aplicación Streamlit con el design system Linear aplicado (tokens, tipografías, hairlines) y el layout sidebar + área principal en estado vacío.
+**Objetivo**: aplicación React/TypeScript/Vite con el tema Oracle aplicado (tokens, tipografías, hairlines) y el layout sidebar + área principal en estado vacío.
 
 **Tareas**:
-- `.streamlit/config.toml` con tokens del design system (canvas `#010102`, surfaces, primary `#5e6ad2`, ink).
-- `components/theme.py`: inyección CSS (Inter + JetBrains Mono auto-hospedadas si es viable — §6.6), cards, hairlines, foco visible, respeto de `prefers-reduced-motion`.
-- `app.py` + `pages/home.py`: layout §6.3 — sidebar (logo, selector idioma UI, espacios para carga y parámetros, historial en expander) + área principal con estado vacío/onboarding.
+- `frontend/src/styles/oracle-theme.css` con tokens oscuros y acentos rojo/coral.
+- `frontend/src/styles/oracle-theme.css`: estilos (Inter + JetBrains Mono auto-hospedadas si es viable — §6.6), cards, hairlines, foco visible, respeto de `prefers-reduced-motion`.
+- `frontend/src/App.tsx`: layout §6.3 — sidebar con logo, idioma, parámetros e historial; área principal con carga de archivos, texto pegado, biblioteca y onboarding.
 - Integración de `Issue 06`: helper `t()` y selector de idioma que cambia etiquetas sin recargar datos.
 - Estado vacío accesible: las 4 entradas del onboarding (subir, pegar texto, demo, recuperar espacio) como botones nativos.
 - `frontend/Dockerfile` inicial (arranque básico) para que `Issue 26` tenga base.
 
 **Criterios de aceptación**:
-- [ ] `streamlit run frontend/app.py` muestra la app con tema oscuro completo, con controles nativos accesibles y estilo consistente.
+- [ ] `npm --prefix frontend run dev` muestra la app con tema oscuro completo, con controles nativos accesibles y estilo consistente.
 - [ ] Cambiar idioma de UI re-traduce la pantalla en caliente.
 - [ ] Contraste de texto ≥ 4.5:1 verificado con herramienta (WCAG AA §6.6).
 - [ ] Navegable por teclado con foco visible.
@@ -258,11 +266,11 @@ graph TD
 ### `Issue 16` — Cliente de API y gestión de sesión en el frontend
 **F1** · **UI** · **M** · **Depende de**: `Issue 15`, `Issue 09` · **Referencia**: decisiones_proyecto.md §6.1, §7.4
 
-**Objetivo**: `api_client.py` tipado contra `docs/contratos-api.md` y el flujo de sesión del usuario en Streamlit.
+**Objetivo**: `frontend/src/api/client.ts` tipado contra `docs/contratos-api.md` y el flujo de sesión del usuario en React.
 
 **Tareas**:
-- `api_client.py`: métodos para workspaces/sesiones/docs/generaciones/exports con manejo del envoltorio de error, `request_id` en logs y timeouts; sin acceso directo a storage ni claves.
-- Gestión de sesión: token en `st.session_state` (nunca en el cliente), creación de workspace al primer uso, recuperación con código (con recordatorio de guardarlo y aviso de que se muestra una sola vez), cierre de sesión.
+- `frontend/src/api/client.ts`: métodos para workspaces/sesiones/docs/generaciones/exports con manejo del envoltorio de error, `request_id` en logs y timeouts; sin acceso directo a storage ni claves.
+- Gestión de sesión: token únicamente en memoria React (nunca en localStorage/sessionStorage), creación de workspace al primer uso, recuperación con código (con recordatorio de guardarlo y aviso de que se muestra una sola vez), cierre de sesión.
 - Estados de error amigables y traducidos (catálogo `Issue 06`), distinguindo 401 (pedir código) de fallos técnicos.
 - Acciones de copiar/descargar el código, rotación con token nuevo y borrado del espacio con confirmación; nunca exponer códigos en capturas/logs.
 - Pantalla de recuperación: entrada del código agrupado + feedback de éxito/fallo/bloqueo por intentos.
@@ -273,7 +281,7 @@ graph TD
 - [ ] Los errores del backend se muestran traducidos con código estable visible solo en «detalles técnicos».
 - [ ] El token nunca se loguea ni viaja a otra capa que no sea el header `Authorization`.
 
-**Verificación**: flujo manual con backend real levantado + `pytest frontend/tests/test_api_client.py` contra una API simulada.
+**Verificación**: flujo manual con backend real levantado + `npm --prefix frontend test` contra una API simulada.
 
 ---
 
