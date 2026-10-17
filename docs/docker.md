@@ -6,6 +6,13 @@ Uvicorn, un worker dedicado y un volumen de datos exclusivo del backend.
 La implementación Streamlit fue retirada en #139; sus pruebas históricas no
 acreditan React. Ver la [guía del frontend vigente](../frontend/README.md).
 
+Contraste documental del **17/10/2026**, base integrada `5988244` (#137/#138/#140),
+sin nuevas ejecuciones. React permite básico y multiagente, paquetes 1.0/1.1 y
+descargas compatibles desde resultado/historial. `completed` básico confirma
+guardado, sin evaluación independiente. El [runbook OCI](despliegue-oci.md#123-modos-recuperación-de-materiales-y-descargas)
+detalla las comprobaciones y el rollback condicionado a esquema y lectores de
+paquetes locales/OCI; las pruebas anteriores conservan sus versiones y límites.
+
 ## Arranque sin credenciales
 
 Requisitos: Git, Docker Engine o Docker Desktop con contenedores Linux y Compose

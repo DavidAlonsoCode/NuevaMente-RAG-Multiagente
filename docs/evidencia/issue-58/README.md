@@ -3,9 +3,16 @@
 Registro documental del **16/10/2026**. Implementación leída en `develop`
 `f2924151302001141bec65aadd081d3247e485c4`; las funciones de copia/restauración
 son instrucciones locales del [runbook, sección 16](../../despliegue-oci.md#16-backup-físico-consistente-del-volumen-completo),
-todavía sin commit. No son una CLI del backend ni evidencia de una VM.
+en ese momento sin commit. No son una CLI del backend ni evidencia de una VM.
 La [matriz de verificación](../../verificacion-issue-58.md) conserva los resultados
 históricos de etapa 3 y registra separadamente esta consolidación de etapa 4.
+
+Nota documental del **17/10/2026**: el checkpoint `86a6ee8` conserva este ensayo;
+el merge `8b97c6b` incorporó `develop` `5988244`. El procedimiento Python y sus
+fixtures permanecen sin cambios y **no se repitieron** después de integrar.
+Los 11 PASS del 16/10 sólo acreditan copia/restauración física sintética en su
+entorno original. No prueban lectores de paquetes 1.0/1.1, conservación de modo,
+exportaciones ni recuperación funcional de la base integrada.
 
 ## Entorno y límites
 

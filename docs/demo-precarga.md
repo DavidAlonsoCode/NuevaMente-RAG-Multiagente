@@ -2,9 +2,18 @@
 
 Este runbook prepara las tres fuentes de `documents/`: VCN, pagos y salud.
 Es mantenimiento administrativo offline; no expone una ruta de escritura.
-Estado documental al **16/10/2026**, `develop` `f292415`: #48 y #49 están
+Registro documental del **16/10/2026**, `develop` `f292415`: #48 y #49 estaban
 integrados y cerrados; la activación y comprobación públicas se aceptan en
 [#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
+
+Contraste por lectura del **17/10/2026**, base integrada `5988244` (#137/#138/#140):
+precarga, archivos canónicos y exclusividad conservan sus procedimientos. React
+es la única UI desplegable; Streamlit fue retirado. Básico/multiagente reutilizan
+la preparación documental, pero no habilitan el puente demo→generación pendiente.
+Los paquetes 1.0/1.1 y las descargas privadas se describen en el
+[runbook](despliegue-oci.md#123-modos-recuperación-de-materiales-y-descargas).
+Los ejemplos publicados siguen exigiendo material multiagente aprobado;
+`completed` básico no lo sustituye. No se repitieron pruebas ni precarga.
 
 Preparar las fuentes significa leer e indexar los tres documentos de ejemplo
 una vez, para que luego la biblioteca pueda consultarlos sin repetir ese trabajo.

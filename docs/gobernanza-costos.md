@@ -32,6 +32,14 @@ obtiene ese privilegio.
 
 ## Información al usuario
 
+Contraste documental del **17/10/2026**, base integrada `5988244`: básico y
+multiagente comparten admisiones, presupuestos y controles de persistencia.
+El básico no garantiza ahorro fijo ni aprobación independiente; recuperación
+y descargas conservan el modo del paquete 1.0/1.1. Descargar no llama al LLM,
+pero las lecturas y el almacenamiento de derivados consumen presupuesto OCI.
+No se reinician contadores al cambiar modo, versión o lector. Este contraste no
+repite la inspección real histórica ni acredita el consumo actual.
+
 `GET /api/workspaces/current` requiere Bearer y devuelve `workspace_id`,
 `expira_en`, `ultima_actividad_en`, `uso` y `almacenamiento` (agregados, proveedor,
 límites, margen, alerta y bloqueo). No expone claves de objetos, credenciales ni
@@ -93,9 +101,10 @@ límites; el [procedimiento de backup/restauración](despliegue-oci.md#16-backup
 está redactado, con ensayo sintético limitado. Su reproducción operativa real sigue
 pendiente en #133; frecuencia, retención y custodia requieren decisión del equipo.
 
-Verificación: `pytest backend/tests/test_budgets.py backend/tests/test_budgets_api.py
-frontend_streamlit_viejo/tests/test_budgets_ui.py` y la inspección real anterior.
-El último módulo corresponde a la UI Streamlit histórica; no acredita React.
-Estas son referencias de verificación existentes, no pruebas ejecutadas por esta
+Referencias de verificación backend existentes: `backend/tests/test_budgets.py`
+y `backend/tests/test_budgets_api.py`, además de la inspección real anterior.
+El [módulo UI histórico, base f292415](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/blob/f2924151302001141bec65aadd081d3247e485c4/frontend_streamlit_viejo/tests/test_budgets_ui.py)
+fue retirado con Streamlit en #139 y no acredita React ni es ejecutable en esta base.
+Son referencias de verificación existentes, no pruebas ejecutadas por esta
 corrección documental. La aceptación externa del despliegue permanece en
 [#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).

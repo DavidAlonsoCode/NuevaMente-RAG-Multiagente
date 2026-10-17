@@ -30,6 +30,15 @@ separa implementación, evidencia histórica y aceptación pendiente.
 La [receta de instalación de #58](../../docs/despliegue-oci.md) consolida desde
 prerrequisitos hasta salud y preparación demo; su ejecución real sigue pendiente.
 
+Contraste documental del **17/10/2026** sobre la base integrada `5988244`
+(#137/#138/#140): aprovisionador, bootstrap y verificadores de host/listeners no
+cambiaron desde `f292415`. Sus procedimientos siguen aplicables, sin renovar la
+evidencia de capacidad o de VM. La aplicación vigente usa sólo React, admite
+paquetes 1.0/1.1 y conserva el modo al recuperar; el rollback requiere lectores
+compatibles con datos locales y OCI, además del esquema SQLite. Ver el
+[runbook actualizado](../../docs/despliegue-oci.md). No se ejecutaron operaciones
+OCI ni nuevas pruebas en este contraste.
+
 ## Bloqueo observado el 8 de octubre de 2026
 
 Registro histórico: las menciones al estado de #47 en esta sección y en las

@@ -2,7 +2,7 @@
 
 ## Alcance de esta revisión
 
-Revisión documental del **16/10/2026**: se conservan el mapa de fuentes/evidencias
+Registro histórico de la revisión documental del **16/10/2026**: se conservan el mapa de fuentes/evidencias
 y las correcciones de la **etapa 1**, la instalación de **etapa 2**, la
 **etapa 3** de [operación, backups, recuperación y diagnóstico](despliegue-oci.md#13-actualización-con-interrupción-breve-y-versiones-conservadas)
 y la **etapa 4** de validación local y preparación para auditoría final.
@@ -11,19 +11,24 @@ copias/restauraciones de datos sintéticos aislados, detalladas al final. No es 
 ensayo de despliegue ni el cierre de #58. Los resultados de etapa 4 y los
 impedimentos de aceptación se registran al final; no hay aprobación humana.
 
-Base de código inspeccionada:
+Base de código inspeccionada en esa revisión histórica:
 [`f2924151302001141bec65aadd081d3247e485c4`](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/tree/f2924151302001141bec65aadd081d3247e485c4).
 Antes de editar, `HEAD`, `develop` y `origin/develop` locales coincidían en esa
 revisión, sin divergencia; `git ls-remote origin refs/heads/develop` confirmó la
 misma referencia remota. Branch activa:
 `feature/issue-58-oci-deployment-guide`. Working tree inicial limpio.
-Los cambios documentales de las cuatro etapas quedan locales, sin commit. Al comenzar
+En ese momento los cambios documentales de las cuatro etapas quedaban locales, sin commit. Al comenzar
 la etapa 2 se conservaron los cinco documentos modificados y esta matriz de la
 etapa 1; se volvió a comprobar que rama y referencias locales/remota de `develop`
 seguían en `f292415`. El diff previo no tenía errores de whitespace.
 Antes de etapa 3 se comprobaron de nuevo rama, diff y referencias locales/remota:
 seguían en el mismo commit, sin divergencia. Se conservaron los cinco documentos
 modificados y los dos nuevos de etapas anteriores, sin cambios ajenos detectados.
+
+La base operativa del runbook pasó a `5988244` tras el merge local del 17/10.
+El [registro separado de integración y contraste documental](#integración-local-y-contraste-documental--17102026)
+identifica commits, cambios y límites. Los resultados del 16/10 de las secciones
+siguientes no son nuevas pruebas de la base integrada.
 
 Se consultaron en GitHub los cuerpos vigentes de #47–#50, #58 y #133.
 #47–#50 figuran cerrados; #58 y #133, abiertos. Las actualizaciones de #58 y
@@ -63,7 +68,7 @@ su ejecución. Las evidencias históricas no cambian de fecha ni alcance.
 | VM A1 Always Free, Ubuntu 24.04 ARM64 y capacidad | Decisiones §9.1; #47; [receta OCI](../infra/oci/README.md), código base `f292415` | [Aprovisionador](../infra/oci/provision_vm.py): 2 OCPU/12 GB, home region, boot 50 GB, inventario de discos/A1, guardas y diario idempotente; no cambia a una VM paga | Consultas OCI de 8 y 12/10 con `OUT_OF_HOST_CAPACITY`; registro del 12/10 refiere sincronización con `370df46`. No acredita VM; los reportes `.data` citados son locales, fuera de Git | #58: consolidar prerrequisitos y bloqueos. #133: capacidad efectiva, provisión, gratuidad, OS/arquitectura y evidencia identificada |
 | SSH, firewall y puertos | Decisiones §9.2; #47/#48; código base `f292415` | [Bootstrap](../infra/oci/bootstrap.sh), [verificación de host](../infra/oci/verify_host.sh) y [listeners](../infra/oci/verify_listeners.py): SSH por clave y /32 administrativo; reglas host/Docker; 80/443 públicos y app en loopback | Tests existentes en [test_compute_provision.py](../backend/tests/test_compute_provision.py); no constituyen prueba desde otra red | #58: documentar controles y resultados esperados. #133: reglas efectivas OCI/host, listeners, SSH desde IP autorizada/no autorizada y puertos internos |
 | Docker, Compose e imágenes ARM64 | Decisiones §14; [Compose base](../docker-compose.yml), [overlay OCI](../docker-compose.oci.yml) y [producción](../docker-compose.production.yml) | Dos servicios; un worker/escritor; reinicio y healthchecks. [Backend](../backend/Dockerfile) Python; [frontend](../frontend/Dockerfile) con build Node y servidor final Python. Producción usa los tres Compose, en ese orden | CI histórica de contenedores referenciada más abajo; Compose local usa mocks y ARM64 se verifica en runners, no en OCI | #58: consolidar build, identidad de imágenes y actualización. #133: funcionamiento en VM y persistencia tras reinicio |
-| UI vigente y progreso SSE | Ajuste del plan del 15–16/10; PR #135/#136; código base `f292415` | [React](../frontend/src/App.tsx), [servidor estático](../frontend/entrypoint.py); SSE autenticado. Streamlit permanece en `frontend_streamlit_viejo/` | [Verificación React](verificacion-frontend-react.md), 15/10, y [#33](verificacion-issue-33.md), 16/10: proveedores simulados, versiones y limitaciones declaradas | #58: usar instrucciones React. #133: generación real desde React, proxy, cancelación, reconexión y recuperación sin duplicar |
+| UI vigente y progreso SSE | Ajuste del plan del 15–16/10; PR #135/#136; código base `f292415` | [React](../frontend/src/App.tsx), [servidor estático](../frontend/entrypoint.py); SSE autenticado. En esa base permanecía el [Streamlit histórico](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/tree/f2924151302001141bec65aadd081d3247e485c4/frontend_streamlit_viejo), retirado posteriormente en #139 | [Verificación React](verificacion-frontend-react.md), 15/10, y [#33](verificacion-issue-33.md), 16/10: proveedores simulados, versiones y limitaciones declaradas | #58: usar instrucciones React. #133: generación real desde React, proxy, cancelación, reconexión y recuperación sin duplicar |
 | Variables, secretos y separación operador/backend | Decisiones §9.2/§14; [template backend](../.env.example), [interpolación productiva](../.env.production.example); código base `f292415` | [Helper Caddy](../infra/caddy/verify_deployment.py): archivos canónicos, permisos, perfil técnico `DOCKER`, API key montada RO; secreto de origen separado. El operador de provisión usa credenciales diferentes | Validación con dobles en [test_caddy_deploy.py](../backend/tests/test_caddy_deploy.py); configuración/crypto offline y evidencia histórica de proveedor referida por #133 | #58: documentar archivos/valores sin secretos. #133: identidad/IAM efectivos y configuración segura de la VM. El soporte genérico de instance principal no lo convierte en alternativa admitida por este helper |
 | Caddy, DNS, HTTPS y origen confiable | #48; [referencia Caddy](../infra/caddy/README.md); código base `f292415` | [Instalación](../infra/caddy/install.sh), [deploy](../infra/caddy/deploy.sh), [Caddyfile](../infra/caddy/Caddyfile): firmas/hashes, observación del peer, validación y activación; DNS no se configura automáticamente | Caddy/TLS reales en CI con proveedores dobles; registro de `42af012` y corridas posteriores separados abajo | #58: consolidar preparación y diagnóstico. #133: systemd/notify, Docker/NAT/peer, DNS/ACME público, HTTPS válido y exposición efectiva |
 | Precarga de tres fuentes demo | #49; [precarga](demo-precarga.md); código base `f292415` | [CLI](../backend/app/documents/preload_cli.py) y [precargador](../backend/app/documents/preload.py): colección separada, hash, cobertura/visión, exclusividad, publicación condicional; `--check` no usa proveedores | [Tests de precarga](../backend/tests/test_demo_preload.py) y [catálogo documental](../backend/tests/test_demo_documents.py) con dobles; no ejecutados aquí | #58: procedimiento productivo y reactivación aún por consolidar. #133: activar y consultar tres fuentes vigentes en VM/URL pública |
@@ -593,3 +598,87 @@ revisión humana, la resolución propia de #58 para 17.1/17.4, explicar/estabili
 el fallo temporal de la corrida conjunta y las comprobaciones nativas omitidas;
 la reproducción real y evidencia externa continúan en #133. No se declara cerrado
 #58 ni completado #133.
+
+## Integración local y contraste documental — 17/10/2026
+
+Este registro es posterior e independiente de las pruebas del 16/10. El checkpoint
+`86a6ee801e755d7bcd4335ceb5a138bf44e580aa` conservó exclusivamente los nueve
+documentos, tras respaldo privado fuera del checkout verificado con SHA256.
+Se incorporó la referencia de `develop`
+[`5988244a40fb1f3061c0bafc1fc106eb6e592a0a`](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/tree/5988244a40fb1f3061c0bafc1fc106eb6e592a0a),
+con #137/#138 y #140, mediante merge sin commit inicial. Se resolvieron por
+contenido sólo `docs/docker.md` e `infra/caddy/README.md`; README se combinó
+automáticamente y se revisó. No se reintrodujo Streamlit ni se modificó código propio.
+
+Con autorización posterior se verificaron rama, HEAD, MERGE_HEAD, ausencia de
+conflictos/cambios sin preparar y diferencias propias limitadas a los nueve
+documentos; `git diff --cached --check` aprobó. Se creó exclusivamente el merge
+local **`8b97c6b5970cfcb0bae87cc7c7d8923baa40aa9d`**,
+`chore(oci): integrar develop en la guía de despliegue #58`, con estos dos padres,
+en orden:
+
+1. `86a6ee801e755d7bcd4335ceb5a138bf44e580aa` — checkpoint documental.
+2. `5988244a40fb1f3061c0bafc1fc106eb6e592a0a` — develop incorporado.
+
+El working tree quedó limpio tras ese commit. Las correcciones documentales de
+este contraste se dejan **sin preparar ni otro commit**. El archivo operativo de
+fuentes pasa a `nuevamente-5988244.tar`; la versión fijada es el segundo padre,
+no el antiguo `develop` local ni una referencia móvil. Los artefactos/resultados
+históricos conservan nombres, fechas y versiones anteriores.
+
+### Matriz de contraste de la base integrada
+
+«Contrastado» significa lectura de archivos y diff entre bases, sin importar la
+aplicación ni ejecutar fixtures, tests, builds, servicios o proveedores.
+
+| Requisito / procedimiento | Fuente en la base integrada y observación | Evidencia y pendientes |
+| --- | --- | --- |
+| Aprovisionar, SSH, Docker/Compose, firewall, volumen y secretos | `infra/oci/`, tres Compose, configuración backend y helper Caddy sin cambios operativos desde `f292415`; sólo cambió el README Caddy | Recetas 1–11 aplicables; la evidencia anterior no acredita su ejecución sobre `5988244`. Capacidad/Always Free, host ARM64, peer y exposición real pendientes en #133 |
+| Precarga demo y salud | CLI/implementación de precarga sin cambios; un escritor, configuración productiva y reactivación administrativa conservadas | Ninguna nueva precarga ni sonda de salud ejecutada. Generación demo sigue bloqueada; carga privada y ejemplos guardados no satisfacen ese requisito |
+| Modos y paquetes | [Contrato/lectores](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/blob/5988244a40fb1f3061c0bafc1fc106eb6e592a0a/backend/app/schemas/responses.py): 1.0 multiagente, 1.1 multiagente/básico. Básico `no_evaluado`/`no_realizada`, métricas/juez nulos; `completed` requiere persistencia, no evaluación independiente | Runbook 12.3 documentado. [Verificación de modos](verificacion-modos-generacion.md) conserva su versión/resultados propios; sin nuevas pruebas de #58 |
+| Recuperación y lectura | [Restauración](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/blob/5988244a40fb1f3061c0bafc1fc106eb6e592a0a/backend/app/session/recovery.py) guarda el modo 1.1; [catálogo](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/blob/5988244a40fb1f3061c0bafc1fc106eb6e592a0a/backend/app/generations/catalog.py) valida modo/identidad/fuente. 1.0 se interpreta como multiagente | Recuperar conserva modo, no sesiones/trabajos pendientes ni datos nunca sincronizados. Comprobación funcional nueva pendiente; 17.1/17.4 siguen siendo impedimentos propios de #58 |
+| Descargas por formato | [ExportDownloads](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/blob/5988244a40fb1f3061c0bafc1fc106eb6e592a0a/frontend/src/components/ExportDownloads.tsx), resultado/historial y validadores: JSON/MD/PDF para los cinco formatos; CSV/TSV/APKG sólo flashcards, sin LLM | #46 integrado. Básico descargable sin aprobación ficticia; badge OCI sólo ante proveedor OCI confirmado. [Registro #46](verificacion-issue-46.md) conserva su alcance con dobles; no se ejecutó aquí |
+| Actualización, backup y rollback | SQLite conserva esquema 11, pero el lector de `f292415` no admite 1.1. Comparar también paquetes locales/OCI y exportaciones con las imágenes anteriores | Runbook 13/17.2/17.3 condicionado a lectores y modos compatibles. Restaurar datos locales no revierte objetos/efectos OCI. Ensayo físico del 16/10 sin repetir; no acredita compatibilidad de la nueva aplicación |
+| UI y arnés Caddy | #140 incorpora #139: Streamlit/config/dependencias/tests retirados; `pytest.ini` sólo recoge `backend/tests`. Fixtures `caddy_fixture.py`/`caddy_browser.py` usan `frontend/dist` real, interacción/recarga y área de carga principal; no WS de UI | README Caddy ajustado; referencias a archivos retirados fijadas en `f292415`. [Registro #139](verificacion-issue-139.md) conserva sus resultados. No se ejecutó el arnés actual ni se trasladaron sus resultados a #58 |
+
+La revisión también comprobó por lectura que el helper sigue exigiendo backend
+único con `current.json` (17.1), y que H02 no se dispara simplemente al perder
+Chroma con SQLite ya recuperada (17.4). No se crearon CLI ni procedimientos que
+eludan esos controles. React sigue excluyendo la selección demo de
+`docSeleccionado`; el backend sigue exigiendo el documento propio. La contradicción
+con fase 5 conserva sus referencias históricas y requiere decisión/seguimiento
+funcional del equipo. No se modificaron decisiones ni planes para resolverla.
+
+### Alcance de las comprobaciones nuevas y aceptación
+
+Comprobaciones documentales ejecutadas sobre los nueve documentos:
+
+- **138 destinos locales y 23 anclas**, sin errores; cercas Markdown balanceadas.
+- **14 referencias inmutables** a archivos/árboles, comprobadas contra objetos Git
+  locales de sus SHA; las referencias de línea citadas caben en esos archivos.
+  No se verificó disponibilidad HTTP ni se recorrieron enlaces externos.
+- **Cuatro bloques modificados:** dos PowerShell aprobados mediante
+  `System.Management.Automation.Language.Parser.ParseInput` y dos Bash/sh mediante
+  Git Bash `--noprofile --norc -n`, sin ejecutar sus cuerpos. El primer arranque
+  MSYS en sandbox falló con `NtCreateDirectoryObject`/`0xC0000022`; el análisis
+  sintáctico fuera del sandbox aprobó ambos bloques. Esto no acredita sus comandos
+  operativos, plataformas nativas, instalaciones ni builds.
+- `git diff --check` aprobado; revisión del diff y de su alcance. Las funciones
+  y el cuerpo reproducible del ensayo sintético permanecen iguales al merge;
+  no se repitió el ensayo ni se atribuyeron sus 11 PASS a la nueva base.
+
+No se ejecutaron nuevas pruebas funcionales, Ruff, fixtures de backup,
+proveedores, infraestructura, instalaciones ni builds. Las correcciones se
+limitan a los nueve documentos y el índice queda vacío para revisión.
+
+Los **385 aprobados, 1 fallo y 52 omisiones** de la corrida conjunta y el caso
+aislado posterior siguen perteneciendo a `f292415`. El fallo temporal conjunto
+permanece abierto: la integración no demuestra su causa ni su resolución, y no
+se repitieron pruebas ni se ampliaron timeouts. Tampoco se actualiza la aceptación
+de #58 por conservar o integrar evidencia anterior.
+
+Continúan abiertos 17.1, 17.4, demo→generación, el fallo temporal conjunto, la
+revisión humana independiente y #133. La plantilla humana anterior sigue sin
+aprobación atribuida; deberá identificar la versión documental que revise.
+La reproducción real externa permanece separada de esa revisión y del contraste
+documental. #58 no se declara cerrado ni #133 completado.

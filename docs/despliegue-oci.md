@@ -2,8 +2,13 @@
 
 ## Alcance y reglas de ejecución
 
-Receta documental de instalación y operación, **etapas 2–4**, revisada el **16/10/2026** contra
-`develop` `f2924151302001141bec65aadd081d3247e485c4`. No se ejecutó sobre una VM.
+Receta documental de instalación y operación, **etapas 2–4**, contrastada por
+lectura el **17/10/2026** contra la base integrada de `develop`
+`5988244a40fb1f3061c0bafc1fc106eb6e592a0a` (#137/#138/#140).
+El merge local de #58 es `8b97c6b5970cfcb0bae87cc7c7d8923baa40aa9d`.
+Las pruebas y revisiones del 16/10 conservan su base `f292415`; no se atribuyen a
+esta integración. El contraste nuevo es documental, sin nuevas pruebas funcionales.
+No se ejecutó sobre una VM.
 El [registro de verificación](verificacion-issue-58.md) distingue lectura de código,
 evidencia histórica, revisión humana de #58 y reproducción real pendiente en
 [#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
@@ -16,7 +21,7 @@ detener el procedimiento; no omitir guardas para continuar.
 
 La topología vigente es React → Caddy en el host → FastAPI; Compose aloja backend
 y servidor de archivos React. Sólo backend monta datos y credenciales. No se usa
-Streamlit para la entrega vigente. El proyecto productivo se llama `nuevamente`,
+Streamlit: fue retirado en #139, integrado por #140. El proyecto productivo se llama `nuevamente`,
 el volumen `nuevamente_backend_data` y el checkout de esta receta
 `/opt/nuevamente/checkout`. Todas las sesiones Bash indicadas abajo son en la VM,
 salvo las identificadas como consola del operador. No usar `set -x`, registrar
@@ -55,7 +60,7 @@ Comprobar la versión **antes** de producir el archivo de despliegue:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$revisionDespliegue = 'f2924151302001141bec65aadd081d3247e485c4'
+$revisionDespliegue = '5988244a40fb1f3061c0bafc1fc106eb6e592a0a'
 git status --short --branch
 git rev-parse HEAD develop origin/develop
 git ls-remote origin refs/heads/develop
@@ -65,6 +70,9 @@ git show --no-patch --format=fuller $revisionDespliegue
 Estos comandos inspeccionan, no actualizan refs. Si `develop` remoto cambió,
 revisar y registrar una nueva base de la receta antes de desplegarla; no cambiar
 silenciosamente la revisión. Los cambios locales no entran en `git archive`.
+La fuente operativa fijada aquí es el segundo padre del merge; el HEAD de la
+rama documental puede diferir, al igual que la referencia local `develop`.
+Registrar las referencias por separado, sin actualizarlas para aparentar igualdad.
 
 En la consola OCI, registrar fecha y evidencia no secreta de los controles:
 
@@ -186,22 +194,22 @@ sin commit. Requiere `.data` como directorio local de artefactos:
 
 ```powershell
 New-Item -ItemType Directory -Force .data | Out-Null
-if (Test-Path .data/nuevamente-f292415.tar) { throw 'Archivo previo: conservarlo y revisar su procedencia' }
-git archive --format=tar --output=.data/nuevamente-f292415.tar $revisionDespliegue
+if (Test-Path .data/nuevamente-5988244.tar) { throw 'Archivo previo: conservarlo y revisar su procedencia' }
+git archive --format=tar --output=.data/nuevamente-5988244.tar $revisionDespliegue
 if ($LASTEXITCODE -ne 0) { throw 'git archive fallo' }
-Get-FileHash .data/nuevamente-f292415.tar -Algorithm SHA256
-scp -i $claveSsh .data/nuevamente-f292415.tar "ubuntu@${ipVm}:/opt/nuevamente/"
+Get-FileHash .data/nuevamente-5988244.tar -Algorithm SHA256
+scp -i $claveSsh .data/nuevamente-5988244.tar "ubuntu@${ipVm}:/opt/nuevamente/"
 ```
 
 Comparar en la VM el SHA256 con el de la PC y, **sólo si el destino no existe**:
 
 ```bash
 set -euo pipefail
-sha256sum /opt/nuevamente/nuevamente-f292415.tar
+sha256sum /opt/nuevamente/nuevamente-5988244.tar
 test ! -e /opt/nuevamente/checkout
 test ! -L /opt/nuevamente/checkout
 mkdir -m 0750 /opt/nuevamente/checkout
-tar -xf /opt/nuevamente/nuevamente-f292415.tar -C /opt/nuevamente/checkout
+tar -xf /opt/nuevamente/nuevamente-5988244.tar -C /opt/nuevamente/checkout
 cd /opt/nuevamente/checkout
 sudo bash infra/oci/verify_host.sh
 ```
@@ -806,15 +814,60 @@ privada ni estos ejemplos guardados como sustituto. Las comprobaciones de salud,
 lectura de fuentes y recuperación de paquetes no prueban generación nueva,
 SSE real por Caddy ni completan #133.
 
+### 12.3 Modos, recuperación de materiales y descargas
+
+**Máquina/shell:** navegador React, sesión privada propia; sin comandos de generación.
+**Previo:** material ya `completed` y guardado, fuente vigente y autorización de
+lectura/descarga. Si falta material de un modo, registrar esa comprobación pendiente;
+no generar como efecto de verificar salud o instalar la demo.
+
+El selector ofrece multiagente (predeterminado) y básico, sobre el mismo documento
+preparado. Una generación nueva que omite `modo_generacion` conserva el paquete
+1.0 multiagente; explicitar el modo produce 1.1. Los lectores actuales admiten 1.0
+y las variantes 1.1 multiagente/básico. `completed` exige persistencia confirmada:
+en básico no acredita evaluación independiente. Su paquete es `no_evaluado`, con
+evaluación `no_realizada`, sin score ni modelo juez; no mostrarlo como aprobado.
+Ver [contrato y límites de modos](modos-generacion.md).
+
+Abrir el resultado y luego el mismo material desde historial; comprobar el modo
+guardado y sus avisos, incluso si el selector actual indica otro modo. Al recuperar
+el espacio con su código, comprobar esa misma identidad/modo. Recuperar desde OCI
+también conserva el modo de los paquetes confirmados; 1.0 se interpreta como
+multiagente. No restaura sesiones/tokens ni trabajos pendientes. Esto no resuelve
+los huecos de 17.1/17.4 ni autoriza reabrir espacios retirados.
+
+| Formato pedagógico guardado | Descargas desde resultado e historial |
+| --- | --- |
+| Tutorial, quiz, resumen, guion | JSON, Markdown y PDF |
+| Flashcards | JSON, Markdown, PDF, CSV, TSV y APKG |
+
+Los botones incompatibles permanecen deshabilitados. Las descargas requieren
+sesión/propiedad/estado/fuente válidos y no vuelven a llamar al LLM. JSON conserva
+el canónico completo (incluidas soluciones del quiz); la vista estudiante no
+las muestra anticipadamente. Las exportaciones 1.1 identifican el modo y no
+inventan una revisión para básico; los derivados 1.0 conservan su compatibilidad
+histórica. «Guardado en OCI» exige `provider=oci` y `status_upload=completado`;
+un mock confirmado sólo acredita almacenamiento local. No confundir estas
+descargas privadas con abrir ejemplos compartidos guardados de #55.
+
+**Esperado:** mismo material/modo en resultado, historial y recuperación, descargas
+compatibles legibles, sin exponer secretos. **Consumo posible:** tráfico/lecturas
+OCI y almacenamiento de derivados, CPU/disco de exportación; no generación LLM.
+**Parar si:** 401/404/409/422/503, modo distinto, aprobación ficticia, lector
+incompatible, fuente retirada o credenciales en archivos. La lectura de código
+de esta sección no acredita que se haya ejecutado el recorrido; su reproducción
+real y evidencia siguen pendientes en #133.
+
 ## 13. Actualización con interrupción breve y versiones conservadas
 
 **Máquina/shell:** operador/PowerShell para preparar la fuente, VM/Bash para
 operar. **Previo:** ventana acordada, respaldo consistente de la sección 16 y
-compatibilidad de esquema revisada antes de admitir escrituras de la versión
-nueva. No hay actualizaciones rolling ni promesa de cero downtime.
+compatibilidad de esquema y lectores de paquetes revisada antes de admitir
+escrituras de la versión nueva. No hay actualizaciones rolling ni promesa de cero downtime.
 
 Registrar commit desplegado, SHA del archivo de fuentes, IDs de ambas imágenes,
-versión del esquema SQLite, modelos/dimensiones/preparación del índice y fecha.
+versión del esquema SQLite, versiones/modos de paquetes locales y confirmados en
+OCI, lectores admitidos, modelos/dimensiones/preparación del índice y fecha.
 Los modelos privados de despliegue contienen secretos: extraer sólo los IDs,
 nunca copiarlos al informe público:
 
@@ -866,6 +919,13 @@ sudo docker run --rm --pull=never --network none --read-only --cap-drop ALL --se
 
 Ese número sólo identifica el esquema del código, no demuestra compatibilidad
 hacia atrás. Compararlo con el esquema del backup y revisar SQL/contratos reales.
+Revisar además `cargar_paquete_json` y sus variantes en
+[responses.py](../backend/app/schemas/responses.py): esta base lee 1.0 y 1.1,
+mientras que `f292415` sólo leía 1.0. El esquema SQLite sigue siendo 11; esa
+igualdad no permite volver al lector antiguo después de guardar paquetes 1.1.
+La compatibilidad debe abarcar estado local, objetos OCI y exportaciones de
+resultado/historial, incluidos ambos modos. Restaurar un backup local anterior
+no elimina paquetes nuevos ni efectos externos en OCI.
 Si una migración impide volver a la imagen anterior, acordar antes de actualizar
 el procedimiento de recuperación y la pérdida aceptable; no confiar en rollback
 automático como protección de datos.
@@ -882,11 +942,12 @@ Repetir salud y comprobaciones funcionales de la sección 12 sin generar materia
 nuevo por defecto. Registrar la revisión y los IDs que quedaron activos.
 **Esperado:** interrupción acotada a parada/recreación/salud, mismo volumen y
 origen verificado. **Consumo:** builds y disco local; al activar, OCI/ACME y posibles
-reconciliaciones/reconstrucciones. **Parar si:** esquema incompatible, margen
+reconciliaciones/reconstrucciones. **Parar si:** esquema o lectores/paquetes incompatibles, margen
 insuficiente, helper distinto, journal pendiente, peer/volumen/configuración no
 verificables o salud fallida.
 
-**Volver a imágenes/configuración:** con esquema compatible y sin journal pendiente,
+**Volver a imágenes/configuración:** con esquema y paquetes locales/OCI compatibles
+con los lectores anteriores, y sin journal pendiente,
 reetiquetar los IDs anteriores como `nuevamente-backend:latest` y
 `nuevamente-frontend:latest`, y ejecutar `--activate`/`--validate` desde la fuente
 anterior conservada. No restaurar `current.json` a mano. Si hay journal, usar el
@@ -1361,7 +1422,9 @@ reobservación de peer. Sin versión anterior, el helper detiene los servicios
 nuevos y retira la publicación, conservando datos/ACME: no hay aplicación previa
 que validar. `--recover` **no restaura la VM, secretos, SQLite, migraciones ni
 efectos externos**. Un resultado `prior-service-state-restored` no revierte lo
-que ya escribió la versión fallida.
+que ya escribió la versión fallida. Antes de volver al modelo anterior, revisar
+también su compatibilidad con paquetes locales/OCI 1.0/1.1 y sus modos: un journal
+no convierte un lector 1.0 en lector 1.1, aunque SQLite conserve el esquema 11.
 
 Sólo si existía una versión anterior y se restauró correctamente:
 
@@ -1370,7 +1433,7 @@ sudo bash /RUTA_FUENTE_DESPLEGADA/infra/caddy/deploy.sh --checkout /RUTA_FUENTE_
 ```
 
 **Consumo:** contenedores/salud, posibles OCI/ACME al arrancar. **Parar si:** imagen
-ausente, esquema incompatible, volumen/secretos cambiados o recuperación fallida;
+ausente, esquema/paquetes/lector incompatibles, volumen/secretos cambiados o recuperación fallida;
 conservar journal y servicios cerrados. No borrar estado para conseguir verde.
 
 ### 17.3 Pérdida de VM con backup
@@ -1394,7 +1457,9 @@ sudo stat -c '%u:%g %a %n' /RUTA_DESTINO_RESTAURADO
 ```
 
 Usar la ruta real inspeccionada en 16.3, no el marcador literal. Comprobar SQLite,
-versión del esquema, permisos, ledger, obligaciones y vigencia de los recursos.
+versión del esquema y compatibilidad de lectores con paquetes locales/OCI y modos,
+permisos, ledger, obligaciones y vigencia de los recursos. La restauración conserva
+el modo guardado; no transforma básicos en aprobados ni restaura trabajos pendientes.
 Preparar archivos/credenciales autorizados y DNS/red del nuevo host; resolver
 revocaciones o consumo posteriores al backup **antes** de abrir la app. Conservar
 Caddy detenido mientras no esté resuelto ese análisis. No copiar el estado de
