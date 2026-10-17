@@ -108,6 +108,7 @@ export const App: React.FC = () => {
   const [genNicho, setGenNicho] = useState<IndustryNiche>('general');
   const [genDetalle, setGenDetalle] = useState<DetailLevel>('didactico');
   const [genIdiomaSalida, setGenIdiomaSalida] = useState<OutputLanguage>('es');
+  const [genModo, setGenModo] = useState<'multiagente' | 'basico'>('multiagente');
   const [genAlcance, setGenAlcance] = useState<'documento_completo' | 'seccion'>('documento_completo');
   const [genSeccionId, setGenSeccionId] = useState<string>('');
   const [confirmModalPending, setConfirmModalPending] = useState<{
@@ -322,6 +323,7 @@ export const App: React.FC = () => {
       setGenNicho(generation.parametros.nicho_sector);
       setGenDetalle(generation.parametros.nivel_detalle);
       setGenIdiomaSalida(generation.parametros.idioma_salida);
+      setGenModo(generation.parametros.modo_generacion ?? 'multiagente');
       setGenAlcance(generation.parametros.alcance.tipo);
       setGenSeccionId(generation.parametros.alcance.seccion_id ?? '');
       setMostrandoDocumentos(false);
@@ -367,6 +369,7 @@ export const App: React.FC = () => {
         ? { tipo: 'seccion' as const, seccion_id: genSeccionId }
         : { tipo: 'documento_completo' as const };
     const peticion: GenerateRequest = {
+      modo_generacion: genModo,
       document_id: docSeleccionado.document_id,
       perfil_destinatario: genPerfil,
       formato_salida: genFormato,
@@ -613,6 +616,19 @@ export const App: React.FC = () => {
                     <option key={l} value={l}>{t(`idioma.${l}`, idiomaUi)}</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="nm-label" htmlFor="app-generation-mode">{t('modo.selector', idiomaUi)}</label>
+                <select id="app-generation-mode" className="nm-select" value={genModo}
+                  onChange={(e) => setGenModo(e.target.value as 'multiagente' | 'basico')}
+                  aria-describedby="app-generation-mode-help">
+                  <option value="multiagente">{t('modo.multiagente', idiomaUi)}</option>
+                  <option value="basico">{t('modo.basico', idiomaUi)}</option>
+                </select>
+                <p id="app-generation-mode-help" style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>
+                  {t(genModo === 'basico' ? 'modo.aviso' : 'modo.ayuda', idiomaUi)}
+                </p>
               </div>
 
               {/* Alcance */}
@@ -897,6 +913,7 @@ export const App: React.FC = () => {
                           {t(`formato.${generacionActiva.parametros.formato_salida}`, idiomaUi)} ·{' '}
                           {t(`nicho.${generacionActiva.parametros.nicho_sector}`, idiomaUi)} ·{' '}
                           {t(`idioma.${generacionActiva.parametros.idioma_salida}`, idiomaUi)}
+                          {' · '}{t(`modo.${generacionActiva.parametros.modo_generacion ?? 'multiagente'}`, idiomaUi)}
                         </div>
                       </div>
                       <button
@@ -1306,6 +1323,8 @@ export const App: React.FC = () => {
               <div><strong>{t('sidebar.formato', idiomaUi)}:</strong> {t(`formato.${confirmModalPending.peticion.formato_salida}`, idiomaUi)}</div>
               <div><strong>{t('sidebar.nicho', idiomaUi)}:</strong> {t(`nicho.${confirmModalPending.peticion.nicho_sector}`, idiomaUi)}</div>
               <div><strong>{t('sidebar.detalle', idiomaUi)}:</strong> {t(`detalle.${confirmModalPending.peticion.nivel_detalle}`, idiomaUi)}</div>
+              <div><strong>{t('modo.selector', idiomaUi)}:</strong> {t(`modo.${confirmModalPending.peticion.modo_generacion ?? 'multiagente'}`, idiomaUi)}</div>
+              {confirmModalPending.peticion.modo_generacion === 'basico' && <p className="nm-alert nm-alert-warning">{t('modo.aviso', idiomaUi)}</p>}
               <div><strong>{t('sidebar.idioma_salida', idiomaUi)}:</strong> {t(`idioma.${confirmModalPending.peticion.idioma_salida}`, idiomaUi)}</div>
               <div>
                 <strong>{t('sidebar.alcance', idiomaUi)}:</strong>{' '}
@@ -1604,7 +1623,7 @@ export const ActiveGenerationPanel: React.FC<{
   const [cancelRequested, setCancelRequested] = useState(false);
 
   if (!job) {
-    return <div className="nm-card"><GenerationLiveStatus stream={stream} idioma={idioma} /></div>;
+    return <div className="nm-card"><GenerationLiveStatus stream={stream} idioma={idioma} modo={generacion.parametros.modo_generacion} /></div>;
   }
 
   const estado = job.status;
@@ -1656,7 +1675,7 @@ export const ActiveGenerationPanel: React.FC<{
         <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>
           {t(`estados.trabajo.${estado}`, idioma)}
         </div>
-        <GenerationLiveStatus stream={stream} idioma={idioma} />
+        <GenerationLiveStatus stream={stream} idioma={idioma} modo={generacion.parametros.modo_generacion} />
         {cancelRequested && <p role="status">{t('live.cancel_requested', idioma)}</p>}
         {estado === 'queued' && typeof job.posicion_cola === 'number' && (
           <div style={{ fontSize: '0.85rem', color: 'var(--ink-secondary)' }}>

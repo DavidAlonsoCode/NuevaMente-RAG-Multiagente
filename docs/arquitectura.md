@@ -5,6 +5,20 @@
 
 ---
 
+Ampliación [33.1: modos de generación](modos-generacion.md): ambos recorridos comparten documento preparado, RAG, worker, permisos y almacenamiento. El modo pertenece a cada adaptación, no al documento.
+
+```mermaid
+flowchart LR
+    R["Documento ready e índice existente"] --> M{"Modo de la nueva generación"}
+    M -->|multiagente| G["Grafo actual con Writer y Critic"]
+    G --> A["Paquete aprobado y guardado"]
+    M -->|básico| B["RAG + una redacción, sin Critic"]
+    B --> V["Validación estructural y de citas"]
+    V --> N["Paquete no evaluado y guardado"]
+```
+
+Implementación: [selección y persistencia](../backend/app/generations/service.py), [recorrido básico](../backend/app/core/agents/basic.py), [grafo conservado](../backend/app/core/agents/graph.py) y [variantes del contrato](../backend/app/schemas/responses.py). Fallos y cancelación no exponen material; ambas salidas exigen persistencia confirmada. El diagrama describe implementación local, no acredita proveedores ni despliegue reales.
+
 ## Tabla de Contenidos
 
 1. [Contexto del sistema](#1-contexto-del-sistema)

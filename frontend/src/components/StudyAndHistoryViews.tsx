@@ -935,6 +935,7 @@ export const HistoryFullView: React.FC<{
     if (p.perfil_destinatario) partes.push(t(`perfil.${p.perfil_destinatario}`, idiomaUi));
     if (p.formato_salida) partes.push(t(`formato.${p.formato_salida}`, idiomaUi));
     if (p.idioma_salida) partes.push(t(`idioma.${p.idioma_salida}`, idiomaUi));
+    partes.push(t(`modo.${p.modo_generacion ?? 'multiagente'}`, idiomaUi));
     return `${partes.join(' · ')} · ${String(fila.generation_id).slice(-8)}`;
   };
 

@@ -1,9 +1,12 @@
 """React compilado y Caddy/TLS locales reales; proveedores explícitamente simulados."""
 
+import csv
+import io
 import json
 import os
 import re
 import tempfile
+import zipfile
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -38,6 +41,52 @@ def upload_from_browser(page, url, title):
 def generate_from_browser(page):
     page.get_by_role("button", name="Generar material", exact=True).click()
     page.get_by_role("button", name="Confirmar y generar", exact=True).click()
+
+
+def download_all_formats(page, mode, secrets):
+    from pypdf import PdfReader
+
+    labels = {
+        "json": "JSON (paquete canónico)",
+        "md": "Markdown didáctico",
+        "pdf": "PDF didáctico",
+        "csv": "CSV de flashcards",
+        "tsv": "TSV de flashcards",
+        "apkg": "Mazo Anki (.apkg)",
+    }
+    for fmt, label in labels.items():
+        with page.expect_download() as event:
+            page.get_by_role("button", name=label, exact=True).click()
+        download = event.value
+        assert download.suggested_filename.endswith("." + fmt)
+        data = Path(download.path()).read_bytes()
+        inspection = data
+        if fmt == "json":
+            package = json.loads(data)
+            assert package["modo_generacion"] == mode
+            assert package["status"] == ("no_evaluado" if mode == "basico" else "aprobado")
+        elif fmt == "pdf":
+            pdf = PdfReader(io.BytesIO(data))
+            assert pdf.pages
+            inspection += (" ".join(p.extract_text() for p in pdf.pages) + str(pdf.metadata)).encode()
+        elif fmt == "apkg":
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                assert archive.testzip() is None
+                assert archive.read("collection.anki2").startswith(b"SQLite format 3")
+                inspection += b"".join(archive.read(n) for n in archive.namelist())
+        elif fmt in ("csv", "tsv"):
+            rows = list(
+                csv.reader(
+                    (line for line in data.decode().splitlines() if not line.startswith("#")),
+                    delimiter="," if fmt == "csv" else "\t",
+                )
+            )
+            assert rows and all(len(row) == 5 for row in rows)
+        if fmt in ("md", "pdf", "csv", "tsv"):
+            label = "Sin evaluación independiente" if mode == "basico" else "Revisión automática aprobada"
+            assert label.encode() in inspection
+        contains_private_data = any(secret.encode() in inspection for secret in secrets)
+        assert not contains_private_data, "La exportación contiene credenciales privadas del espacio de prueba"
 
 
 def test_react_browser_upload_through_caddy_without_external_requests():
@@ -232,6 +281,92 @@ def test_quality_rejection_in_browser_exposes_no_draft():
                 assert not page.get_by_text("[SOURCE_TITLE]", exact=True).count()
                 assert not page.get_by_text("Contenido revisado con fuentes", exact=True).count()
                 assert proxy.counters()["generation_calls"] == 3
+                context.close()
+                browser.close()
+        finally:
+            proxy.close()
+
+
+def test_basic_and_multiagent_reuse_document_without_relabeling_results():
+    from playwright.sync_api import expect, sync_playwright
+
+    with tempfile.TemporaryDirectory(prefix="modes-react-", dir=ROOT / ".data") as temporary:
+        proxy = ProxyHarness(Path(temporary), frontend="react")
+        try:
+            proxy.launch()
+            proxy.release_generation()
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
+                context = browser.new_context(ignore_https_errors=True, service_workers="block")
+                page = context.new_page()
+                modes, generation_ids, uploads, errors = [], [], [], []
+                secrets = set()
+
+                def request(req):
+                    path = urlsplit(req.url).path
+                    authorization = req.header_value("authorization")
+                    if authorization and authorization.startswith("Bearer "):
+                        secrets.add(authorization.removeprefix("Bearer "))
+                    if req.method == "POST" and path == "/api/generate":
+                        modes.append(req.post_data_json["modo_generacion"])
+                    if req.method == "POST" and path == "/api/documents/upload":
+                        uploads.append(1)
+
+                def response(res):
+                    if res.request.method == "POST" and urlsplit(res.url).path == "/api/generate":
+                        generation_ids.append(res.json()["generation_id"])
+
+                page.on("request", request)
+                page.on("response", response)
+                page.on("pageerror", lambda _error: errors.append("browser-error"))
+                secrets.add(upload_from_browser(page, proxy.url, "Documento compartido por ambos modos"))
+                selector = page.get_by_label("Modo de generación", exact=True)
+                expect(selector).to_have_value("multiagente")
+                selector.select_option("basico")
+                assert not modes
+                generate_from_browser(page)
+                expect(page.get_by_role("note").filter(has_text="Sin evaluación independiente")).to_be_visible(
+                    timeout=30000
+                )
+                assert proxy.counters()["generation_calls"] == 1
+                assert proxy.counters()["verification_calls"] == 0
+                assert not page.get_by_text("Contenido revisado con fuentes", exact=True).count()
+                download_all_formats(page, "basico", secrets)
+                selector.select_option("multiagente")
+                assert modes == ["basico"]
+                assert not page.get_by_text("Contenido revisado con fuentes", exact=True).count()
+                generate_from_browser(page)
+                expect(page.get_by_text("Contenido revisado con fuentes", exact=True)).to_be_visible(timeout=30000)
+                download_all_formats(page, "multiagente", secrets)
+                assert modes == ["basico", "multiagente"]
+                assert len(set(generation_ids)) == 2 and len(uploads) == 1
+                assert proxy.counters()["generation_calls"] == 2
+                assert not errors
+                page.set_viewport_size({"width": 320, "height": 800})
+                assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+                page.get_by_role("button", name="Ver historial completo", exact=True).click()
+                for position, mode in ((0, "multiagente"), (1, "basico")):
+                    page.get_by_role("button", name="Abrir resultado o diagnóstico", exact=True).nth(position).click()
+                    download_all_formats(page, mode, secrets)
+                    page.get_by_role("button", name="Volver al listado", exact=True).click()
+                assert proxy.counters()["generation_calls"] == 2
+                assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+                private_write(
+                    ROOT / ".data/caddy-evidence/generation-modes.json",
+                    json.dumps(
+                        {
+                            "modes": modes,
+                            "independent_results": 2,
+                            "uploads": 1,
+                            "result_downloads_per_mode": 6,
+                            "history_downloads_per_mode": 6,
+                            "private_data_absent": True,
+                            "providers": "explicit-doubles",
+                            "public_acceptance": False,
+                        },
+                        indent=2,
+                    ),
+                )
                 context.close()
                 browser.close()
         finally:

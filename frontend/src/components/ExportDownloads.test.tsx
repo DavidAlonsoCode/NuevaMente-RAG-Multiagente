@@ -6,6 +6,7 @@ import { ExportFormat, FORMATOS_EXPORTACION, PedagogicalStudentOutput } from '..
 import fixtures from '../flows/fixtures.test-data.json';
 import { t } from '../i18n';
 import { ExportDownloads } from './ExportDownloads';
+import { validarPaquete } from '../flows/validators';
 
 const persistenciaOci = { status_upload: 'completado' as const, provider: 'oci' as const };
 const boton = (fmt: ExportFormat) =>
@@ -30,10 +31,34 @@ function montar(paquete: unknown, overrides: Partial<React.ComponentProps<typeof
 beforeEach(() => {
   URL.createObjectURL = vi.fn().mockReturnValue('blob:synthetic');
   URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 });
-afterEach(() => { cleanup(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('descargas multiformato', () => {
+  it.each(['multiagente', 'basico'] as const)('descarga los seis formatos del paquete 1.1 %s', async (modo) => {
+    const paquete: any = { ...structuredClone(fixtures.flashcards), schema_version: '1.1', modo_generacion: modo };
+    if (modo === 'basico') {
+      paquete.status = 'no_evaluado';
+      paquete.evaluacion_calidad = {
+        ...Object.fromEntries(Object.keys(paquete.evaluacion_calidad).map((key) => [key, null])),
+        estado_evaluacion: 'no_realizada',
+      };
+      paquete.trazabilidad = { ...paquete.trazabilidad, modelo_verificacion: null };
+    }
+    validarPaquete(paquete);
+    const { api, props } = montar(paquete);
+    for (const fmt of FORMATOS_EXPORTACION) {
+      expect(boton(fmt).disabled).toBe(false);
+      fireEvent.click(boton(fmt));
+      await waitFor(() => expect(api.downloadExport).toHaveBeenLastCalledWith('synthetic', paquete.generation_id, fmt));
+      await waitFor(() => expect(boton(fmt).disabled).toBe(false));
+    }
+    expect(api.downloadExport).toHaveBeenCalledTimes(6);
+    expect(props.onError).not.toHaveBeenCalled();
+    expect(paquete.status).toBe(modo === 'basico' ? 'no_evaluado' : 'aprobado');
+  });
+
   it('habilita los seis formatos para flashcards y descarga el pedido', async () => {
     const { api } = montar(fixtures.flashcards);
     for (const fmt of FORMATOS_EXPORTACION) expect(boton(fmt).disabled).toBe(false);
