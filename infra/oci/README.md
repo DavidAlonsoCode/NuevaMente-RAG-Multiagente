@@ -14,14 +14,27 @@ Referencia: `decisiones_proyecto.md` §9 y
 - `verify_listeners.py`: permite listeners locales en todo el rango loopback
   (incluido el DNS de Ubuntu en `127.0.0.53`) y rechaza puertos de app expuestos.
 
-La consulta del aprovisionador se probó contra OCI real. Las guardas y la
-creación/reanudación tienen pruebas con OCI simulado; los scripts pasan `bash -n`.
-Todavía no se ejecutaron en una VM real ni completan la provisión del #47.
-La aplicación, Caddy y sus credenciales se despliegan en Issue 48.
+Estado documental contrastado el **16/10/2026** sobre `develop` `f292415`:
+#47 y #48 están cerrados con su implementación integrada. La aceptación real
+de VM, ARM64/Docker, SSH y gratuidad permanece en
+[#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
+El cierre de los issues no acredita una VM operativa.
+La consulta del aprovisionador tiene evidencia OCI real histórica; las guardas,
+creación/reanudación y sintaxis de scripts tienen verificaciones previas con el
+alcance registrado en cada revisión, sin una nueva ejecución en esta actualización.
+La configuración de aplicación, Caddy y credenciales está integrada en #48.
 La precarga offline de las fuentes demo del #49 y sus pendientes se describen
 en el [runbook de precarga](../../docs/demo-precarga.md).
+El [mapa de fuentes y evidencias de #58](../../docs/verificacion-issue-58.md)
+separa implementación, evidencia histórica y aceptación pendiente.
+La [receta de instalación de #58](../../docs/despliegue-oci.md) consolida desde
+prerrequisitos hasta salud y preparación demo; su ejecución real sigue pendiente.
 
 ## Bloqueo observado el 8 de octubre de 2026
+
+Registro histórico: las menciones al estado de #47 en esta sección y en las
+reconsultas del 8 y 12 de octubre describen esas revisiones, anteriores al estado
+de integración indicado arriba. Sus consultas no acreditan capacidad disponible hoy.
 
 La consulta real `CreateComputeCapacityReport` en `sa-vinhedo-1`, para 2 OCPU y
 12 GB, devolvió `OUT_OF_HOST_CAPACITY` en el único dominio de disponibilidad.
@@ -91,9 +104,10 @@ ese diario. Conservarlo para retomar; no reemplazarlo con un snapshot antiguo.
 - Firewall del host: protege INPUT y DOCKER-USER; se reaplica al arrancar/reiniciar
   Docker. El tráfico nuevo desde la interfaz exterior no llega a puertos publicados
   por contenedores. Caddy corre en el host en #48.
-- `backend_data` ya está definido en `docker-compose.yml`: su driver local almacena
-  datos en el disco de la VM. En #48 usar un nombre estable de proyecto Compose
-  (por ejemplo `nuevamente`) para conservar el mismo volumen entre actualizaciones.
+- `backend_data` está definido en `docker-compose.yml`: su driver local almacena
+  datos en el disco de la VM. El overlay `docker-compose.production.yml` fija el
+  proyecto `nuevamente` y el volumen `nuevamente_backend_data`; el helper de #48
+  exige comprobar su identidad y los datos existentes antes de activarlo.
 - El montaje OCI de solo lectura está definido en `docker-compose.oci.yml` (#14).
   Se configura con el usuario técnico al desplegar #48; el config del operador no
   se copia al host ni al backend.
@@ -119,7 +133,8 @@ Registrar también que 8000/8501 no son accesibles directamente.
 
 La evidencia de costo exige la consola OCI con la instancia A1 y su asignación/costo
 cero. No publicar claves ni configuración privada en capturas. Estos controles siguen
-pendientes porque no existe la VM; el #47 no se marca completado por tests simulados.
+pendientes en #133: la evidencia revisada no acredita una VM. Los tests simulados y
+el cierre de implementación de #47 no satisfacen esa aceptación externa.
 
 Fuentes: [Always Free](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm),
 [reglas de red OCI](https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/securityrules.htm),

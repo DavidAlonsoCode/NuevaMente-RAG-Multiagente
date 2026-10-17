@@ -1,5 +1,15 @@
 # Proxy del host — Issue 48, implementación y protocolo de aceptación
 
+Estado documental al **16/10/2026**, `develop` `f292415`: #48 está integrado y
+cerrado; VM, DNS/HTTPS público, red y SSE con proveedores reales se aceptan en
+[#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
+El frontend vigente es React (PR #135), con seguimiento SSE integrado en #33
+(PR #136). Las corridas Streamlit y sus diagnósticos conservan fecha, versión y
+alcance histórico; no acreditan React ni una VM pública. Ver el
+[mapa de fuentes y evidencias de #58](../../docs/verificacion-issue-58.md).
+La [instalación consolidada](../../docs/despliegue-oci.md) documenta los pasos
+operativos para una ejecución futura autorizada, sin acreditar su reproducción.
+
 ## Guía principal: instalar → arrancar → comprobar
 
 Esta guía sigue el alcance vigente de [#48](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/48)
@@ -75,9 +85,12 @@ Este directorio define configuración, contratos y herramientas de instalación,
 despliegue y recuperación para **Caddy 2.11.7** en Ubuntu 24.04 ARM64.
 Las herramientas requieren ejecución explícita por un administrador en un host
 autorizado; escribirlas o probarlas con dobles no instala ni activa servicios.
-La integración por Caddy con
-SSE/Streamlit reales a la Etapa 3; aceptación pública a la Etapa 4. Cada etapa
-requiere revisión y autorización independiente.
+La Etapa 3 conserva el arnés de integración Caddy/SSE/Streamlit histórico.
+La verificación de React se registra por separado en
+[verificación del frontend](../../docs/verificacion-frontend-react.md) y
+[verificación de #33](../../docs/verificacion-issue-33.md).
+La aceptación pública descrita en la Etapa 4 permanece en #133; ejecutar sus
+procedimientos requiere autorización operativa.
 
 ## Entrada y contratos
 
@@ -112,13 +125,14 @@ de WebSocket se conservan y no acreditan la nueva interfaz.
 No se alteran `Authorization`, `Idempotency-Key`, `Last-Event-ID`, `X-Request-ID`,
 `Retry-After`, `Content-Type`, `Cache-Control` ni `X-Accel-Buffering` del contrato.
 
-En API, UI y handshake WebSocket se **sobrescriben**, nunca se agregan a la cadena
+En API y UI se **sobrescriben**, nunca se agregan a la cadena
 del cliente, `X-NuevaMente-Client-IP` y `X-NuevaMente-Origin-Key`. Se retiran ambas
-de respuestas, incluida protección global sobre respuestas HTTP locales. El
-frontend existente transmite estas cabeceras desde `st.context.headers` al
-backend; no recibe el secreto como variable de entorno. El proxy no inspecciona
-mensajes WebSocket: demostrar que la aplicación no serializa esa clave en
-páginas/mensajes requiere la integración de Etapa 3.
+de respuestas, incluida protección global sobre respuestas HTTP locales.
+En producción React solicita `/api` al mismo origen y Caddy enruta esas
+solicitudes directamente al backend; el navegador no debe recibir el secreto.
+La transmisión desde `st.context.headers` y las pruebas de handshake/mensajes
+WebSocket pertenecen al frontend Streamlit histórico de
+`frontend_streamlit_viejo/`. No describen el transporte de React.
 
 ## Streaming y timeouts
 
@@ -1458,17 +1472,22 @@ metadatos públicos permitidos. Abrir la UI, crear/acceder al espacio de prueba,
 realizar una interacción que produzca cambio visible y navegar por contenido.
 Observar las solicitudes de React a `/api` y el efecto visible de la interacción,
 sin exportar tokens ni cuerpos privados. La UI React no usa el WebSocket de
-Streamlit. El seguimiento SSE de generación continúa pendiente de #33.
+Streamlit. El seguimiento SSE de #33 está integrado; su aceptación con
+proveedores reales y desde la URL pública sigue pendiente en #133.
 Interrumpir la red brevemente,
-restaurarla y confirmar reconexión **más** una nueva interacción funcional; 101
-aislado no sirve. Anotar navegador/versión, UTC, acciones y resultados saneados.
+restaurarla y confirmar reconexión SSE y una nueva interacción funcional.
+Una respuesta HTTP aislada no acredita ese recorrido. Anotar navegador/versión,
+UTC, acciones y resultados saneados.
 
-**Host y privacidad:** comprobar que CORS/XSRF siguen activos, contexto de origen
-privado coherente en servidor y ausencia de clave de origen en headers públicos,
-HTML, frames y estado enviado al navegador. Usar comprobaciones booleanas en
+**Host y privacidad:** comprobar confianza de origen entre Caddy y backend,
+autenticación de API, CSP del servidor estático y ausencia de clave de origen en
+headers públicos, HTML y estado enviado al navegador. CORS del backend está
+deshabilitado por defecto; los controles CORS/XSRF y el contexto privado de
+Streamlit documentados en las pruebas históricas no se atribuyen a React.
+Usar comprobaciones booleanas en
 memoria o inspección restringida, sin mostrar/renderizar la clave ni exportar
 HTML/estado/HAR. Resumir sólo hallazgos y contadores. Sin esta inspección el
-criterio permanece inconcluso, aunque la UI responda 200/101.
+criterio permanece inconcluso, aunque la UI responda 200.
 
 #### Criterio 2: generación real, progreso SSE y reconexión
 

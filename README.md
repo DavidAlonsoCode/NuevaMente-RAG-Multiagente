@@ -217,6 +217,10 @@ docker compose up --build --detach --wait --wait-timeout 120
 Para el arranque Docker sin credenciales, usá `.env.docker.example`; pasos,
 persistencia y verificación ARM64 en [docs/docker.md](docs/docker.md).
 
+La [guía de instalación y operación en OCI](docs/despliegue-oci.md) y su
+[registro de verificación](docs/verificacion-issue-58.md) distinguen comprobaciones
+locales, revisión humana pendiente y reproducción real en #133.
+
 ## Segmentación de documentos (issue #12)
 
 `app.core.rag.chunker.trocear(resultado_parseo, workspace_id, document_id)`

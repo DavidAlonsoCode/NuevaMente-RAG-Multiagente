@@ -1,8 +1,10 @@
 # Contenedores locales — Issue 26
 
-Docker Compose ejecuta el backend FastAPI y el frontend Streamlit. Conserva la
-arquitectura de `decisiones_proyecto.md` §14 y `docs/arquitectura.md`: un proceso
-Uvicorn, un worker dedicado y un volumen de datos exclusivo del backend.
+Docker Compose ejecuta el backend FastAPI y el frontend React, TypeScript y Vite
+integrado en el PR #135. Conserva un proceso Uvicorn, un worker dedicado y un
+volumen de datos exclusivo del backend. La interfaz Streamlit y sus pruebas
+históricas están en `frontend_streamlit_viejo/`; no acreditan React.
+Ver la [guía del frontend vigente](../frontend/README.md).
 
 ## Arranque sin credenciales
 
@@ -35,7 +37,7 @@ docker compose up --build --detach --wait --wait-timeout 120
 
 Este modo utiliza almacenamiento local explícito. `MOCK_GEMINI=1` identifica el
 entorno simulado; los tests inyectan su doble. No instala una integración de
-producción ni completa los endpoints/pipelines todavía pendientes. El health
+producción ni acredita los pipelines con proveedores reales. El health
 no consulta Gemini ni OCI. `.env.example` conserva el template de producción,
 que exige credenciales reales y rechaza mocks.
 
@@ -88,8 +90,8 @@ print("Dimensiones:", len(vector))
 ```
 
 Esto verifica el cliente #13 contra Gemini. El recorrido completo de cargar un
-PDF y producir contenido desde la UI depende de otros issues; no se declara
-implementado por esta prueba. Para volver al smoke de Compose, reactivá ambos
+PDF y producir contenido desde la UI no se verifica con esta prueba aislada.
+Para volver al smoke de Compose, reactivá ambos
 mocks explícitos y recreá los contenedores.
 
 ## Datos, red y arranque
@@ -112,31 +114,44 @@ Conserva salida a proveedores, restricciones, un worker y bindings loopback.
 El volumen de producción tiene nombre estable `nuevamente_backend_data`; una
 instalación con datos previos requiere comprobar su volumen antes de desplegar.
 Las IPs de confianza y el hostname son requisitos explícitos, sin defaults.
-Ver [configuración, permisos y validaciones](../infra/caddy/README.md). Esta etapa
-define el contrato; no instala Caddy ni acredita tráfico público.
+Ver [configuración, permisos y validaciones](../infra/caddy/README.md).
+#48 ya integra las herramientas de instalación y despliegue. La aceptación de
+VM/HTTPS público sigue pendiente en
+[#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
+Los comandos de Compose base de esta guía son locales; producción utiliza el
+helper de Caddy con observación del peer y activación explícita.
+Ver la [instalación OCI consolidada](despliegue-oci.md), redactada para ejecución
+posterior autorizada y aún sin aceptación real.
 
 Compose espera el health del backend y `frontend/entrypoint.py` comprueba además
-activamente `/api/health` antes de iniciar Streamlit, con un plazo de 60 segundos.
+activamente `/api/health` antes de servir el build React, con un plazo de 60 segundos.
 Si se vence, el proceso termina con error y la política `unless-stopped` permite
-un nuevo arranque. Esto no reemplaza el manejo de caídas durante uso del futuro
-cliente HTTP del #16.
+un nuevo arranque en Compose base. En el despliegue productivo, restart/reboot
+invalida la observación del peer y exige reactivación administrativa mediante
+el helper de Caddy; no se promete reapertura automática. El health no sustituye
+la comprobación funcional de API/UI ni el manejo de errores del cliente React.
 
 Ambas imágenes usan UID/GID 10001, código sin escritura, filesystem de solo
 lectura, `/tmp` temporal y sin capabilities. El volumen nuevo hereda el dueño
 no-root definido en la imagen. El backend incluye DejaVu Sans y bibliotecas
 FreeType/JPEG/PNG/OpenJPEG para renderizado; el exportador PDF pertenece al #44.
 Los contextos `.dockerignore` admiten solamente código/configuración necesaria
-y requirements; excluyen secretos, tests, cachés, bases y subidas.
+y dependencias; excluyen secretos, tests, cachés, bases y subidas. El frontend
+compila con Node y termina en una imagen Python que sirve los archivos estáticos;
+las versiones y digests efectivos están en cada Dockerfile.
 
 `docker compose down --volumes` **borra los datos del proyecto seleccionado**;
 usalo solamente para un entorno efímero. Recrear contenedores no borra el
-volumen; perder el disco sí requiere recuperación desde OCI (#47/#49).
+volumen. Perder el disco requiere restaurar el volumen desde backup para conservar
+todo el estado operativo; la reconstrucción desde OCI recupera sólo lo confirmado
+remotamente. Ver los [límites de recuperación](verificacion-issue-58.md#recuperación-y-estado-durable).
 
 ## Construcción ARM64 y verificación repetible
 
-Las dos imágenes fijan el índice multiarch oficial de Python 3.11.17 slim
-Bookworm por digest. Sus dependencias Python directas mantienen versiones `==`
-y se instalan antes del código para reutilizar la capa de dependencias.
+Las imágenes finales fijan el índice multiarch oficial de Python 3.11.17 slim
+Bookworm por digest. El frontend agrega una etapa Node fijada por versión/digest
+y dependencias npm con lockfile. Las dependencias Python directas del backend
+mantienen versiones `==` y se instalan antes del código.
 
 ```powershell
 docker buildx build --platform linux/arm64 --load --tag nuevamente-backend:arm64 ./backend
@@ -161,8 +176,9 @@ docker compose down --volumes
 
 El smoke crea un espacio, recrea ambos contenedores y lo recupera por código:
 acredita persistencia del SQLite real. Un marcador en el directorio de índices
-acredita que también se conserva esa ruta del volumen. La integración ChromaDB
-se implementa en el #17 y debe sumar sus propias pruebas reales del índice.
+acredita que también se conserva esa ruta del volumen. Esto no prueba por sí solo
+la reconstrucción de Chroma: el índice integrado tiene cobertura separada en
+`backend/tests/test_vectorstore.py` y en las pruebas de recuperación documental.
 
 Referencias oficiales: [orden y health de Compose](https://docs.docker.com/compose/how-tos/startup-order/),
 [construcción multiarch](https://docs.docker.com/build/building/multi-platform/)
