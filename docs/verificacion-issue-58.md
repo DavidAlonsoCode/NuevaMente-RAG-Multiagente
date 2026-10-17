@@ -682,3 +682,110 @@ revisión humana independiente y #133. La plantilla humana anterior sigue sin
 aprobación atribuida; deberá identificar la versión documental que revise.
 La reproducción real externa permanece separada de esa revisión y del contraste
 documental. #58 no se declara cerrado ni #133 completado.
+
+## Corrección acotada de 17.1 — 17/10/2026
+
+Antes de editar código se verificaron `HEAD=8b97c6b`, índice vacío y únicamente
+los nueve documentos revisados. Se guardaron en el único commit autorizado
+`e0d3377ddce675212c386b19d83783b04701cf50`,
+`docs(oci): actualizar guía a develop 5988244`; working tree limpio después.
+El parche siguiente permanece sin preparar ni commit, sobre esa base.
+
+Se releyeron AGENTS.md, el cuerpo vigente de #58, helper/instalador y sus pruebas.
+El cambio separa listado vacío exitoso, contenedor único identificado, múltiples
+candidatos y fallos de listado/inspección. Sólo `--activate` puede recrear un
+backend ausente con `current.json`, volumen conservado y el mismo modelo/imagen,
+configuración y secreto aprobados. El helper ejecutado debe coincidir con el hash
+del instalado verificado por `installation.json`. No se amplía el instalador:
+actualizar una instalación antigua sigue requiriendo revisión administrativa.
+
+Se reutilizan journal/transacción, cuarentena y compuerta: journal antes del cierre
+del proxy y recreación; peer observado de nuevo, volumen revalidado antes de soltar
+el escritor, salud/configuración efectiva antes de publicar. La recuperación del
+modelo anterior cierra también Caddy antes de recrear. `--validate` no recrea y
+`--recover` sigue exigiendo un journal real. No se borran datos, secretos, ledger,
+obligaciones ni `current.json` para aparentar una instalación nueva.
+
+### Selección registrada antes de ejecutar
+
+Colección real final: **398 identidades** = 89 configuración + 186 despliegue
+(142 anteriores y 44 nuevas) + 113 reporte/diagnóstico + 10 proxy. Sólo cambian
+recuento/huella de despliegue en `REQUIRED_FAMILIES`:
+`e2524170700884e9f708b3e540982f4291311438d3e0a3ff800c6b241a2720b7`.
+Las otras tres huellas coinciden; no se excluyen casos ni se derivan hashes de
+un reporte de ejecución. La colección incluye nombres parametrizados completos.
+
+Se seleccionan para ejecutar `backend/tests/test_caddy_config.py`,
+`backend/tests/test_caddy_deploy.py` y `backend/tests/test_caddy_smoke.py`, marker
+`unit and not integration_real`, sin `caddy_proxy`. Las 44 nuevas son `unit`, con
+dobles explícitos de Docker/systemd/peer/salud, archivos y datos sintéticos.
+El pytest raíz desactiva `.env` y fuerza mocks; además el proceso usa entorno
+saneado, `APP_ENV=test`, `MOCK_OCI=1`, `MOCK_GEMINI=1`, sin credenciales heredadas.
+No hay Caddy/Docker/Compose en PATH ni Linux/ARM64 nativo: las pruebas dependientes
+se registrarán como omitidas, sin acreditar su comportamiento. Los diez proxy
+sólo se recolectaron para el manifiesto; no se ejecutan ni se construye React.
+
+### Resultados observados del parche 17.1
+
+PC Windows AMD64; Python **3.11.9**, pytest **9.1.1**, Ruff **0.16.8**. Una única
+ejecución funcional de la selección, **código 0**, sin reintentos ni cambios de
+timeouts: **336 aprobadas, 52 omitidas, cero fallos/errores** en **74,73 s** de
+pytest (**81,52 s** del proceso supervisor). Los **44 casos nuevos aprobaron**,
+sin omisiones. Los resultados corresponden al parche sin commit sobre `e0d3377`,
+no a `5988244` ni a la evidencia histórica de `f292415`.
+
+| Módulo | Aprobadas | Omitidas | Alcance |
+| --- | ---: | ---: | --- |
+| `test_caddy_config.py` | 42 | 47 | Guardas/configuración offline; controles nativos omitidos por Caddy/Compose ausentes |
+| `test_caddy_deploy.py` | 181 | 5 | Incluye 44 casos nuevos; Docker/systemd/peer/salud, metadatos POSIX y publicación con dobles explícitos |
+| `test_caddy_smoke.py` | 113 | 0 | Regresiones del supervisor/reporte/diagnóstico con procesos y reportes sintéticos; no ejecuta el proxy real |
+
+Selección de comando ejecutada por el supervisor con entorno saneado y plugins
+automáticos deshabilitados (`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`):
+
+```powershell
+.venv/Scripts/python.exe -B -m pytest -p pytest_asyncio.plugin -o addopts= -q -ra -m "unit and not integration_real" backend/tests/test_caddy_config.py backend/tests/test_caddy_deploy.py backend/tests/test_caddy_smoke.py
+```
+
+Se añadieron `--basetemp`, `--junitxml` y `-o cache_dir=...` con destinos aislados
+nuevos bajo `.data/issue58-17-1-c94f37ee801e4746919c800bf052c9f1/` (ignorado),
+marcado `.synthetic-only`. Allí quedan invocación/colecciones, JUnit, stdout/stderr
+y resumen; este registro conserva versión, selección, resultados y límites sin
+depender de esos temporales. Una reproducción debe usar destinos nuevos; no
+reutilizar un `--basetemp` ocupado, que pytest puede limpiar.
+
+Cobertura nueva: backend ausente/frontend presente y ambos ausentes; validación
+sin recreación; backend único; múltiples/ajenos por servicio; fallos de listado
+e inspección, JSON/identidad/configuración inspeccionada inconsistentes; rechazo
+de helper no registrado, modelo distinto y volumen sustituido antes de la
+admisión o durante cuarentena. Los fallos inyectados cubren recreación, peer,
+liberación, frontend, salud, publicación, activación, configuración efectiva y
+confirmación de estado; comprueban restauración o retención del journal, cierre
+antes de recrear y reutilización de ese journal por `--recover`. Una escritura
+fallida del journal no inicia cierre/recreación. Se conservan sentinelas de datos,
+secretos, certificados, ledger y obligaciones; no son bases productivas.
+
+`ruff check .` aprobó; `ruff format --check .` aprobó (**241 archivos**);
+`git diff --check` aprobó. El manifiesto coincide con las **398 identidades** de
+la colección real, sin duplicar/excluir casos ni cambiar otras huellas. No se
+ejecutaron smoke proxy, suite general, builds, instalaciones, proveedores ni
+infraestructura. No se investigó ni repitió el fallo temporal conjunto anterior.
+Revisión documental final de los nueve documentos: **139 destinos locales y
+24 anclas**, sin errores/cercas abiertas; dos bloques Bash modificados aprobados
+por `bash -n` y un bloque PowerShell por `Parser.ParseInput`, sin ejecutar sus
+cuerpos. El análisis Bash se hizo fuera del sandbox por la restricción MSYS ya
+identificada. No se comprobaron enlaces HTTP externos.
+
+### Límites y aceptación que permanecen pendientes
+
+La lógica de 17.1 queda implementada y cubierta con dobles para el mismo modelo
+aprobado, pero no acreditada en Docker/systemd/peer nativos ni en OCI ARM64. Las
+52 omisiones no son resultados aprobados. El instalador/manifiesto sigue sin una
+vía automática de actualización: una instalación antigua requiere revisión y
+procedimiento autorizado por el equipo; no se copian helpers ni se editan hashes
+para ocultar ese impedimento. El tar operativo `5988244` no contiene este parche.
+
+Permanecen pendientes la revisión del parche y humana independiente de la guía,
+17.4, demo→generación, el fallo temporal conjunto y #133. El parche no recupera
+datos perdidos ni revierte efectos externos; la frecuencia/custodia de backups
+sigue siendo decisión operativa. No se declara cerrado #58 ni completado #133.

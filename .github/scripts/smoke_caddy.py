@@ -39,8 +39,8 @@ REQUIRED_FAMILIES = {
         "b03ba96180cdd1fbfbd7933fb059d6bec72ea9cfb4eebec178fef87f37702408",
     ),
     "backend.tests.test_caddy_deploy": (
-        142,
-        "a0d05acde761c16a23daca2e1e48d78bd33acaf86cea5a13998ff74780659225",
+        186,
+        "e2524170700884e9f708b3e540982f4291311438d3e0a3ff800c6b241a2720b7",
     ),
     "backend.tests.test_caddy_smoke": (
         113,
