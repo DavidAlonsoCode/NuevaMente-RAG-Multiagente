@@ -25,7 +25,7 @@ La generación ofrece **Multiagente** con revisión y **Básico** con un agente 
 
 ## 🏗️ Arquitectura del Sistema y Diagrama de Flujo
 
-El diagrama representa la arquitectura objetivo, definida en [las decisiones](decisiones_proyecto.md) y [los contratos de API](docs/contratos-api.md); no acredita que todos los componentes estén implementados. El avance se sigue en [el plan](docs/plan-implementacion.md). La segmentación está en [chunker.py](backend/app/core/rag/chunker.py), la evaluación en [faithfulness.py](backend/app/core/faithfulness/faithfulness.py) y la selección del proveedor de almacenamiento en [oci_storage.py](backend/app/storage/oci_storage.py).
+El diagrama detalla el recorrido multiagente; el básico usa RAG y una redacción, valida estructura y citas y guarda el resultado como no evaluado, sin pasar por Critic. La infraestructura representa la arquitectura objetivo, definida en [las decisiones](decisiones_proyecto.md) y [los contratos de API](docs/contratos-api.md); no acredita que todos los componentes estén implementados. El avance se sigue en [el plan](docs/plan-implementacion.md). La segmentación está en [chunker.py](backend/app/core/rag/chunker.py), la evaluación en [faithfulness.py](backend/app/core/faithfulness/faithfulness.py) y la selección del proveedor de almacenamiento en [oci_storage.py](backend/app/storage/oci_storage.py).
 
 ```mermaid
 flowchart TB
@@ -150,19 +150,31 @@ Las reglas detalladas están en [decisiones §19](decisiones_proyecto.md#19-meca
 
 ---
 
-## 🎨 Frontend Craft: Linear Dark Design System
+## 🎨 Interfaz React con identidad Oracle
 
-Inspirado en la interfaz de Linear (`awesome-design-md`):
-- **Paleta**: Canvas ultra oscuro (`#010102`), tarjetas carbón (`#0f1011`), bordes milimétricos hairline (`#23252a`) y acento lavanda (`#5e6ad2`).
-- **Interactividad**:
-  - Evaluación de quizzes en tiempo real con feedback inmediato y justificaciones didácticas.
-  - Visor interactivo de Flashcards con reverso/flip.
-  - Indicador dinámico de fidelidad (`anclaje_fuente_score`).
-  - Badges tecnológicos de `devicon` para visualización limpia del stack técnico.
+La interfaz usa React 18, TypeScript y Vite, con fondo oscuro y acentos rojo,
+terracota y coral. Inter y JetBrains Mono se sirven localmente. Los estilos
+vigentes están en [oracle-theme.css](frontend/src/styles/oracle-theme.css).
+
+La carga PDF/MD/TXT y el texto pegado se encuentran en el área principal, a la
+derecha de los parámetros en escritorio y debajo de ellos en móvil. El sidebar
+conserva fuente, perfil, formato, nicho, detalle, idioma y modo de generación.
+El resultado ofrece los cinco formatos, fuentes, quiz con feedback, chat,
+glosario y progreso. El historial permite reabrir, comparar y descargar materiales.
+Las exportaciones conservan el modo y la evaluación real del paquete guardado.
+
+El seguimiento de generación usa SSE autenticado, reconexión y cancelación
+cooperativa. El token permanece en memoria; una recarga completa requiere el
+código de recuperación. Ver [guía del frontend](frontend/README.md).
 
 ---
 
 ## 🚀 Demostración Práctica: 3 Escenarios de Evaluación
+
+Los siguientes escenarios ilustran usos posibles. La entrega requiere además
+al menos tres adaptaciones del **mismo documento técnico**, con fuente y hashes
+trazables; no se acredita con tres documentos diferentes. La aceptación pública
+y los pendientes de evidencia real se concentran en [#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
 
 1. **Escenario A — Técnico / Fintech**:
    - *Doc*: Manual de integración de Webhooks y APIs de pagos.
@@ -172,7 +184,7 @@ Inspirado en la interfaz de Linear (`awesome-design-md`):
 2. **Escenario B — Memorización / E-commerce**:
    - *Doc*: Especificación de checkout con microservicios.
    - *Perfil*: Principiante / Transición de Carrera.
-   - *Formato*: Flashcards de Memorización, con estudio dentro de NuevaMente previsto en #34. Descarga JSON/Markdown y exportación opcional a Anki (`.apkg`/CSV/TSV), con [instrucciones de importación](docs/importacion-anki.md). Anki no es requisito para usar NuevaMente.
+   - *Formato*: Flashcards de Memorización, con estudio dentro de NuevaMente disponible dentro de la aplicación. Descarga JSON/Markdown y exportación opcional a Anki (`.apkg`/CSV/TSV), con [instrucciones de importación](docs/importacion-anki.md). Anki no es requisito para usar NuevaMente.
 3. **Escenario C — Ejecutivo / Salud**:
    - *Doc*: Directrices de gobernanza de historias clínicas electrónicas.
    - *Perfil*: Gestor / Ejecutivo (No Técnico).
@@ -182,7 +194,7 @@ Inspirado en la interfaz de Linear (`awesome-design-md`):
 
 ## ⚙️ Estructura del Repositorio y Ejecución
 
-Monorepo con dos servicios (sección 15 de `decisiones_proyecto.md`): `backend/` (FastAPI, paquete `app`) y `frontend/` (React + TypeScript + Vite). La interfaz anterior queda archivada en `frontend_streamlit_viejo/`. Flujo Git: `main` protegida (solo PRs) ← `develop` (integración) ← `feature/<nombre>`.
+Monorepo con dos servicios (sección 15 de `decisiones_proyecto.md`): `backend/` (FastAPI, paquete `app`) y `frontend/` (React + TypeScript + Vite). La implementación anterior de Streamlit fue retirada en #139. Flujo Git: `main` protegida (solo PRs) ← `develop` (integración) ← `feature/<nombre>`.
 
 ```bash
 # 1. Clonar y crear entorno virtual (Python 3.11)
@@ -192,10 +204,11 @@ python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 # 2. Instalar dependencias fijadas (desde la raíz): servicios + herramientas de desarrollo
-pip install -r backend/requirements.txt -r frontend_streamlit_viejo/requirements.txt -r requirements-dev.txt
+pip install -r backend/requirements.txt -r requirements-dev.txt
+npm --prefix frontend ci
 
-# Frontend React: ver frontend/README.md para npm ci, arranque y pruebas.
-# Streamlit se conserva para las pruebas históricas de regresión.
+# Frontend React: ver frontend/README.md para arranque y pruebas.
+# Sus dependencias están fijadas en frontend/package-lock.json.
 
 # 3. Verificar el esqueleto del backend (paquete importable)
 cd backend && python -c "import app" && cd ..
@@ -240,29 +253,9 @@ en PDF es relativo a la página. El contexto repetido no altera estas posiciones
 Los IDs incluyen espacio, documento, hash, configuración del parser/chunker y
 tokenizador. Pruebas: `pytest backend/tests/test_chunker.py`.
 
-## 🤖 Catálogo de Skills para Agentes de IA
-
-El repositorio cuenta con 13 skills especializadas en `.agents/skills/`, registradas en [`.agents/skills.json`](./.agents/skills.json). Sus ejemplos son orientativos: los contratos de `backend/app/schemas/`, [las decisiones del proyecto](decisiones_proyecto.md) y [la guía de trabajo](docs/guia-trabajo-equipo.md) prevalecen al implementar y revisar cambios.
-
-1. [`spec-driven-development`](.agents/skills/spec-driven-development/SKILL.md): Especificación previa estructurada y mapa de capacidades.
-2. [`domain-modeling`](.agents/skills/domain-modeling/SKILL.md): Lenguaje ubicuo en `CONTEXT.md` y registro de ADRs en `docs/adr/`.
-3. [`grill-with-docs`](.agents/skills/grill-with-docs/SKILL.md): Entrevista socrática de diseño para estresar supuestos.
-4. [`archify-system-design`](.agents/skills/archify-system-design/SKILL.md): Diagramas C4/Mermaid con balizas de evidencia.
-5. [`api-and-interface-design`](.agents/skills/api-and-interface-design/SKILL.md): Contratos de datos tipados y fronteras limpias.
-6. [`rag-and-grounding`](.agents/skills/rag-and-grounding/SKILL.md): Ingestión PDF/MD, ChromaDB y algoritmo Ragas de fidelidad.
-7. [`pedagogical-orchestrator`](.agents/skills/pedagogical-orchestrator/SKILL.md): Grafo LangGraph (Supervisor, Researcher, Writer, Critic), 5 formatos y Anki.
-8. [`oci-always-free-storage`](.agents/skills/oci-always-free-storage/SKILL.md): Almacenamiento OCI Always Free y mock local explícito para desarrollo/CI, sujeto a las decisiones vigentes.
-9. [`linear-design-system`](.agents/skills/linear-design-system/SKILL.md): Tokens oscuros Linear, cards, gauges y CSS Streamlit.
-10. [`frontend-ui-engineering`](.agents/skills/frontend-ui-engineering/SKILL.md): Accesibilidad WCAG, estados vacíos/carga y ergonomía UX.
-11. [`security-and-hardening`](.agents/skills/security-and-hardening/SKILL.md): Sanitización de inputs, defensas contra prompt injection y secretos.
-12. [`debugging-and-error-recovery`](.agents/skills/debugging-and-error-recovery/SKILL.md): Protocolo Stop-the-Line y triaje reproducible.
-13. [`git-workflow-and-versioning`](.agents/skills/git-workflow-and-versioning/SKILL.md): Git Flow, conventional commits y changelog.
-
----
-
 ## 📋 Reglas de Supremacía Anti-Contradicción
 1. **Fidelidad sobre Fluidez**: El score mínimo `0.85` selecciona candidatos; la aprobación exige respaldo de todas las afirmaciones y superar las comprobaciones factuales, pedagógicas y visuales aplicables.
 2. **Pydantic es Soberano**: Todo intercambio estructurado de datos debe validarse contra los esquemas oficiales Pydantic v2.
 3. **Always Free y Mock Explícito**: Verificar los límites efectivos de OCI. `MOCK_OCI=1` habilita el proveedor local únicamente en desarrollo/CI; producción exige configuración real y nunca degrada automáticamente a mock.
-4. **Cohesión Linear**: La interfaz adopta estrictamente la paleta y estética Linear (`#010102`, `#5e6ad2`).
+4. **Identidad visual**: La interfaz conserva los tokens Oracle oscuros y sus acentos rojo, terracota y coral.
 5. **Spec-First**: Ningún componente se desarrolla sin especificación y validación de dominio previa.

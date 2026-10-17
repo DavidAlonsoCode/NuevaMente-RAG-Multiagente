@@ -1,5 +1,15 @@
 # Issue #41 — Progreso de estudio
 
+> **Registro histórico de Streamlit.** #139 retira esa implementación y sus
+> pruebas exclusivas. El detalle inferior describe la versión original y conserva
+> sus resultados; no es una guía de ejecución ni evidencia de React.
+> La implementación vigente está en [App.tsx](../frontend/src/App.tsx),
+> [FormatRenderers](../frontend/src/components/FormatRenderers.tsx),
+> [vistas de estudio e historial](../frontend/src/components/StudyAndHistoryViews.tsx)
+> y [estado de estudio](../frontend/src/flows/studyState.ts).
+> La cobertura actual y la equivalencia de pruebas se documentan en
+> [verificación de #139](verificacion-issue-139.md).
+
 `components.progress.render_progreso(api, idioma_ui)` consulta `GET /api/progress`
 en cada render. Presenta conceptos, flashcards, intentos, aciertos iniciales y
 posteriores, tiempo restante y versión confirmada. No conserva agregados ni

@@ -1,5 +1,15 @@
 # Quiz interactivo (#36)
 
+> **Registro histórico de Streamlit.** #139 retira esa implementación y sus
+> pruebas exclusivas. El detalle inferior describe la versión original y conserva
+> sus resultados; no es una guía de ejecución ni evidencia de React.
+> La implementación vigente está en [App.tsx](../frontend/src/App.tsx),
+> [FormatRenderers](../frontend/src/components/FormatRenderers.tsx),
+> [vistas de estudio e historial](../frontend/src/components/StudyAndHistoryViews.tsx)
+> y [estado de estudio](../frontend/src/flows/studyState.ts).
+> La cobertura actual y la equivalencia de pruebas se documentan en
+> [verificación de #139](verificacion-issue-139.md).
+
 Integrado con el contenedor de resultados del #34 en la rama del #36.
 
 Se implementa `components/quiz_interactive.py` y el controlador `quiz_flow.py`.

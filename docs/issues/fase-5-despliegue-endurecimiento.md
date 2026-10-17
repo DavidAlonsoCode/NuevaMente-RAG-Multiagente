@@ -115,7 +115,7 @@ graph TD
 **Objetivo**: publicación segura de UI y API con dominio gratuito (o propio) y certificado válido, con SSE fluido.
 
 **Tareas**:
-- Caddy en el host como proxy: HTTPS público, HTTP solo redirección; rutas `/api/*` → backend, resto → Streamlit (websocket incluido).
+- Caddy en el host como proxy: HTTPS público, HTTP solo redirección; rutas `/api/*` → backend, resto → build React; SSE autenticado sin buffering.
 - Configuración anti-buffering para `text/event-stream` (flush inmediato + heartbeats ya implementados en `Issue 31`).
 - DNS: subdominio gratuito compatible con validación ACME (o dominio del equipo); sin compras automáticas (§9.2).
 - Puertos 8000/8501 vinculados a loopback únicamente; firewall/NSG acorde.

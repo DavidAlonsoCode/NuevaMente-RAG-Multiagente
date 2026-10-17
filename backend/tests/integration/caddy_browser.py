@@ -1,4 +1,4 @@
-"""Real browser/Streamlit probe; export only counts and boolean observations."""
+"""Real browser/React probe; export only counts and boolean observations."""
 
 import argparse
 import json
@@ -16,7 +16,7 @@ def probe(url, directory, hold, progress):
     # Import/start errors belong in the same closed report as browser errors.
     from playwright.sync_api import sync_playwright
 
-    sockets, received, sent, violations, blocked_fonts = [], [], [], [], []
+    violations = []
     # Synthetic query/cookie canaries originate in the browser itself. Their
     # absence is required in server logs, whereas browser privacy protects the
     # actual private origin key, which the browser must never receive.
@@ -26,11 +26,6 @@ def probe(url, directory, hold, progress):
         data = value if isinstance(value, bytes) else str(value).encode()
         if any(item in data for item in forbidden):
             violations.append("private-data-in-browser")
-
-    def websocket(ws):
-        sockets.append(ws)
-        ws.on("framereceived", lambda payload: (inspect(payload), received.append(time.monotonic())))
-        ws.on("framesent", lambda payload: (inspect(payload), sent.append(time.monotonic())))
 
     with sync_playwright() as playwright:
         options = {
@@ -56,19 +51,13 @@ def probe(url, directory, hold, progress):
         progress.reached("context_setup")
         context = browser.new_context(ignore_https_errors=True, service_workers="block")
 
-        # Limit functional traffic to this fixture. Existing remote fonts are
-        # explicitly blocked and counted; every other external request fails.
+        # Limit functional traffic to this fixture, including bundled fonts.
         def route(request_route):
             if request_route.request.url.startswith(url + "/"):
                 request_route.continue_()
             else:
                 host = urlsplit(request_route.request.url).hostname
-                if host in {"fonts.googleapis.com", "fonts.gstatic.com"}:
-                    # Existing UI references web fonts. Keep this probe offline;
-                    # record explicitly that remote typography is not validated.
-                    blocked_fonts.append(host)
-                else:
-                    violations.append("external-browser-request:" + str(host))
+                violations.append("external-browser-request:" + str(host))
                 request_route.abort()
 
         context.route("**/*", route)
@@ -87,28 +76,6 @@ def probe(url, directory, hold, progress):
         )
         progress.reached("page_setup")
         page = context.new_page()
-        handshakes = []
-        cdp = context.new_cdp_session(page)
-        cdp.send("Network.enable")
-
-        def handshake(event):
-            headers = {name.lower(): value for name, value in event["response"]["headers"].items()}
-            assert event["response"]["status"] == 101, "websocket-handshake-failed"
-            assert not {"x-nuevamente-origin-key", "x-nuevamente-client-ip"} & headers.keys(), (
-                "private-websocket-header"
-            )
-            inspect(headers)
-            handshakes.append(1)
-
-        cdp.on("Network.webSocketHandshakeResponseReceived", handshake)
-        page.add_init_script("""
-            window.__fixtureSockets = [];
-            const NativeSocket = window.WebSocket;
-            window.WebSocket = class extends NativeSocket {
-                constructor(...args) { super(...args); window.__fixtureSockets.push(this); }
-            };
-        """)
-        page.on("websocket", websocket)
 
         def response(response):
             headers = response.headers
@@ -120,31 +87,24 @@ def probe(url, directory, hold, progress):
         progress.reached("navigation")
         page.goto(url + "/?probe=" + CANARIES["QUERY"], wait_until="domcontentloaded")
         progress.reached("first_interaction")
-        selector = page.get_by_test_id("stSelectbox").first
-        selector.wait_for(timeout=30000)
-        selector.click()
-        page.get_by_role("option", name="English", exact=True).click()
-        page.get_by_text("Interface language", exact=True).wait_for(timeout=15000)
-        assert received and sent, "websocket-no-bidirectional-messages"
+        selector = page.get_by_label("Idioma de la interfaz", exact=True)
+        selector.select_option("en")
+        page.get_by_label("Interface language", exact=True).wait_for(timeout=15000)
         progress.reached("reconnection")
-        first_count = len(sockets)
-        page.evaluate("window.__fixtureSockets.forEach(socket => socket.close())")
-        deadline = time.monotonic() + 25
-        while len(sockets) <= first_count and time.monotonic() < deadline:
-            page.wait_for_timeout(100)
-        assert len(sockets) > first_count, "websocket-no-reconnection"
-        # Interaction after reconnection and after an optional >120s silence.
+        page.reload(wait_until="domcontentloaded")
+        selector = page.get_by_label("Interface language", exact=True)
+        selector.wait_for(timeout=15000)
+        assert selector.input_value() == "en", "language-lost-after-reload"
+        page.get_by_role("heading", name="Upload a document", exact=True).wait_for(timeout=30000)
         start = time.monotonic()
         progress.reached("hold")
         if hold:
             page.wait_for_timeout(hold * 1000)
         progress.reached("second_interaction")
-        before = len(received)
-        selector.click()
-        page.get_by_role("option", name="Español", exact=True).click()
-        page.get_by_text("Idioma de la interfaz", exact=True).wait_for(timeout=15000)
-        assert len(received) > before, "websocket-no-messages-after-interaction"
-        assert len(handshakes) >= 2, "websocket-reconnect-handshake-not-observed"
+        selector.select_option("es")
+        page.get_by_label("Idioma de la interfaz", exact=True).wait_for(timeout=15000)
+        assert page.locator('main input[type="file"]').count() == 1, "main-upload-missing"
+        assert page.locator('aside input[type="file"]').count() == 0, "sidebar-upload-present"
         progress.reached("privacy_audit")
         inspect(page.content())
         # Browser state deliberately contains injected cookie/header canaries;
@@ -157,13 +117,12 @@ def probe(url, directory, hold, progress):
         result = {
             "browser_version": browser.version,
             "browser_source": "explicit-existing-executable" if executable else "pinned-playwright-bundle",
-            "websockets": len(sockets),
-            "handshakes_audited": len(handshakes),
-            "received_frames": len(received),
-            "sent_frames": len(sent),
+            "interactions": 2,
+            "reload_verified": True,
+            "main_upload_verified": True,
             "hold_seconds": round(time.monotonic() - start, 2),
             "private_origin_absent": True,
-            "blocked_remote_fonts": len(blocked_fonts),
+            "external_requests": 0,
         }
         progress.reached("browser_close")
         browser.close()

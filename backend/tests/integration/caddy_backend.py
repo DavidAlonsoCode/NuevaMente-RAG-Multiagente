@@ -116,7 +116,7 @@ def main(path):
 
     @app.middleware("http")
     async def inspect_server_origin(request, call_next):
-        if request.headers.get("user-agent", "").startswith("python-requests"):
+        if request.headers.get("user-agent", "").startswith("Mozilla/"):
             if (
                 request.headers.get("x-nuevamente-origin-key") == settings["secret"]
                 and request.headers.get("x-nuevamente-client-ip") == "127.0.0.1"

@@ -203,7 +203,7 @@ graph TD
 ### `Issue 33` — Progreso en vivo (SSE) en la UI
 **F3** · **UI** · **M** · **Depende de**: `Issue 32`, `Issue 31` · **Referencia**: decisiones_proyecto.md §3.3, §6.5
 
-**Objetivo**: consumir SSE en React mediante fetch autenticado, mostrando etapa e intento, con cancelación y reconexión. La migración de presentación conserva la interfaz Streamlit anterior y sus pruebas históricas.
+**Objetivo**: consumir SSE en React mediante fetch autenticado, mostrando etapa e intento, con cancelación y reconexión. El retiro de la interfaz anterior en #139 conserva la cobertura vigente de React y API; las evidencias antiguas sólo acreditan su versión.
 
 **Tareas**:
 - Cliente SSE en `frontend/src/api/client.ts`: lectura incremental, reconciliación del estado HTTP y continuación por `Last-Event-ID` cuando exista. Reconexión y recuperación en `frontend/src/flows/generationProgress.ts`.

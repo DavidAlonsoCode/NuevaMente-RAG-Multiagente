@@ -63,9 +63,6 @@ logs/
 .coverage
 htmlcov/
 
-# Streamlit
-.streamlit/secrets.toml
-
 # IDE & OS
 .vscode/
 .idea/

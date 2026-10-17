@@ -1,6 +1,6 @@
 # Contenedores locales — Issue 26
 
-Docker Compose ejecuta el backend FastAPI y el frontend Streamlit. Conserva la
+Docker Compose ejecuta el backend FastAPI y el frontend React compilado con Vite. Conserva la
 arquitectura de `decisiones_proyecto.md` §14 y `docs/arquitectura.md`: un proceso
 Uvicorn, un worker dedicado y un volumen de datos exclusivo del backend.
 
@@ -34,8 +34,7 @@ docker compose up --build --detach --wait --wait-timeout 120
 - Recrear: `docker compose up --detach --force-recreate --wait`.
 
 Este modo utiliza almacenamiento local explícito. `MOCK_GEMINI=1` identifica el
-entorno simulado; los tests inyectan su doble. No instala una integración de
-producción ni completa los endpoints/pipelines todavía pendientes. El health
+entorno simulado; los tests inyectan su doble. No acredita una integración de producción con proveedores reales. El health
 no consulta Gemini ni OCI. `.env.example` conserva el template de producción,
 que exige credenciales reales y rechaza mocks.
 
@@ -87,9 +86,8 @@ print("Dimensiones:", len(vector))
 "@ | docker compose exec -T backend python -
 ```
 
-Esto verifica el cliente #13 contra Gemini. El recorrido completo de cargar un
-PDF y producir contenido desde la UI depende de otros issues; no se declara
-implementado por esta prueba. Para volver al smoke de Compose, reactivá ambos
+Esto verifica el cliente #13 contra Gemini. La implementación incluye cargar documentos y generar desde React, pero esta
+prueba de embeddings no acredita ese recorrido completo con proveedores reales. Para volver al smoke de Compose, reactivá ambos
 mocks explícitos y recreá los contenedores.
 
 ## Datos, red y arranque
@@ -116,10 +114,9 @@ Ver [configuración, permisos y validaciones](../infra/caddy/README.md). Esta et
 define el contrato; no instala Caddy ni acredita tráfico público.
 
 Compose espera el health del backend y `frontend/entrypoint.py` comprueba además
-activamente `/api/health` antes de iniciar Streamlit, con un plazo de 60 segundos.
+activamente `/api/health` antes de servir el build React, con un plazo de 60 segundos.
 Si se vence, el proceso termina con error y la política `unless-stopped` permite
-un nuevo arranque. Esto no reemplaza el manejo de caídas durante uso del futuro
-cliente HTTP del #16.
+un nuevo arranque. Esto no reemplaza el manejo de caídas del cliente HTTP de la UI.
 
 Ambas imágenes usan UID/GID 10001, código sin escritura, filesystem de solo
 lectura, `/tmp` temporal y sin capabilities. El volumen nuevo hereda el dueño
@@ -134,9 +131,9 @@ volumen; perder el disco sí requiere recuperación desde OCI (#47/#49).
 
 ## Construcción ARM64 y verificación repetible
 
-Las dos imágenes fijan el índice multiarch oficial de Python 3.11.17 slim
-Bookworm por digest. Sus dependencias Python directas mantienen versiones `==`
-y se instalan antes del código para reutilizar la capa de dependencias.
+El backend y el servidor estático usan Python 3.11.17 slim Bookworm fijado por
+digest; el frontend compila en una etapa Node. Las dependencias Python directas
+usan `==` y React usa `package-lock.json` con `npm ci`.
 
 ```powershell
 docker buildx build --platform linux/arm64 --load --tag nuevamente-backend:arm64 ./backend

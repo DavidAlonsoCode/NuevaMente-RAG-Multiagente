@@ -1,5 +1,10 @@
 # Verificación del complemento 33.1
 
+> **Actualización #139 (17/10):** Streamlit y sus pruebas exclusivas fueron
+> retirados. Los resultados inferiores conservan el alcance de sus corridas
+> originales. El estado actual se detalla en [verificación de #139](verificacion-issue-139.md).
+
+
 ## Alcance
 
 Implementación y contrato en [modos de generación](modos-generacion.md).

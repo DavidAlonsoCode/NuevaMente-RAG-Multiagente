@@ -313,7 +313,6 @@ export const CATALOGO_EN: Record<string, string> = {
   "upload.demo_vcn": "VCN networking in Oracle Cloud Infrastructure",
   "upload.demo_pagos": "Payment API integration",
   "upload.demo_salud": "Healthcare data governance",
-  "upload.ayuda_sidebar": "Upload your file from the sidebar. You can also paste text or choose a library source.",
   "upload.etapa_fuente": "Source verification",
   "upload.etapa_parser": "Content extraction",
   "upload.etapa_chunker": "Content chunking",
