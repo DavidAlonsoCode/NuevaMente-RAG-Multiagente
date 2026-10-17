@@ -19,7 +19,6 @@ import { APIClient, APIError } from './api/client';
 import {
   DetailLevel,
   DocumentoResponse,
-  ExportFormat,
   FORMATOS,
   GenerateRequest,
   IDIOMAS_SALIDA,
@@ -36,6 +35,7 @@ import {
 import { OraclePillLogo, OracleWaveCircuitBackdrop } from './assets/OracleVisuals';
 import { ErrorBanner } from './components/ErrorBanner';
 import { DocumentStatus } from './components/DocumentStatus';
+import { ExportDownloads } from './components/ExportDownloads';
 import { RecentGenerations } from './components/RecentGenerations';
 import { PackageViewer } from './components/FormatRenderers';
 import { SourcesDrawer } from './components/SourcesDrawer';
@@ -49,7 +49,6 @@ import {
   DOCUMENTOS_DEMO,
   claveCarga,
   formatearTamano,
-  formatosExportables,
   generarEventIdProgreso,
   validarArchivo,
   validarGeneracionCompletada,
@@ -1619,7 +1618,6 @@ export const ActiveGenerationPanel: React.FC<{
   onNarrowScope,
 }) => {
   const [persistKey] = useState(() => `persist-${generacion.generation_id}-${Date.now().toString(36)}`);
-  const [exportFmt, setExportFmt] = useState<ExportFormat>('json');
   const [err, setErr] = useState<APIError | null>(null);
   const [pendingAction, setPendingAction] = useState<'cancel' | 'persist' | null>(null);
   const [cancelRequested, setCancelRequested] = useState(false);
@@ -1642,50 +1640,18 @@ export const ActiveGenerationPanel: React.FC<{
         </div>
       );
     }
-    const persistencia = job.persistencia;
-    const rotuloGuardado =
-      persistencia?.provider === 'oci' ? 'material.guardado' : 'almacenamiento.local_dev';
-
     return (
       <div>
         <ErrorBanner error={err} idioma={idioma} />
-        <div className="nm-alert nm-alert-success" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <span>{t(rotuloGuardado, idioma)}</span>
-          <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              className="nm-select"
-              style={{ width: 'auto', padding: '0.3rem 0.6rem' }}
-              value={exportFmt}
-              onChange={(e) => setExportFmt(e.target.value as ExportFormat)}
-            >
-              {formatosExportables(paqueteValido).map((f) => (
-                <option key={f} value={f}>{t(`exportar.${f}`, idioma)}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="nm-btn nm-btn-primary"
-              style={{ padding: '0.35rem 0.75rem' }}
-              onClick={async () => {
-                try {
-                  const bytes = await api.downloadExport(token, generacion.generation_id, exportFmt);
-                  const blob = new Blob([bytes]);
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${generacion.generation_id}.${exportFmt}`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                } catch (e) {
-                  if (e instanceof APIError) setErr(e);
-                }
-              }}
-            >
-              <Download size={14} />
-              {t('comun.descargar', idioma)}
-            </button>
-          </div>
-        </div>
+        <ExportDownloads
+          api={api}
+          token={token}
+          paquete={paqueteValido}
+          persistencia={job.persistencia}
+          idioma={idioma}
+          onError={setErr}
+          onSessionInvalid={onSessionInvalid}
+        />
 
         <PackageViewer
           paquete={paqueteValido}
