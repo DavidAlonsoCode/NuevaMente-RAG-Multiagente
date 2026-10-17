@@ -9,6 +9,15 @@ La aceptación externa continúa en #133; #60 conserva su evaluación humana.
 
 ## Evidencia automatizada
 
+Corridas locales completas de los grupos pertinentes: 12 casos del modo básico
+(11 en lote y cancelación repetida tras corregir su expectativa HTTP a 200),
+ocho de referencia API y 21 de compatibilidad histórica. Estas últimas mantienen
+igualdad exacta de campos e incorporan el nuevo valor predeterminado, sin cambiar
+el cliente Streamlit conservado. La corrida amplia de Windows se interrumpió y
+no se considera aprobada. La suite completa y los contenedores se contrastan con
+los checks del [PR #137](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/pull/137),
+que identifica el commit evaluado.
+
 - `backend/tests/test_basic_mode.py`: los cinco formatos sobre API, worker,
   recuperación RAG e índice reales con proveedores dobles; cero solicitudes al
   juez en básico. Conserva la vista estudiante del quiz y su feedback/progreso
