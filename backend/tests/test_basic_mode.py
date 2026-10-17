@@ -171,8 +171,9 @@ def test_cancelacion_basica_conserva_documento_y_no_publica(entorno, monkeypatch
     try:
         assert entered.wait(5)
         cancelled = e.cliente.post(r.json()["cancel_url"], headers=e.headers)
-        assert cancelled.status_code == 202
+        assert cancelled.status_code == 200
         assert e.db.obtener_generacion(r.json()["generation_id"])["status"] == "running"
+        assert e.db.contar_activos_de_workspace(e.ws["workspace_id"]) == 1
     finally:
         release.set()
     job = api_cases.esperar(e, r.json(), status="cancelled")
