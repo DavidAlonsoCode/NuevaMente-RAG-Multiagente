@@ -1,4 +1,4 @@
-"""Issue 48: real Caddy/TCP/application/SQLite/Streamlit, isolated provider doubles.
+"""Issue 48: real Caddy/TCP/application/SQLite/React, isolated provider doubles.
 
 Selected explicitly with -m caddy_proxy. Missing tools FAIL, never skip.
 The ordinary mock suite retains its existing selection and deadline.
@@ -108,7 +108,7 @@ def test_redirects_headers_and_prefix(proxy, h2):
         normalized = client.get("/api/health/", headers=spoof)
         assert normalized.status_code == 307
         assert normalized.headers["location"] == proxy.url + "/api/health"
-        # Exact /api belongs to backend as well as /api/*; Streamlit would return HTML.
+        # Exact /api belongs to backend as well as /api/*; the UI would return HTML.
         exact = client.get("/api")
         assert exact.status_code == 404 and exact.headers["content-type"].startswith("application/json")
 
@@ -311,18 +311,16 @@ def browser_probe(proxy, hold=0):
     proxy.evidence["checks"].append(observation)
     assert exit_code == 0, "real-browser-probe-failed"
     assert observation["diagnostic"]["status"] == "passed", "real-browser-diagnostic-not-passed"
-    audit = json.loads((proxy.directory / "ui-origin.json").read_text())
-    assert audit and all(audit.values()), "streamlit-private-origin-or-security-invalid"
-    assert proxy.counters()["ui_origin_authenticated"] > 0, "frontend-server-origin-not-forwarded-to-backend"
+    assert proxy.counters()["ui_origin_authenticated"] > 0, "browser-origin-not-authenticated-by-backend"
     result = json.loads((proxy.directory / "browser-result.json").read_text())
     observation.update(result)
 
 
-def test_streamlit_real_browser_websocket_interaction_and_reconnection(proxy):
+def test_react_real_browser_interaction_and_reload(proxy):
     browser_probe(proxy)
 
 
-def test_long_silence_sse_slow_upload_and_websocket(proxy):
+def test_long_silence_sse_slow_upload_and_browser(proxy):
     """>120s silence and >60s progressing upload, unchanged production timeouts."""
     with proxy.client(timeout=10) as client:
         assert client.post("/api/__proxy_fixture/heartbeat/135", headers=proxy.headers()).status_code == 200

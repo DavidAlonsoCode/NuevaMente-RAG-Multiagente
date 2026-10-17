@@ -1,5 +1,10 @@
 # Verificación del panel de generación (#32)
 
+> **Evidencia histórica:** este registro corresponde a la versión y fecha
+> indicadas. #139 retira Streamlit; las pruebas y capturas de esa interfaz no
+> acreditan React. Ver [cobertura vigente](verificacion-issue-139.md).
+
+
 PR #118, rama `feature/issue-32-panel-parametros-generacion`, destino `develop`.
 
 ## Errores corregidos en la revisión

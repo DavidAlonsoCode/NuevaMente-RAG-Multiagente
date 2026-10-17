@@ -1,5 +1,10 @@
 # Verificación del flujo documental (#25)
 
+> **Evidencia histórica:** este registro corresponde a la versión y fecha
+> indicadas. #139 retira Streamlit; las pruebas y capturas de esa interfaz no
+> acreditan React. Ver [cobertura vigente](verificacion-issue-139.md).
+
+
 Revisión del PR #116 realizada el 12/10/2026. La pantalla se probó en el navegador
 contra FastAPI, SQLite, Chroma y el worker reales, usando almacenamiento y Gemini
 simulados explícitamente. No se enviaron documentos a OCI ni Gemini reales.

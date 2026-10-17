@@ -1,12 +1,21 @@
 # Proxy del host — Issue 48, implementación y protocolo de aceptación
 
-Estado documental al **16/10/2026**, `develop` `f292415`: #48 está integrado y
-cerrado; VM, DNS/HTTPS público, red y SSE con proveedores reales se aceptan en
+> **Frontend vigente — #139, 17/10/2026:** sólo se despliega y prueba React.
+> El harness de proxy usa el build real para interacción, recarga, carga en el
+> área principal y auditoría de secretos; conserva HTTP/1.1, HTTP/2, SSE,
+> cancelación, subidas lentas y diagnósticos cerrados. No hay WebSocket de UI
+> ni configuración CORS/XSRF de Streamlit que activar. Las corridas anteriores
+> que mencionan Streamlit/WebSocket son evidencia histórica de sus commits,
+> no controles ejecutables del frontend actual. Para arranque y cobertura vigente,
+> ver [frontend](../../frontend/README.md) y [#139](../../docs/verificacion-issue-139.md).
+
+La revisión documental de #58 del **16/10/2026**, sobre `develop` `f292415`,
+registró #48 integrado y cerrado, React (PR #135) y SSE de #33 (PR #136).
+Ese registro y las corridas Streamlit conservan fecha, versión y alcance
+histórico; no acreditan esta integración ni una VM pública. VM, DNS/HTTPS público,
+red y SSE con proveedores reales se aceptan en
 [#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
-El frontend vigente es React (PR #135), con seguimiento SSE integrado en #33
-(PR #136). Las corridas Streamlit y sus diagnósticos conservan fecha, versión y
-alcance histórico; no acreditan React ni una VM pública. Ver el
-[mapa de fuentes y evidencias de #58](../../docs/verificacion-issue-58.md).
+Ver el [mapa de fuentes y evidencias de #58](../../docs/verificacion-issue-58.md).
 La [instalación consolidada](../../docs/despliegue-oci.md) documenta los pasos
 operativos para una ejecución futura autorizada, sin acreditar su reproducción.
 
@@ -120,7 +129,7 @@ Ambos upstreams reciben `Host` y `X-Forwarded-Host` públicos,
 Se descartan `Forwarded` y `X-Real-IP` del cliente. Se conserva `Origin`.
 React solicita `/api` al mismo origen; el navegador no recibe la clave privada
 del proxy. El servidor estático agrega CSP y sirve las tipografías localmente.
-El overlay ya no configura variables de Streamlit; sus pruebas históricas
+El overlay no configura variables de Streamlit; las evidencias históricas de sus pruebas
 de WebSocket se conservan y no acreditan la nueva interfaz.
 No se alteran `Authorization`, `Idempotency-Key`, `Last-Event-ID`, `X-Request-ID`,
 `Retry-After`, `Content-Type`, `Cache-Control` ni `X-Accel-Buffering` del contrato.

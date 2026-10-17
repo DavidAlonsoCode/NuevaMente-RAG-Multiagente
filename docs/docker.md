@@ -1,10 +1,10 @@
 # Contenedores locales — Issue 26
 
-Docker Compose ejecuta el backend FastAPI y el frontend React, TypeScript y Vite
-integrado en el PR #135. Conserva un proceso Uvicorn, un worker dedicado y un
-volumen de datos exclusivo del backend. La interfaz Streamlit y sus pruebas
-históricas están en `frontend_streamlit_viejo/`; no acreditan React.
-Ver la [guía del frontend vigente](../frontend/README.md).
+Docker Compose ejecuta el backend FastAPI y el frontend React compilado con Vite. Conserva la
+arquitectura de `decisiones_proyecto.md` §14 y `docs/arquitectura.md`: un proceso
+Uvicorn, un worker dedicado y un volumen de datos exclusivo del backend.
+La implementación Streamlit fue retirada en #139; sus pruebas históricas no
+acreditan React. Ver la [guía del frontend vigente](../frontend/README.md).
 
 ## Arranque sin credenciales
 
@@ -36,8 +36,8 @@ docker compose up --build --detach --wait --wait-timeout 120
 - Recrear: `docker compose up --detach --force-recreate --wait`.
 
 Este modo utiliza almacenamiento local explícito. `MOCK_GEMINI=1` identifica el
-entorno simulado; los tests inyectan su doble. No instala una integración de
-producción ni acredita los pipelines con proveedores reales. El health
+entorno simulado; los tests inyectan su doble. No acredita una integración de
+producción con proveedores reales. El health
 no consulta Gemini ni OCI. `.env.example` conserva el template de producción,
 que exige credenciales reales y rechaza mocks.
 
@@ -89,9 +89,9 @@ print("Dimensiones:", len(vector))
 "@ | docker compose exec -T backend python -
 ```
 
-Esto verifica el cliente #13 contra Gemini. El recorrido completo de cargar un
-PDF y producir contenido desde la UI no se verifica con esta prueba aislada.
-Para volver al smoke de Compose, reactivá ambos
+Esto verifica el cliente #13 contra Gemini. La implementación incluye cargar
+documentos y generar desde React, pero esta prueba de embeddings no acredita ese
+recorrido completo con proveedores reales. Para volver al smoke de Compose, reactivá ambos
 mocks explícitos y recreá los contenedores.
 
 ## Datos, red y arranque
@@ -148,10 +148,9 @@ remotamente. Ver los [límites de recuperación](verificacion-issue-58.md#recupe
 
 ## Construcción ARM64 y verificación repetible
 
-Las imágenes finales fijan el índice multiarch oficial de Python 3.11.17 slim
-Bookworm por digest. El frontend agrega una etapa Node fijada por versión/digest
-y dependencias npm con lockfile. Las dependencias Python directas del backend
-mantienen versiones `==` y se instalan antes del código.
+El backend y el servidor estático usan Python 3.11.17 slim Bookworm fijado por
+digest; el frontend compila en una etapa Node. Las dependencias Python directas
+usan `==` y React usa `package-lock.json` con `npm ci`.
 
 ```powershell
 docker buildx build --platform linux/arm64 --load --tag nuevamente-backend:arm64 ./backend

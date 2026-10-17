@@ -203,7 +203,7 @@ graph TD
 ### `Issue 33` — Progreso en vivo (SSE) en la UI
 **F3** · **UI** · **M** · **Depende de**: `Issue 32`, `Issue 31` · **Referencia**: decisiones_proyecto.md §3.3, §6.5
 
-**Objetivo**: consumir SSE en React mediante fetch autenticado, mostrando etapa e intento, con cancelación y reconexión. La migración de presentación conserva la interfaz Streamlit anterior y sus pruebas históricas.
+**Objetivo**: consumir SSE en React mediante fetch autenticado, mostrando etapa e intento, con cancelación y reconexión. El retiro de la interfaz anterior en #139 conserva la cobertura vigente de React y API; las evidencias antiguas sólo acreditan su versión.
 
 **Tareas**:
 - Cliente SSE en `frontend/src/api/client.ts`: lectura incremental, reconciliación del estado HTTP y continuación por `Last-Event-ID` cuando exista. Reconexión y recuperación en `frontend/src/flows/generationProgress.ts`.
@@ -221,3 +221,18 @@ graph TD
 **Verificación**: trabajo ralentizado con proveedores simulados explícitos, Vitest del cliente SSE y navegador con Caddy/TLS locales. Evidencias y límites en [verificacion-issue-33.md](../verificacion-issue-33.md); no equivalen a una ejecución con proveedores reales ni a aceptación pública.
 
 **Aceptación externa trasladada — 16/10/2026**: por autorización del responsable, el avance SSE con Gemini/OCI reales y el recorrido desde la URL pública se aceptan en #133. El cierre de #33 acredita los cuatro criterios locales anteriores y permite continuar a sus sucesores; no declara realizadas esas comprobaciones externas.
+
+---
+
+### Complemento 33.1 — Modos de generación: multiagente y básico con RAG
+
+**AGT/API/UI** · Depende de 29/31/32/33/50, sin reabrirlos ni sustituir los 60 issues originales. Comportamiento y contrato: [modos de generación](../modos-generacion.md).
+
+- [ ] Selector por nueva adaptación, multiagente predeterminado; ambos modos reutilizan documento e índice.
+- [ ] Básico: una redacción sin LangGraph/Critic, validación estructural/citas y métricas nulas; nunca aprobación ficticia.
+- [ ] Cambiar de modo crea otra generación y conserva la anterior, sin reingesta ni promoción de un básico existente.
+- [ ] Contratos 1.0/1.1, idempotencia, SSE, persistencia, recuperación y ocultación de soluciones del quiz coherentes.
+- [ ] Resultado, historial, comparación y exportaciones identifican el modo y la ausencia de evaluación independiente.
+- [ ] Regresiones con proveedores simulados explícitos y OpenAPI actualizado. 51/53 contemplan ambos recorridos, 46/58 pueden avanzar en paralelo y 60 conserva su muestra/revisión humana.
+
+La comprobación comparativa con proveedores reales, consumo y latencia se acepta en #133 con autorización específica. Este complemento no acredita ahorro medido ni despliegue público. Publicación: PR independiente hacia develop, sin merge automático.

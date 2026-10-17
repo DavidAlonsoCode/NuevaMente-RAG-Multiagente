@@ -1,5 +1,7 @@
 # 🔌 Contratos API v1 — NuevaMente
 
+> **Ampliación 1.1 — complemento 33.1 (16/10/2026)**: [contrato de modos](modos-generacion.md). `GenerateRequest.modo_generacion` es opcional (`multiagente` por defecto, `basico` explícito). Omitirlo conserva el paquete 1.0; explicitarlo solicita 1.1. El básico tiene `status=no_evaluado`, evaluación `no_realizada`, métricas y modelo juez nulos. Cada variante tiene validación estricta; el paquete 1.0 aprobado no cambia. `completed` sigue requiriendo persistencia confirmada y no significa aprobación del básico. El [OpenAPI](openapi.json) incluye las variantes de respuesta y exportación. La compatibilidad de idempotencia y exportaciones históricas está detallada en el contrato de modos.
+
 > **Estado**: contrato v1 **CONGELADO** por el issue `Issue 03`. Implementación viva: [`backend/app/schemas/`](../backend/app/schemas/) (Pydantic v2); ejemplos ejecutables: `backend/tests/test_schemas.py` (round-trip + rechazo de inválidos). Cambios posteriores requieren PR etiquetado `contract-change` con revisión API+UI+AGT+RAG y este documento actualizado en el mismo PR.
 > **Fuente**: `decisiones_proyecto.md` §3.3, §7, §16, §17. La referencia navegable por HTTP será el OpenAPI en `/docs` (issue `Issue 59`).
 > **Uso**: backend implementa contra este documento; frontend construye contra este documento. Ambos lo tratan como la interfaz compartida.
@@ -14,7 +16,7 @@ y no bloquea los criterios locales de #59.
 
 ## Convenciones generales
 
-- **Base**: `/api` (sin `/v1`; el versionado vive en `schema_version=1.0` de los paquetes).
+- **Base**: `/api` (sin `/v1`; el versionado vive en `schema_version=1.0|1.1` de los paquetes).
 - **Autenticación**: `Authorization: Bearer <token_de_sesion>` en todas las rutas salvo creación de workspace, recuperación y `/health`.
 - **Autorización**: todo recurso se resuelve desde la sesión validada; un ID ajeno responde **404** (no 403).
 - **Idempotencia**: `POST` de upload, generación, persist y eventos de progreso aceptan header `Idempotency-Key`. Duplicado en curso → misma respuesta; mismo key con otro cuerpo → **409**.
@@ -82,9 +84,9 @@ Los `code` son estables y no se traducen; los `message` se localizan según idio
 - La actividad autenticada renueva la retención del espacio con escrituras agrupadas cada cinco minutos. No prolonga el token. Los manifiestos pendientes se sincronizan al arrancar y cada minuto; la confirmación de una versión vieja no borra una actividad posterior.
 - El manifiesto privado conserva hash, versión, expiración, última actividad y lápidas. Las escrituras usan creación exclusiva o `if_match`; un manifiesto retirado no se reactiva. Si OCI falla al borrar, el acceso local queda bloqueado y la confirmación durable permanece pendiente, con diagnóstico y reintento. Se debe preservar SQLite hasta confirmar esa lápida: un borrado que nunca llegó a storage no puede reconstruirse después de perder también el volumen local.
 - `session/recovery.py` reconstruye el índice hash→espacio al arrancar un registro nuevo y retoma reconstrucciones interrumpidas. Pagina manifiestos, verifica identidad/ETag/hash y restaura documentos, registros de paquetes canónicos aprobados y el agregado privado de progreso; omite recursos retirados. No restaura tokens, colas, borradores ni invoca Gemini. Los documentos quedan `processing` hasta reconstruir índices (#17) y, cuando corresponda, visión (#30). La API de progreso corresponde a #35, su presentación a #41 y la gestión visual del espacio a #42.
-- `Accept-Language` selecciona mensajes ES/EN/PT; los códigos, detalles e idioma del contenido conservan su contrato. El cliente Streamlit envía el idioma de interfaz vigente.
+- `Accept-Language` selecciona mensajes ES/EN/PT; los códigos, detalles e idioma del contenido conservan su contrato. El cliente React envía el idioma de interfaz vigente.
 
-**Origen detrás de Streamlit/Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. Streamlit transmite ambas cabeceras al backend desde su contexto del servidor. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
+**Origen detrás de Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. El navegador solicita `/api` al mismo origen y Caddy agrega ambas cabeceras al reenviar a FastAPI. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
 
 Con React, el navegador solicita `/api` al mismo origen y Caddy aplica esas
 cabeceras al reenviar directamente a FastAPI. La clave permanece en el proxy
@@ -109,9 +111,9 @@ una única `origin.env` privada. `/api` y `/api/*` conservan su prefijo. Se pres
 `Authorization`, `Idempotency-Key`, `Last-Event-ID`, `X-Request-ID`, `Retry-After`
 y las cabeceras SSE; el proxy retira ambas cabeceras privadas de las respuestas.
 La confianza Uvicorn en `X-Forwarded-*` es independiente: requiere IPs de conexión
-comprobadas desde el contenedor, nunca `*` ni una gateway supuesta. CORS/XSRF de
-Streamlit permanecen activos; la clave solo circula en el contexto del servidor,
-incluido el handshake WebSocket, y nunca debe serializarse en mensajes o páginas.
+comprobadas desde el contenedor, nunca `*` ni una gateway supuesta. Los orígenes CORS permitidos se configuran explícitamente en FastAPI; la clave
+privada sólo circula entre servicios y nunca debe serializarse en páginas,
+JavaScript, almacenamiento del navegador ni mensajes SSE.
 
 ### Documentos (issues `Issue 19`, `Issue 11`)
 
@@ -405,7 +407,7 @@ Soporta `Last-Event-ID` mientras exista registro; cerrar el stream **no** cancel
 
 #### `POST /api/generations/{id}/cancel` · `POST /api/generations/{id}/persist`
 
-Cancelación explícita; reintento de **solo persistencia** de un aprobado retenido (≤24 h, mismo `objeto_id`, sin llamadas LLM).
+Cancelación explícita; reintento de **solo persistencia** del material retenido válido para su modo (≤24 h, mismo `objeto_id`, sin llamadas LLM).
 
 #### `GET /api/generations`
 

@@ -1,9 +1,23 @@
 # 🏗️ Arquitectura de NuevaMente
 
 > **Fuente de decisiones**: [`decisiones_proyecto.md`](../decisiones_proyecto.md) — este documento las traduce a diagramas y es la base del diagrama final del README (`Issue 57`).
-> **Estado**: diseño aprobado. Cada sección indica el enlace de evidencia al código que se completará al implementar (los issues referenciados pertenecen al [plan de implementación](plan-implementacion.md)).
+> **Estado**: diseño aprobado. Las secciones enlazan la implementación; el despliegue objetivo requiere la aceptación pública de #133 (los issues referenciados pertenecen al [plan de implementación](plan-implementacion.md)).
 
 ---
+
+Ampliación [33.1: modos de generación](modos-generacion.md): ambos recorridos comparten documento preparado, RAG, worker, permisos y almacenamiento. El modo pertenece a cada adaptación, no al documento.
+
+```mermaid
+flowchart LR
+    R["Documento ready e índice existente"] --> M{"Modo de la nueva generación"}
+    M -->|multiagente| G["Grafo actual con Writer y Critic"]
+    G --> A["Paquete aprobado y guardado"]
+    M -->|básico| B["RAG + una redacción, sin Critic"]
+    B --> V["Validación estructural y de citas"]
+    V --> N["Paquete no evaluado y guardado"]
+```
+
+Implementación: [selección y persistencia](../backend/app/generations/service.py), [recorrido básico](../backend/app/core/agents/basic.py), [grafo conservado](../backend/app/core/agents/graph.py) y [variantes del contrato](../backend/app/schemas/responses.py). Fallos y cancelación no exponen material; ambas salidas exigen persistencia confirmada. El diagrama describe implementación local, no acredita proveedores ni despliegue reales.
 
 ## Tabla de Contenidos
 
@@ -37,7 +51,7 @@ graph TB
 Límites del contexto (decisiones §1, §11):
 
 - Entrada: documentos **públicos o simulados** (PDF/MD/TXT o texto pegado). No se procesan datos sensibles ni confidenciales.
-- La IA provee texto e interpretación visual; NuevaMente la ancla a las fuentes y nunca publica contenido sin aprobar.
+- La IA provee texto e interpretación visual. El multiagente publica únicamente paquetes aprobados; el básico valida estructura y citas y se identifica como no evaluado, sin score ni sello independiente.
 - Toda la infraestructura vive en la capa Always Free de OCI; sin recursos pagos ni fallback de pago.
 
 ---
@@ -83,13 +97,13 @@ Reglas estructurales (decisiones §3.1, §14):
 
 ## 3. Flujo de datos extremo a extremo
 
-Secuencia completa del caso de uso principal (decisiones §3.2):
+Secuencia del recorrido multiagente del caso de uso principal (decisiones §3.2):
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor U as Usuario
-    participant UI as Streamlit
+    participant UI as React
     participant API as FastAPI
     participant Q as Cola de trabajos
     participant G as Grafo LangGraph
@@ -248,7 +262,7 @@ graph LR
     Resp --> SSE["GET …/events<br/>text/event-stream · heartbeat"]
     Resp --> Poll["GET /api/generations/{id}<br/>estado sin SSE"]
     SSE --> Ev["evento: id monotónico · step · status · iteration"]
-    Ev --> UIx["Streamlit: etapa + intento<br/>sin porcentajes ficticios"]
+    Ev --> UIx["React: etapa + intento<br/>sin porcentajes ficticios"]
 ```
 
 Cola (§7.5): 1 trabajo intensivo global (compartido por ingestión, generación, chat y glosario) · cola ≤5 con posición visible y cancelación · 1 trabajo por espacio · deadline 300 s · timeout por llamada 60 s · 2 reintentos transitorios con backoff/jitter. Estados: `queued · running · completed · rejected_quality · failed · cancelled`.
@@ -283,7 +297,7 @@ Resumen ejecutivo del porqué (detalle y justificación completa en `decisiones_
 
 | # | Decisión | Alternativa descartada | Por qué |
 |---|---|---|---|
-| 1 | Frontend y backend separados (Streamlit + FastAPI) | Monolito Streamlit con lógica embebida | Contratos compartidos, pruebas sin UI, secrets solo en backend |
+| 1 | Frontend y backend separados (React + FastAPI) | UI con lógica de proveedores embebida | Contratos compartidos, pruebas sin UI, secrets solo en backend |
 | 2 | ChromaDB local como índice reconstruible; OCI como fuente de verdad | Vector store en la nube o índice como dato primario | Always Free, reconstrucción desde originales, sin costo extra |
 | 3 | Grafo LangGraph con Supervisor y Finalizer deterministas | LLM en cada nodo | Menos llamadas, menos latencia, comportamiento predecible |
 | 4 | Crítica con umbrales + bloqueo al 3.er intento | Publicar «el mejor borrador» con advertencia | El material de estudio no puede contener errores detectados |

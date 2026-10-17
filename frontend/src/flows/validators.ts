@@ -151,8 +151,10 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
   exigir(
     typeof paquete === 'object' &&
       paquete !== null &&
-      paquete.status === 'aprobado' &&
-      paquete.schema_version === '1.0'
+      ((paquete.schema_version === '1.0' && paquete.status === 'aprobado' && paquete.modo_generacion === undefined) ||
+       (paquete.schema_version === '1.1' &&
+        ((paquete.modo_generacion === 'multiagente' && paquete.status === 'aprobado') ||
+         (paquete.modo_generacion === 'basico' && paquete.status === 'no_evaluado'))))
   );
   exigir(esTexto(paquete.generation_id));
 
@@ -200,7 +202,15 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
       esListaTextos(meta.alcance.secciones_cubiertas)
   );
   exigir(esReferencias(paquete.referencias));
-  exigir(validarCalidadAprobada(calidad, true));
+  if (paquete.status === 'no_evaluado') {
+    exigir(calidad.estado_evaluacion === 'no_realizada');
+    exigir(['anclaje_fuente_score', 'cantidad_afirmaciones', 'cantidad_respaldadas',
+      'claridad_pedagogica', 'adecuacion_perfil', 'cobertura_objetivos', 'coherencia_didactica',
+      'verificacion_visual', 'observaciones', 'razones_bloqueo'].every((key) => calidad[key] === null));
+    exigir(paquete.trazabilidad?.modelo_verificacion === null);
+  } else {
+    exigir(validarCalidadAprobada(calidad, true));
+  }
   exigir(calidad.observaciones === undefined || calidad.observaciones === null || esTexto(calidad.observaciones));
   exigir(
     contenido.introduccion_contextualizada === undefined ||
@@ -311,6 +321,7 @@ export function validarGeneracionCompletada(
     validarPaquete(paquete);
     exigir(paquete.generation_id === expectedGenId);
     if (expectedParams) {
+      exigir((paquete.modo_generacion ?? 'multiagente') === (expectedParams.modo_generacion ?? 'multiagente'));
       exigir(paquete.documento_fuente.document_id === expectedParams.document_id);
       exigir(paquete.metadatos.formato_generado === expectedParams.formato_salida);
       exigir(paquete.metadatos.perfil_aplicado === expectedParams.perfil_destinatario);

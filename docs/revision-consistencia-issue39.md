@@ -1,5 +1,10 @@
 # Revisión de consistencia junto al issue 39
 
+> **Evidencia histórica:** este registro corresponde a la versión y fecha
+> indicadas. #139 retira Streamlit; las pruebas y capturas de esa interfaz no
+> acreditan React. Ver [cobertura vigente](verificacion-issue-139.md).
+
+
 Base revisada: `develop` en `d9563a5` (incluye #35). Implementación y correcciones
 comparten `feat/issue-39-adapted-glossary`; el PR se integra directamente en `develop`.
 

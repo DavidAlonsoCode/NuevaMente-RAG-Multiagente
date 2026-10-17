@@ -26,6 +26,7 @@ from reportlab.platypus import (
     Table,
 )
 
+from app.exports.generation_mode import etiqueta_generacion
 from app.exports.markdown import _ETIQUETAS, _IDIOMAS
 from app.schemas.pedagogical import (
     ExecutiveSummary,
@@ -227,6 +228,8 @@ class _PlantillaPDF:
         m, contenido = self.paquete.metadatos, self.paquete.contenido_adaptado
         self.agregar(self.nombre_formato.upper(), "label")
         self.agregar(contenido.titulo, "title")
+        if etiqueta := etiqueta_generacion(self.paquete):
+            self.agregar(etiqueta, "label")
         self.campo("audiencia", self.l[m.perfil_aplicado.value])
         self.campo("idioma", _IDIOMAS[m.idioma_salida.value])
         self.campo("tiempo", f"{m.tiempo_estimado_estudio_minutos} {self.l['minutos']}")

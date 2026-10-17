@@ -30,6 +30,8 @@ class EjemploDemo(ModeloDemo):
 
     @model_validator(mode="after")
     def contenido_coherente(self):
+        if self.parametros.modo_generacion != "multiagente":
+            raise ValueError("Los ejemplos demo publicados requieren el modo multiagente revisado")
         if self.status == "completed":
             if not self.paquete_sha256 or not self.fuente_sha256 or self.diagnostico:
                 raise ValueError("Un ejemplo aprobado requiere paquete y fuentes confirmados")

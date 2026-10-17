@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BookMarked, Download, History, MessageSquare, RefreshCw, Search, TrendingUp } from 'lucide-react';
+import { BookMarked, History, MessageSquare, RefreshCw, Search, TrendingUp } from 'lucide-react';
 import { APIClient, APIError } from '../api/client';
 import {
-  ExportFormat,
   FORMATOS,
   IDIOMAS_SALIDA,
   OutputLanguage,
@@ -15,7 +14,6 @@ import {
 } from '../api/types';
 import {
   filtrarTerminosGlosario,
-  formatosExportables,
   validarGlosario,
   validarPaquete,
   validarGeneracionCompletada,
@@ -25,6 +23,7 @@ import {
 } from '../flows/validators';
 import { t } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
+import { ExportDownloads } from './ExportDownloads';
 import { PackageViewer } from './FormatRenderers';
 import { SourcesDrawer } from './SourcesDrawer';
 import { useOtherPendingChat, useScopedState } from '../flows/studyState';
@@ -802,7 +801,6 @@ export const HistoryFullView: React.FC<{
   const [anteriores, setAnteriores] = useState<Array<string | null>>([]);
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [detalleJob, setDetalleJob] = useState<any | null>(null);
-  const [exportFmt, setExportFmt] = useState<ExportFormat>('json');
   const [compareA, setCompareA] = useState<string>('');
   const [compareB, setCompareB] = useState<string>('');
   const [comparedPackages, setComparedPackages] = useState<PedagogicalStudentOutput[] | null>(null);
@@ -876,9 +874,6 @@ export const HistoryFullView: React.FC<{
         if (!active) return;
         if (job.status === 'completed') validarGeneracionCompletada(job, detalleId);
         setDetalleJob(job);
-        if (job?.contenido) {
-          setExportFmt('json');
-        }
       })
       .catch((err) => {
         if (!active) return;
@@ -927,34 +922,11 @@ export const HistoryFullView: React.FC<{
     return () => { active = false; };
   }, [compareA, compareB, idiomaUi, apiClient, token]);
 
-  const descargarExportacion = async (generationId: string, fmt: ExportFormat) => {
-    try {
-      const actual = await apiClient.getGeneration(token, generationId);
-      if (actual.status !== 'completed') {
-        setDetalleJob(actual);
-        return;
-      }
-      const bytes = await apiClient.downloadExport(token, generationId, fmt);
-      const mimeMap: Record<ExportFormat, string> = {
-        json: 'application/json',
-        md: 'text/markdown',
-        pdf: 'application/pdf',
-        csv: 'text/csv',
-        tsv: 'text/tab-separated-values',
-        apkg: 'application/octet-stream',
-      };
-      const blob = new Blob([bytes], { type: mimeMap[fmt] });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${generationId}.${fmt}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      if (err instanceof APIError) setError(err);
-    }
+  const sigueCompletado = async (generationId: string): Promise<boolean> => {
+    const actual = await apiClient.getGeneration(token, generationId);
+    if (actual.status === 'completed') return true;
+    setDetalleJob(actual);
+    return false;
   };
 
   const etiquetaFila = (fila: any) => {
@@ -963,6 +935,7 @@ export const HistoryFullView: React.FC<{
     if (p.perfil_destinatario) partes.push(t(`perfil.${p.perfil_destinatario}`, idiomaUi));
     if (p.formato_salida) partes.push(t(`formato.${p.formato_salida}`, idiomaUi));
     if (p.idioma_salida) partes.push(t(`idioma.${p.idioma_salida}`, idiomaUi));
+    partes.push(t(`modo.${p.modo_generacion ?? 'multiagente'}`, idiomaUi));
     return `${partes.join(' · ')} · ${String(fila.generation_id).slice(-8)}`;
   };
 
@@ -1015,41 +988,23 @@ export const HistoryFullView: React.FC<{
 
           {detalleJob?.status === 'completed' && detalleJob.contenido && (
             <>
-              <div className="nm-card" style={{ marginBottom: '1rem', background: 'var(--surface-2)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <div>
-                    <strong>{t('exportar.titulo', idiomaUi)}</strong>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>
-                      {t('historial.fecha_fuente', idiomaUi, {
-                        fecha: detalleJob.contenido.created_at.slice(0, 16).replace('T', ' ') + ' UTC',
-                        version: detalleJob.contenido.documento_fuente.version,
-                      })}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <select
-                      className="nm-select"
-                      style={{ width: 'auto' }}
-                      value={exportFmt}
-                      onChange={(e) => setExportFmt(e.target.value as ExportFormat)}
-                    >
-                      {formatosExportables(detalleJob.contenido).map((f) => (
-                        <option key={f} value={f}>
-                          {t(`exportar.${f}`, idiomaUi)} ({f.toUpperCase()})
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="nm-btn nm-btn-primary"
-                      onClick={() => descargarExportacion(detalleJob.generation_id, exportFmt)}
-                    >
-                      <Download size={15} />
-                      {t('historial.descargar', idiomaUi)}
-                    </button>
-                  </div>
-                </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)', marginBottom: '0.5rem' }}>
+                {t('historial.fecha_fuente', idiomaUi, {
+                  fecha: detalleJob.contenido.created_at.slice(0, 16).replace('T', ' ') + ' UTC',
+                  version: detalleJob.contenido.documento_fuente.version,
+                })}
               </div>
+              <ExportDownloads
+                api={apiClient}
+                token={token}
+                paquete={detalleJob.contenido}
+                persistencia={detalleJob.persistencia}
+                idioma={idiomaUi}
+                onError={setError}
+                onSessionInvalid={onSessionInvalid}
+                verificarAntes={() => sigueCompletado(detalleJob.generation_id)}
+                enTarjeta={false}
+              />
 
               <PackageViewer
                 paquete={detalleJob.contenido}

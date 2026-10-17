@@ -1497,9 +1497,9 @@ class RegistroOperativo:
 
     @_sincronizado
     def guardar_aprobado(self, generation_id: str, paquete_json: str, expira_en: str):
-        from app.schemas.responses import PedagogicalOutput
+        from app.schemas.responses import cargar_paquete_json, modo_paquete
 
-        paquete = PedagogicalOutput.model_validate_json(paquete_json)
+        paquete = cargar_paquete_json(paquete_json)
         vencimiento = datetime.fromisoformat(expira_en)
         if vencimiento.tzinfo is None or not _ahora() < vencimiento <= _ahora() + timedelta(hours=24):
             raise ValueError("La retención debe vencer dentro de 24 horas")
@@ -1509,6 +1509,8 @@ class RegistroOperativo:
             or len(paquete_json.encode()) > 2_000_000
             or (paquete.generation_id, paquete.documento_fuente.document_id) != (generation_id, fila["document_id"])
             or paquete.almacenamiento_oci.objeto_id != f"outputs/{fila['workspace_id']}/{generation_id}/content.json"
+            or modo_paquete(paquete)
+            != json.loads(fila["parametros_json"] or "{}").get("modo_generacion", "multiagente")
         ):
             raise ValueError("El aprobado no corresponde a su generación")
         self._conn.execute(

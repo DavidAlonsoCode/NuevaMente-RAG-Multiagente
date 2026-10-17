@@ -14,7 +14,7 @@ from app.core.rag.rebuild import ManifiestoDocumento
 from app.core.rag.vectorstore import VectorStoreChroma
 from app.jobs.store import RegistroOperativo
 from app.schemas.enums import DocumentStatus, JobStatus
-from app.schemas.responses import PedagogicalOutput
+from app.schemas.responses import cargar_paquete_json, modo_paquete
 from app.session.manifests import ManifiestoEspacio
 from app.storage.object_keys import clave_documento, clave_original, clave_output, clave_progress, clave_workspace
 from app.storage.provider import StorageNotFound, StorageProvider
@@ -129,7 +129,7 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 if not salida.object_name.endswith("/content.json"):
                     continue
                 generation_id = salida.object_name.split("/")[-2]
-                paquete = PedagogicalOutput.model_validate_json(storage.get(salida.object_name, if_match=salida.etag))
+                paquete = cargar_paquete_json(storage.get(salida.object_name, if_match=salida.etag))
                 if salida.object_name != clave_output(workspace_id, paquete.generation_id):
                     raise ValueError("Paquete con identidad ajena o no canónica")
                 if paquete.almacenamiento_oci.objeto_id != salida.object_name:
@@ -239,6 +239,7 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                     paquete.generation_id,
                     {
                         "document_id": paquete.documento_fuente.document_id,
+                        **({"modo_generacion": modo_paquete(paquete)} if paquete.schema_version == "1.1" else {}),
                         "perfil_destinatario": datos["perfil_aplicado"],
                         "formato_salida": datos["formato_generado"],
                         "nicho_sector": datos["nicho_sector"],

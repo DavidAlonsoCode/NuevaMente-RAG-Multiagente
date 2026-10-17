@@ -15,7 +15,7 @@ graph TD
     I12(["Issue 12 Chunker estructural con metadatos y chunk_id estable"])
     I13(["Issue 13 Cliente de embeddings Gemini"])
     I14(["Issue 14 Proveedor OCI Object Storage real"])
-    I15(["Issue 15 Esqueleto Streamlit con tema Linear"])
+    I15(["Issue 15 Esqueleto React con tema Oracle"])
     I16(["Issue 16 Cliente de API y gestión de sesión en el frontend"])
     I17["Issue 17 Vector store ChromaDB con aislamiento por espacio"]
     I18["Issue 18 Retriever MMR con presupuesto de evidencia"]
@@ -265,7 +265,7 @@ consumo de estas plantillas corresponden a los issues 23/28/29.
 **Objetivo**: pantalla de ingestión completa: archivo, texto pegado, documentos demo y visualización del estado de procesamiento.
 
 **Tareas**:
-- `components/sidebar.py` (bloque carga): `st.file_uploader` con límites visibles **antes** de cargar (§4.1) y validación temprana de extensión/tamaño.
+- `frontend/src/App.tsx` (carga en el área principal): input de archivo nativo con límites visibles **antes** de cargar (§4.1) y validación temprana de extensión/tamaño.
 - Alternativa «pegar texto» con título + contenido (se envía como documento TXT).
 - Biblioteca demo: tarjetas de los 3 documentos de `Issue 05` con su estado real informado por la API; generar solo cuando estén `ready`. Una fuente con visión pendiente permanece en procesamiento hasta Issue 30. Issue 49 prepara la biblioteca desplegada en la VM.
 - Panel de estado: `processing` con etapas reales de ingestión, `ready` con cobertura (páginas procesadas), `failed` con causa accionable y opción de reintentar con otro archivo.
@@ -288,7 +288,7 @@ consumo de estas plantillas corresponden a los issues 23/28/29.
 **Objetivo**: imágenes reproducibles de backend y frontend + compose con volumen de datos, validadas para ARM64 desde el día uno.
 
 **Tareas**:
-- `backend/Dockerfile` y `frontend/Dockerfile`: base `python:3.11-slim` fijada por digest, usuario no-root, dependencias por capa de requirements exactos.
+- `backend/Dockerfile` y `frontend/Dockerfile`: bases fijadas por digest, usuario no-root y dependencias fijadas por servicio; React compila en una etapa Node y se sirve desde Python.
 - `docker-compose.yml`: puertos publicados solo en loopback (`127.0.0.1:8000`, `127.0.0.1:8501`), volumen `backend_data` montado solo en backend, red interna, `env_file`, `restart: unless-stopped`, healthcheck de API.
 - `depends_on` + espera activa de salud en el frontend (no confiar en orden de arranque — §14.1).
 - Fuentes Unicode para ReportLab y dependencias de render incluidas en la imagen backend (§14.3).

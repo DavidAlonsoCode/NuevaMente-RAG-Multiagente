@@ -70,7 +70,7 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/nm48-playwright-download
         run: |
           test ! -e "$PLAYWRIGHT_BROWSERS_PATH"
-          python -m pip install -r requirements-dev.txt -r backend/requirements.txt -r frontend_streamlit_viejo/requirements.txt
+          python -m pip install -r requirements-dev.txt -r backend/requirements.txt
           python -m pip install --require-hashes --only-binary=:all: -r .github/requirements-caddy.lock
           python .github/scripts/check_pinned_requirements.py .github/requirements-caddy.txt
           python -m playwright install --with-deps chromium
@@ -295,5 +295,6 @@ jobs:
             .data/caddy-evidence/required-tests.xml
             .data/caddy-evidence/react-observations.json
             .data/caddy-evidence/generation-sse.json
+            .data/caddy-evidence/generation-modes.json
           if-no-files-found: error
           retention-days: 14

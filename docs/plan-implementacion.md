@@ -63,12 +63,15 @@ H2 verifica indexación y recuperación con fuentes textuales. Una fuente con vi
 
 Actualización del 15/10: el rediseño autorizado migra la presentación a React,
 TypeScript y Vite, preservando los 60 issues, contratos y criterios. La nueva
-interfaz requiere sus propias pruebas; las pruebas Streamlit conservadas no
-equivalen a validación de React. Ver [guía del frontend](../frontend/README.md).
+interfaz tiene sus propias pruebas. El 17/10, #139 retira Streamlit y sus
+pruebas exclusivas, mueve la carga al área principal y actualiza las guías.
+Los registros anteriores conservan su alcance histórico; no acreditan React. Ver [guía del frontend](../frontend/README.md).
 
 Ajuste autorizado del 15/10: integrar #54 y #55 con la evidencia real local ya registrada. Su aceptación se delimita en los archivos de fase: la captura de consola OCI y constancia de dos integrantes de #54, y la comprobación pública de #55, se trasladan al [seguimiento #133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133), junto con la aceptación del entorno OCI. Integrar o cerrar esos issues no acredita esos pendientes ni el despliegue. También se traslada la ejecución pública de los ejemplos de #59: su documentación/OpenAPI se validan localmente y ya no dependen de #48. Se conservan los 60 issues, los 14 criterios de #53 y la revisión humana de #60.
 
 Ajuste autorizado del 16/10: las comprobaciones pendientes que requieren Gemini/OCI reales o el entorno público se centralizan en #133, con el issue de origen y su evidencia. Los issues de implementación pueden integrarse y cerrarse con sus criterios locales verificados y proveedores simulados explícitos; no se retiran controles ni se declara ejecutada la aceptación externa. Incluye almacenamiento/documentos (14/19), visión (30), generación y UI React (31/32/33), chat (37), proxy/demo (48/49), recorrido E2E (53), tramo real de la demo (56) y reproducción del despliegue (58). Se conserva la evidencia real ya registrada de 14/32/54/55, sin repetir llamadas por un cierre administrativo. Los 14 criterios y el protocolo de dos personas de 53, las revisiones propias de cada entregable y los 12 casos con dos revisores de 60 mantienen su alcance. #133 es obligatorio para aceptar la entrega final y no autoriza por sí solo consumo ni aprovisionamiento.
+
+**Complemento autorizado 33.1**: [modos de generación](modos-generacion.md) agrega básico con RAG sin evaluación independiente y conserva el multiagente. Ambos reutilizan el documento e índice; cambiar de modo crea otro material. Se integra antes de cerrar 51/53 y se documenta en 56/57/58; 46 puede avanzar en paralelo. La comparación real de consumo/calidad queda en #133; 60 conserva sus 12 casos y revisores.
 
 - **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
   40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
@@ -114,7 +117,7 @@ Para un equipo de 6 personas. Cada carril tiene un área de código propia (lím
 | **API** | Backend FastAPI: contratos HTTP, sesiones, trabajos, cola, SQLite operativo | `backend/app/api/`, `backend/app/jobs/`, `backend/app/session/` |
 | **RAG** | Ingestión, parser, chunker, embeddings, ChromaDB, retrieval, multimodal | `backend/app/core/rag/` |
 | **AGT** | Grafo LangGraph, prompts, Writer/Critic, fidelidad Faithfulness | `backend/app/core/agents/`, `backend/app/core/faithfulness/` |
-| **UI** | Streamlit: tema Linear, componentes, i18n, flujos de usuario | `frontend/` |
+| **UI** | React/TypeScript/Vite: tema Oracle, componentes, i18n y flujos de usuario | `frontend/` |
 | **INF** | OCI Object Storage, Docker, VM A1, Caddy, presupuestos, hardening | `backend/app/storage/`, `docker-compose.yml`, guías de despliegue |
 | **QAD** | CI, fixtures, suites de tests, evaluación pedagógica, documentos demo, README y demo final | `.github/`, `backend/tests/`, `documents/`, `docs/`, `README.md` |
 
@@ -180,7 +183,7 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 | `Issue 12` | Chunker estructural con metadatos y `chunk_id` estable | RAG | M | `Issue 11` |
 | `Issue 13` | Cliente de embeddings Gemini síncrono (768 d, solicitudes individuales, cuotas centralizadas) | RAG | M | `Issue 03`, `Issue 10` |
 | `Issue 14` | Proveedor OCI Object Storage real (bucket Always Free, prefijos) | INF | M | `Issue 04` |
-| `Issue 15` | Esqueleto Streamlit con tema Linear | UI | M | `Issue 03`, `Issue 06` |
+| `Issue 15` | Esqueleto de UI (migrado a React con tema Oracle) | UI | M | `Issue 03`, `Issue 06` |
 | `Issue 16` | Cliente de API y gestión de sesión en el frontend | UI | M | `Issue 15`, `Issue 09` |
 | `Issue 10` | Infraestructura de tests: conftest, fixtures y doble de Gemini | QAD | M | `Issue 02`, `Issue 03`, `Issue 05` |
 

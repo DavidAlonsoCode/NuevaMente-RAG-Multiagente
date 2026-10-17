@@ -19,7 +19,6 @@ import { APIClient, APIError } from './api/client';
 import {
   DetailLevel,
   DocumentoResponse,
-  ExportFormat,
   FORMATOS,
   GenerateRequest,
   IDIOMAS_SALIDA,
@@ -36,6 +35,7 @@ import {
 import { OraclePillLogo, OracleWaveCircuitBackdrop } from './assets/OracleVisuals';
 import { ErrorBanner } from './components/ErrorBanner';
 import { DocumentStatus } from './components/DocumentStatus';
+import { ExportDownloads } from './components/ExportDownloads';
 import { RecentGenerations } from './components/RecentGenerations';
 import { PackageViewer } from './components/FormatRenderers';
 import { SourcesDrawer } from './components/SourcesDrawer';
@@ -49,7 +49,6 @@ import {
   DOCUMENTOS_DEMO,
   claveCarga,
   formatearTamano,
-  formatosExportables,
   generarEventIdProgreso,
   validarArchivo,
   validarGeneracionCompletada,
@@ -109,6 +108,7 @@ export const App: React.FC = () => {
   const [genNicho, setGenNicho] = useState<IndustryNiche>('general');
   const [genDetalle, setGenDetalle] = useState<DetailLevel>('didactico');
   const [genIdiomaSalida, setGenIdiomaSalida] = useState<OutputLanguage>('es');
+  const [genModo, setGenModo] = useState<'multiagente' | 'basico'>('multiagente');
   const [genAlcance, setGenAlcance] = useState<'documento_completo' | 'seccion'>('documento_completo');
   const [genSeccionId, setGenSeccionId] = useState<string>('');
   const [confirmModalPending, setConfirmModalPending] = useState<{
@@ -323,6 +323,7 @@ export const App: React.FC = () => {
       setGenNicho(generation.parametros.nicho_sector);
       setGenDetalle(generation.parametros.nivel_detalle);
       setGenIdiomaSalida(generation.parametros.idioma_salida);
+      setGenModo(generation.parametros.modo_generacion ?? 'multiagente');
       setGenAlcance(generation.parametros.alcance.tipo);
       setGenSeccionId(generation.parametros.alcance.seccion_id ?? '');
       setMostrandoDocumentos(false);
@@ -368,6 +369,7 @@ export const App: React.FC = () => {
         ? { tipo: 'seccion' as const, seccion_id: genSeccionId }
         : { tipo: 'documento_completo' as const };
     const peticion: GenerateRequest = {
+      modo_generacion: genModo,
       document_id: docSeleccionado.document_id,
       perfil_destinatario: genPerfil,
       formato_salida: genFormato,
@@ -494,23 +496,6 @@ export const App: React.FC = () => {
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--border-hairline)', width: '100%' }} />
 
-          {/* Subida rápida en Sidebar */}
-          {sessionToken && !mostrandoRecuperacion && (
-            <SidebarFileUpload
-              api={api}
-              token={sessionToken}
-              idioma={idiomaUi}
-              onUploaded={(docId, jobId) => {
-                setTrabajosDoc((prev) => ({
-                  ...prev,
-                  [docId]: { jobId, cursor: 0, estado: 'queued' },
-                }));
-                sincronizarEspacio();
-              }}
-              onError={setGlobalError}
-            />
-          )}
-
           {/* Panel de Parámetros de Adaptación */}
           {sessionToken && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -614,6 +599,19 @@ export const App: React.FC = () => {
                     <option key={l} value={l}>{t(`idioma.${l}`, idiomaUi)}</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="nm-label" htmlFor="app-generation-mode">{t('modo.selector', idiomaUi)}</label>
+                <select id="app-generation-mode" className="nm-select" value={genModo}
+                  onChange={(e) => setGenModo(e.target.value as 'multiagente' | 'basico')}
+                  aria-describedby="app-generation-mode-help">
+                  <option value="multiagente">{t('modo.multiagente', idiomaUi)}</option>
+                  <option value="basico">{t('modo.basico', idiomaUi)}</option>
+                </select>
+                <p id="app-generation-mode-help" style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>
+                  {t(genModo === 'basico' ? 'modo.aviso' : 'modo.ayuda', idiomaUi)}
+                </p>
               </div>
 
               {/* Alcance */}
@@ -898,6 +896,7 @@ export const App: React.FC = () => {
                           {t(`formato.${generacionActiva.parametros.formato_salida}`, idiomaUi)} ·{' '}
                           {t(`nicho.${generacionActiva.parametros.nicho_sector}`, idiomaUi)} ·{' '}
                           {t(`idioma.${generacionActiva.parametros.idioma_salida}`, idiomaUi)}
+                          {' · '}{t(`modo.${generacionActiva.parametros.modo_generacion ?? 'multiagente'}`, idiomaUi)}
                         </div>
                       </div>
                       <button
@@ -1074,8 +1073,17 @@ export const App: React.FC = () => {
                     </button>
                   </div>
 
-                  {vistaOnboarding === 'upload' && (
-                    <div className="nm-alert nm-alert-info">{t('upload.ayuda_sidebar', idiomaUi)}</div>
+                  {vistaOnboarding === 'upload' && sessionToken && (
+                    <FileUpload
+                      api={api}
+                      token={sessionToken}
+                      idioma={idiomaUi}
+                      onUploaded={(docId, jobId) => {
+                        setTrabajosDoc((prev) => ({ ...prev, [docId]: { jobId, cursor: 0, estado: 'queued' } }));
+                        sincronizarEspacio();
+                      }}
+                      onError={setGlobalError}
+                    />
                   )}
 
                   {vistaOnboarding === 'texto' && sessionToken && (
@@ -1307,6 +1315,8 @@ export const App: React.FC = () => {
               <div><strong>{t('sidebar.formato', idiomaUi)}:</strong> {t(`formato.${confirmModalPending.peticion.formato_salida}`, idiomaUi)}</div>
               <div><strong>{t('sidebar.nicho', idiomaUi)}:</strong> {t(`nicho.${confirmModalPending.peticion.nicho_sector}`, idiomaUi)}</div>
               <div><strong>{t('sidebar.detalle', idiomaUi)}:</strong> {t(`detalle.${confirmModalPending.peticion.nivel_detalle}`, idiomaUi)}</div>
+              <div><strong>{t('modo.selector', idiomaUi)}:</strong> {t(`modo.${confirmModalPending.peticion.modo_generacion ?? 'multiagente'}`, idiomaUi)}</div>
+              {confirmModalPending.peticion.modo_generacion === 'basico' && <p className="nm-alert nm-alert-warning">{t('modo.aviso', idiomaUi)}</p>}
               <div><strong>{t('sidebar.idioma_salida', idiomaUi)}:</strong> {t(`idioma.${confirmModalPending.peticion.idioma_salida}`, idiomaUi)}</div>
               <div>
                 <strong>{t('sidebar.alcance', idiomaUi)}:</strong>{' '}
@@ -1377,7 +1387,7 @@ export const App: React.FC = () => {
 };
 
 // Subcomponentes auxiliares
-const SidebarFileUpload: React.FC<{
+const FileUpload: React.FC<{
   api: APIClient;
   token: string;
   idioma: OutputLanguage;
@@ -1412,16 +1422,18 @@ const SidebarFileUpload: React.FC<{
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t('upload.titulo', idioma)}</div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--ink-muted)' }}>
+    <section className="nm-card" aria-labelledby="file-upload-title" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <h2 id="file-upload-title" style={{ margin: 0, fontSize: '1.2rem' }}>{t('upload.titulo', idioma)}</h2>
+      <div id="file-upload-help" style={{ fontSize: '0.85rem', color: 'var(--ink-muted)' }}>
         {t('upload.formatos_soportados', idioma)} · {t('upload.limite', idioma)}
       </div>
       <input
+        aria-labelledby="file-upload-title"
+        aria-describedby="file-upload-help"
         type="file"
         accept=".pdf,.md,.txt"
         className="nm-input"
-        style={{ fontSize: '0.8rem' }}
+        style={{ fontSize: '0.9rem' }}
         onChange={(e) => setFile(e.target.files?.[0] || null)}
       />
       {errClave && (
@@ -1446,7 +1458,7 @@ const SidebarFileUpload: React.FC<{
       >
         {t('upload.procesar', idioma)}
       </button>
-    </div>
+    </section>
   );
 };
 
@@ -1600,13 +1612,12 @@ export const ActiveGenerationPanel: React.FC<{
   onNarrowScope,
 }) => {
   const [persistKey] = useState(() => `persist-${generacion.generation_id}-${Date.now().toString(36)}`);
-  const [exportFmt, setExportFmt] = useState<ExportFormat>('json');
   const [err, setErr] = useState<APIError | null>(null);
   const [pendingAction, setPendingAction] = useState<'cancel' | 'persist' | null>(null);
   const [cancelRequested, setCancelRequested] = useState(false);
 
   if (!job) {
-    return <div className="nm-card"><GenerationLiveStatus stream={stream} idioma={idioma} /></div>;
+    return <div className="nm-card"><GenerationLiveStatus stream={stream} idioma={idioma} modo={generacion.parametros.modo_generacion} /></div>;
   }
 
   const estado = job.status;
@@ -1623,50 +1634,18 @@ export const ActiveGenerationPanel: React.FC<{
         </div>
       );
     }
-    const persistencia = job.persistencia;
-    const rotuloGuardado =
-      persistencia?.provider === 'oci' ? 'material.guardado' : 'almacenamiento.local_dev';
-
     return (
       <div>
         <ErrorBanner error={err} idioma={idioma} />
-        <div className="nm-alert nm-alert-success" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <span>{t(rotuloGuardado, idioma)}</span>
-          <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              className="nm-select"
-              style={{ width: 'auto', padding: '0.3rem 0.6rem' }}
-              value={exportFmt}
-              onChange={(e) => setExportFmt(e.target.value as ExportFormat)}
-            >
-              {formatosExportables(paqueteValido).map((f) => (
-                <option key={f} value={f}>{t(`exportar.${f}`, idioma)}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="nm-btn nm-btn-primary"
-              style={{ padding: '0.35rem 0.75rem' }}
-              onClick={async () => {
-                try {
-                  const bytes = await api.downloadExport(token, generacion.generation_id, exportFmt);
-                  const blob = new Blob([bytes]);
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${generacion.generation_id}.${exportFmt}`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                } catch (e) {
-                  if (e instanceof APIError) setErr(e);
-                }
-              }}
-            >
-              <Download size={14} />
-              {t('comun.descargar', idioma)}
-            </button>
-          </div>
-        </div>
+        <ExportDownloads
+          api={api}
+          token={token}
+          paquete={paqueteValido}
+          persistencia={job.persistencia}
+          idioma={idioma}
+          onError={setErr}
+          onSessionInvalid={onSessionInvalid}
+        />
 
         <PackageViewer
           paquete={paqueteValido}
@@ -1690,7 +1669,7 @@ export const ActiveGenerationPanel: React.FC<{
         <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>
           {t(`estados.trabajo.${estado}`, idioma)}
         </div>
-        <GenerationLiveStatus stream={stream} idioma={idioma} />
+        <GenerationLiveStatus stream={stream} idioma={idioma} modo={generacion.parametros.modo_generacion} />
         {cancelRequested && <p role="status">{t('live.cancel_requested', idioma)}</p>}
         {estado === 'queued' && typeof job.posicion_cola === 'number' && (
           <div style={{ fontSize: '0.85rem', color: 'var(--ink-secondary)' }}>

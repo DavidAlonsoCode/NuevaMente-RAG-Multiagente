@@ -1,8 +1,9 @@
 # Frontend React de NuevaMente
 
-`frontend/` contiene React 18, TypeScript y Vite. La interfaz anterior se conserva
-en `frontend_streamlit_viejo/`, junto con sus pruebas históricas. Esas pruebas
-no acreditan por sí solas la nueva interfaz.
+`frontend/` contiene React 18, TypeScript y Vite. #139 retira la implementación
+Streamlit, sus dependencias y sus pruebas exclusivas. La carga de documentos
+está en el área principal: PDF/MD/TXT, texto pegado o biblioteca demo; los
+parámetros de la próxima adaptación permanecen en el sidebar.
 
 ## Cómo funciona
 
@@ -10,6 +11,12 @@ El navegador muestra React y solicita `/api/...` al mismo origen. En desarrollo,
 Vite redirige esas solicitudes a FastAPI (`http://localhost:8000` por defecto).
 FastAPI sigue gestionando sesiones, documentos, el worker, RAG, Gemini y OCI.
 No hay claves de proveedores en React ni es necesario cambiar el backend a JavaScript.
+
+El selector de modo se aplica a la próxima generación: multiagente con revisión
+o básico con RAG sin evaluación independiente. Cambiarlo no reingesta documentos
+ni modifica un material guardado. Resultado, historial, comparación y exportaciones
+conservan la procedencia y muestran la ausencia de evaluación cuando corresponde.
+Ver [contrato y comportamiento](../docs/modos-generacion.md).
 
 En Docker, una etapa Node compila la interfaz. El contenedor final sirve los
 archivos estáticos con el pequeño servidor Python de `entrypoint.py` y redirige
@@ -81,8 +88,8 @@ progreso, historial, comparación y los ejemplos publicados. El seguimiento de
 generación utiliza SSE autenticado, reconcilia el estado al reconectar y recupera
 trabajos activos desde el historial del espacio, sin otra admisión.
 Ver [verificación de #33](../docs/verificacion-issue-33.md) y sus límites: las
-pruebas con dobles no acreditan proveedores reales. Esto tampoco cierra #46 o #53.
+pruebas con dobles no acreditan proveedores reales. Las descargas multiformato de #46 están integradas; esta evidencia no cierra #53.
 La generación directa desde fuentes compartidas demo sigue pendiente. La VM y
-el HTTPS público se verifican en #133. La CI conserva las pruebas históricas
-Caddy/Streamlit y añade una prueba del build React en navegador detrás de
-Caddy/TLS locales con proveedores simulados; no equivale a aceptación pública.
+el HTTPS público se verifican en #133. La CI prueba React, la API y el build en navegador detrás de Caddy/TLS locales
+con proveedores simulados, incluidos recarga, SSE, permisos y descargas; no
+equivale a aceptación pública. Cobertura del retiro: [#139](../docs/verificacion-issue-139.md).

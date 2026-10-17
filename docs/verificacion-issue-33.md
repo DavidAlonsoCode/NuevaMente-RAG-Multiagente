@@ -69,5 +69,5 @@ del responsable del 16/10, el criterio de generación con proveedores reales y e
 recorrido público se aceptan en #133. El cierre de #33 acredita la implementación
 y los cuatro criterios locales ajustados, sin completar esa aceptación externa.
 #51 y #53 conservan sus propios criterios y no se cierran por este merge. La
-interfaz Streamlit anterior permanece conservada; sus pruebas no sustituyen las
-de React.
+interfaz Streamlit anterior fue retirada en #139; sus evidencias históricas no
+sustituyen las de React.
