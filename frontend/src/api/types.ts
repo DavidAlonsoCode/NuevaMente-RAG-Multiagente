@@ -38,6 +38,15 @@ export const NIVELES_DETALLE: readonly DetailLevel[] = [
 
 export const IDIOMAS_SALIDA: readonly OutputLanguage[] = ['es', 'en', 'pt'] as const;
 
+export const FORMATOS_EXPORTACION: readonly ExportFormat[] = [
+  'json',
+  'md',
+  'pdf',
+  'csv',
+  'tsv',
+  'apkg',
+] as const;
+
 export const ESTADOS_TRABAJO: readonly JobStatus[] = [
   'queued',
   'running',
