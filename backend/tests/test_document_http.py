@@ -334,6 +334,7 @@ def test_json_roto_y_tipo_no_soportado(entorno):
     ],
     ids=["extension", "firma", "binario", "vacio"],
 )
+@pytest.mark.e2e
 def test_archivo_invalido_no_admitido(entorno, nombre, contenido):
     e = entorno
     error(e.cliente.post(UPLOAD, files={"file": (nombre, contenido)}, headers=e.headers), 422, "VALIDATION_ERROR")
@@ -371,6 +372,7 @@ def test_nombre_archivo_es_etiqueta_y_no_ruta_de_storage(entorno):
 
 
 @pytest.mark.parametrize("formato", ["json", "txt", "pdf", "stream"])
+@pytest.mark.e2e
 def test_limites_antes_de_storage_y_trabajo(entorno, monkeypatch, formato):
     e = entorno
     e.admision.limites = replace(e.admision.limites, max_bytes_texto=100, max_bytes_pdf=200)
@@ -713,6 +715,7 @@ def test_vision_pendiente_completed_no_ready_y_metadata_conservada(entorno):
     error(e.cliente.get(f"/api/documents/{datos['document_id']}/sources/c", headers=e.headers), 409, "INVALID_STATE")
 
 
+@pytest.mark.e2e
 def test_fallo_parser_trabajo_failed_y_error_seguro(entorno, pdf_corrupto):
     e = entorno
     respuesta = e.cliente.post(UPLOAD, files={"file": ("a.pdf", pdf_corrupto.read_bytes())}, headers=e.headers)

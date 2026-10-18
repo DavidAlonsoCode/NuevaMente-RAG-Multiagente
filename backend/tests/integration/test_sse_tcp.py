@@ -14,6 +14,7 @@ from test_api_generate import esperar
 pytestmark = pytest.mark.integration_mock
 
 
+@pytest.mark.e2e
 def test_stream_tcp_heartbeat_cierre_status_y_reconexion(entorno, monkeypatch):
     e = entorno
     liberar = threading.Event()
