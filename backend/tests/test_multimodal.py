@@ -96,6 +96,7 @@ def lectura(e):
     return ContextoEjecucion("lectura", e.ws["workspace_id"], "consulta", time.monotonic() + 30, cuotas=e.cuotas)
 
 
+@pytest.mark.e2e
 def test_vcn_ready_solo_con_vision_fuente_original_filtros_y_aislamiento(entorno, documento_demo_vcn):
     e = entorno
     original = documento_demo_vcn.read_bytes()

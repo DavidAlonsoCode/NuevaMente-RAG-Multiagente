@@ -198,6 +198,7 @@ def test_relacion_de_purga_exige_lapida_y_aislamiento(pila):
     assert db.listar_generaciones(creado.workspace_id) == []
 
 
+@pytest.mark.e2e
 def test_lapidas_de_documento_generacion_y_progreso_no_reaparecen(pila, tmp_path):
     db, storage, manager = pila
     creado = manager.crear_espacio()
