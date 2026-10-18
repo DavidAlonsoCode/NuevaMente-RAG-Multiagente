@@ -1096,8 +1096,7 @@ class HostOperations:
             timeout=180,
         )
 
-    def service_container(self, service, *, deadline=None, allow_absent=False):
-        """Only an empty successful listing is absence; inspection errors propagate."""
+    def backend(self, *, deadline=None):
         ids = run(
             [
                 "docker",
@@ -1106,36 +1105,12 @@ class HostOperations:
                 "--filter",
                 f"label=com.docker.compose.project={PROJECT}",
                 "--filter",
-                f"label=com.docker.compose.service={service}",
+                "label=com.docker.compose.service=backend",
             ],
             deadline=deadline,
         ).stdout.splitlines()
-        if not ids:
-            require(allow_absent, service + "-container-absent")
-            return None
-        require(len(ids) == 1, service + "-container-not-unique")
-        inspected = json_output(["docker", "inspect", ids[0]], deadline=deadline)
-        require(
-            isinstance(inspected, list) and len(inspected) == 1 and isinstance(inspected[0], dict),
-            "container-inspection-inconsistent",
-        )
-        container = inspected[0]
-        require(
-            isinstance(container.get("Id"), str) and container["Id"].startswith(ids[0]),
-            "container-inspection-identity-changed",
-        )
-        config = container.get("Config")
-        require(isinstance(config, dict), "container-inspection-inconsistent")
-        labels = config.get("Labels")
-        require(isinstance(labels, dict), "container-inspection-inconsistent")
-        require(
-            labels.get("com.docker.compose.project") == PROJECT and labels.get("com.docker.compose.service") == service,
-            "foreign-container-rejected",
-        )
-        return container
-
-    def backend(self, *, deadline=None, allow_absent=False):
-        return self.service_container("backend", deadline=deadline, allow_absent=allow_absent)
+        require(len(ids) == 1, "backend-container-not-unique")
+        return json_output(["docker", "inspect", ids[0]], deadline=deadline)[0]
 
     def fingerprint(self, *, deadline=None):
         container = self.backend(deadline=deadline)
@@ -1521,9 +1496,6 @@ def validate_caddy_candidate(data, env):
 
 def restore_transaction(journal, operations, publish, delete):
     """Recovery never restores/migrates data, secrets or ACME storage."""
-    # A failed candidate may already have published. Never recreate its previous
-    # backend while the public proxy is still active. The real journal survives.
-    operations.emergency_stop()
     previous = journal["previous"]
     operations.expected_volume = (previous or journal["candidate"])["volume"]
     if previous is None:
@@ -1675,24 +1647,7 @@ def deploy(root, *, activate=False, recover=False, observation=False):
                 secure_path(CADDYFILE, gid=account.pw_gid, mode=0o640).read_text() == prior["caddyfile"],
                 "published-caddyfile-changed",
             )
-            if operations.backend(allow_absent=True) is None:
-                require(activate, "backend-container-absent; explicit-activation-required")
-                # No implicit installer upgrade: the reviewed executing helper
-                # must be the exact one covered by the managed installation.
-                manifest = managed_installation()
-                require(
-                    manifest["files"][str(HELPER)] == digest(Path(__file__).read_bytes()),
-                    "backend-recreation-requires-installed-helper",
-                )
-                require(
-                    prior["model"] == model and prior["caddyfile"] == data.decode() and prior["adapted"] == adapted,
-                    "backend-recreation-configuration-changed",
-                )
-                require(prior["volume"] == volume, "data-volume-identity-changed")
-                operations.service_container("frontend", allow_absent=True)
-                reprobe = True
-            else:
-                reprobe = prior["fingerprint"] != operations.fingerprint()
+            reprobe = prior["fingerprint"] != operations.fingerprint()
             require(activate or not reprobe, "network-observation-invalidated; explicit-activation-required")
             if not reprobe:
                 operations.health(prior["model"], prior["fingerprint"])

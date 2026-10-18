@@ -9,6 +9,10 @@ El merge local de #58 es `8b97c6b5970cfcb0bae87cc7c7d8923baa40aa9d`.
 Las pruebas y revisiones del 16/10 conservan su base `f292415`; no se atribuyen a
 esta integración. El contraste nuevo es documental, sin nuevas pruebas funcionales.
 No se ejecutó sobre una VM.
+El resultado local volvió al alcance exclusivamente documental: código, tests y
+manifiesto de smoke coinciden con `5988244`. Las implementaciones experimentales
+de 17.1 y 17.4 fueron retiradas y respaldadas fuera del checkout. Sus ensayos
+son históricos, no validación de las capacidades disponibles en esta receta.
 El [registro de verificación](verificacion-issue-58.md) distingue lectura de código,
 evidencia histórica, revisión humana de #58 y reproducción real pendiente en
 [#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
@@ -36,10 +40,8 @@ Las secciones 1–12 conservan la instalación de etapa 2; las secciones 13–19
 la operación de etapa 3. Sólo se ensayó copia/restauración con datos sintéticos,
 según el registro de verificación. La etapa 4 registra comprobaciones locales y
 sus límites; la revisión humana y la reproducción real siguen pendientes.
-17.1 tiene una corrección local acotada posterior a esa integración, todavía sin
-commit ni validación nativa; exige el helper corregido registrado en la instalación.
-El hueco de 17.4 sigue requiriendo decisión/implementación del equipo. Ambos
-afectan la suficiencia de recuperación de #58, no sólo una prueba de #133.
+Los huecos operativos de 17.1/17.4 afectan la suficiencia local de recuperación
+de #58: requieren decisión/implementación del equipo, no sólo una prueba de #133.
 Esta receta no acredita la aceptación de ninguno de esos pendientes.
 
 ## 1. Prerrequisitos y verificación de costo cero
@@ -1390,63 +1392,23 @@ preservar lo sobreviviente. No inicializar un volumen vacío para esconder el fa
 
 ### 17.1 Contenedores perdidos o recreados, volumen conservado
 
-**Máquina/shell:** VM/Bash. **Previo:** instalación gestionada, volumen/credenciales,
-fuente e imágenes aprobadas, sin journal. Un restart con contenedores presentes
-sigue la sección 14. Esta corrección posterior a `5988244` está en el parche
-local de #58, sin commit: el tar fijado en sección 3 **no la incluye**. Antes de
-operarla debe revisarse/versionarse esa fuente y registrarse su helper exacto en
-la instalación; no se autoriza desplegar un working tree sin revisión.
-
-`installation.json` verifica hashes de binario, unidad, drop-in y helper. Para
-recuperar un backend ausente, el helper ejecutado debe coincidir además con el
-hash del instalado. `install.sh` continúa rechazando cambios en instalaciones
-existentes con `installation-update-requires-review`: **no hay actualización
-automática del helper**. Una instalación anterior exige decisión/procedimiento
-administrativo revisado antes de usar esta corrección. No editar el manifiesto,
-copiar el helper encima ni borrar estado para eludir esa parada.
+**Máquina/shell:** VM/Bash. **Previo:** comprobar el volumen/credenciales/fuente e
+imágenes aprobadas, sin journal. Un restart con contenedores presentes sigue la
+sección 14. Si los contenedores fueron eliminados, el helper necesita un backend
+único para observar el fingerprint anterior: no asumir que `--activate` lo resolverá.
 
 ```bash
 sudo docker volume inspect --format '{{.Name}} {{.Driver}} {{.CreatedAt}}' nuevamente_backend_data
 sudo docker ps -aq --filter label=com.docker.compose.project=nuevamente --filter label=com.docker.compose.service=backend
 sudo test -e /var/lib/nuevamente-deploy/current.json
-sudo cmp /RUTA_FUENTE_DESPLEGADA/infra/caddy/verify_deployment.py /usr/local/lib/nuevamente/verify_deployment.py
 ```
 
-Sustituir la ruta por la fuente aprobada. Un listado Docker vacío y exitoso es
-ausencia; no lo es un error de Docker/inspección. Múltiples candidatos, identidad
-inconsistente o etiquetas de otro proyecto/servicio se rechazan. Un backend
-único conserva la validación habitual de fingerprint, salud y configuración.
-Sin backend, `--validate` rechaza la ausencia sin recrear ni escribir journal.
-
-Sólo con autorización administrativa de activación y todos los previos cumplidos:
-
-```bash
-sudo bash /RUTA_FUENTE_DESPLEGADA/infra/caddy/deploy.sh --checkout /RUTA_FUENTE_DESPLEGADA --activate
-sudo bash /RUTA_FUENTE_DESPLEGADA/infra/caddy/deploy.sh --checkout /RUTA_FUENTE_DESPLEGADA --validate
-```
-
-El caso ausente exige el mismo modelo, imágenes, Caddyfile/configuración adaptada,
-secreto y volumen de `current.json`. Recuperar y actualizar versiones son pasos
-separados: no combinar esta operación con imágenes o configuración nuevas.
-Admite frontend único verificado o ausente, incluidos ambos contenedores perdidos.
-La transacción escribe el journal real antes de detener Caddy; recrea backend en
-cuarentena, observa el peer exacto de nuevo, revalida volumen y libera la compuerta.
-Después recrea frontend, comprueba salud/configuración efectiva de contenedores,
-publica Caddy y verifica su configuración efectiva antes de confirmar `current.json`.
-
-**Esperado:** servicios recuperados con volumen/modelo conservados y fingerprint
-nuevo; no continuidad de trabajos. Si falla, la recuperación existente cierra
-primero Caddy y reconstruye el modelo anterior con nueva observación y salud.
-Si también falla, conserva journal/estado y deja el proxy cerrado cuando la parada
-systemd es efectiva; un fallo de parada se informa sin prometer cierre acreditado.
-`--recover` sólo se usa para ese journal auténtico, no para inventarlo.
-No revierte escrituras ni efectos externos de un arranque parcial.
-**Consumo:** inspección local; al reactivar, OCI/ACME y posibles reconciliaciones
-indicadas en sección 11. No se reinician ledger ni obligaciones.
-**Parar si:** helper antiguo/no coincidente, instalación alterada, configuración o
-imagen distinta, volumen sustituido, candidatos ajenos/múltiples, inspección
-fallida, peer/salud/configuración no verificables o journal pendiente. Conservar
-datos y evidencia; no borrar `current.json`, ampliar confianza ni forzar adopción.
+**Esperado:** identidad conservada. Con contenedores presentes, activar/validar con
+la fuente registrada y sección 12. Si falta el backend y existe `current.json`,
+**parar**: no hay modo CLI del helper para adoptar ese estado como primera
+instalación ni se autoriza borrar su modelo para simularlo. Revisar recuperación
+administrativa con el responsable; `--recover` requiere journal y no lo fabrica.
+**Consumo:** inspección local; al reactivar, el indicado en sección 11.
 
 ### 17.2 Despliegue interrumpido con journal
 
@@ -1659,10 +1621,9 @@ identidad no pueden acreditarse. No improvisar una reparación destructiva.
 
 La validación local de etapa 4 y sus límites están registrados en la matriz;
 la revisión humana independiente de #58 y la reproducción real de #133 siguen
-pendientes. También requieren decisión del equipo la frecuencia/custodia/retención
-del backup, la actualización revisada del helper para instalaciones anteriores
-(17.1) y la implementación pendiente de 17.4. El parche local acotado de 17.1
-no acredita instalación, recuperación nativa ni aceptación general de #58.
+pendientes. También requieren decisión del equipo
+la frecuencia/custodia/retención del backup y los huecos operativos señalados en
+17.1/17.4; no se amplía el código ni se recortan requisitos para ocultarlos.
 Los ensayos sintéticos de etapa 3 y su consolidación reproducible de etapa 4 se
 registran en [verificación #58](verificacion-issue-58.md) y en la
 [evidencia sintética](evidencia/issue-58/README.md): no prueban permisos POSIX, Chroma real,

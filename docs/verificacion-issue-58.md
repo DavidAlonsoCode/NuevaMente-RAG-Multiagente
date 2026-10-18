@@ -1,5 +1,9 @@
 # Issue 58 — Mapa de fuentes, evidencias y pendientes
 
+**Estado vigente:** resultado exclusivamente documental sobre `5988244`.
+Las implementaciones de 17.1/17.4 están retiradas del árbol de trabajo;
+ver [retorno documental y trazabilidad histórica](#retorno-documental-de-58).
+
 ## Alcance de esta revisión
 
 Registro histórico de la revisión documental del **16/10/2026**: se conservan el mapa de fuentes/evidencias
@@ -683,109 +687,156 @@ aprobación atribuida; deberá identificar la versión documental que revise.
 La reproducción real externa permanece separada de esa revisión y del contraste
 documental. #58 no se declara cerrado ni #133 completado.
 
-## Corrección acotada de 17.1 — 17/10/2026
+## Retorno documental de #58
 
-Antes de editar código se verificaron `HEAD=8b97c6b`, índice vacío y únicamente
-los nueve documentos revisados. Se guardaron en el único commit autorizado
-`e0d3377ddce675212c386b19d83783b04701cf50`,
-`docs(oci): actualizar guía a develop 5988244`; working tree limpio después.
-El parche siguiente permanece sin preparar ni commit, sobre esa base.
+Retirada autorizada el **17/10/2026 local**, con respaldo verificado el
+**18/10/2026, 00:23:22 UTC**. La base de comparación permanece
+`develop` `5988244a40fb1f3061c0bafc1fc106eb6e592a0a`, integrada por el merge
+`8b97c6b5970cfcb0bae87cc7c7d8923baa40aa9d`. Se tomó
+`e0d3377ddce675212c386b19d83783b04701cf50` como referencia documental anterior
+a las implementaciones. La selección de código de esa referencia coincide
+byte a byte con `5988244`.
 
-Se releyeron AGENTS.md, el cuerpo vigente de #58, helper/instalador y sus pruebas.
-El cambio separa listado vacío exitoso, contenedor único identificado, múltiples
-candidatos y fallos de listado/inspección. Sólo `--activate` puede recrear un
-backend ausente con `current.json`, volumen conservado y el mismo modelo/imagen,
-configuración y secreto aprobados. El helper ejecutado debe coincidir con el hash
-del instalado verificado por `installation.json`. No se amplía el instalador:
-actualizar una instalación antigua sigue requiriendo revisión administrativa.
+HEAD se conserva en `04302559ed8b38bd9560686a5b62b53bb231e3c1`: no se reescribió
+historia ni se creó un commit. Ese commit conserva 17.1 en la historia de Git,
+pero su código fue retirado del **resultado local** mediante cambios sin preparar.
+El índice permanece vacío. Por eso `git diff HEAD` muestra tres retiradas de código
+ya guardado, mientras que la diferencia neta del árbol de trabajo contra `5988244`
+se limita a los nueve documentos de #58, incluidos los tres nuevos respecto de
+esa base. No se deben confundir esas dos comparaciones.
 
-Se reutilizan journal/transacción, cuarentena y compuerta: journal antes del cierre
-del proxy y recreación; peer observado de nuevo, volumen revalidado antes de soltar
-el escritor, salud/configuración efectiva antes de publicar. La recuperación del
-modelo anterior cierra también Caddy antes de recrear. `--validate` no recrea y
-`--recover` sigue exigiendo un journal real. No se borran datos, secretos, ledger,
-obligaciones ni `current.json` para aparentar una instalación nueva.
+### Respaldo y retirada selectiva
 
-### Selección registrada antes de ejecutar
+Respaldo privado fuera del checkout, identificado como
+`issue58-documental-20261018T002216Z-56378b5436`, en la custodia local de Codex
+del operador. **3.837 archivos copiados**, **143.085.453 bytes**, verificados con
+SHA256 antes de retirar contenido; se volvió a verificar el manifiesto completo
+antes de restaurar/borrar. SHA256 de `manifest.json`:
 
-Colección real final: **398 identidades** = 89 configuración + 186 despliegue
-(142 anteriores y 44 nuevas) + 113 reporte/diagnóstico + 10 proxy. Sólo cambian
-recuento/huella de despliegue en `REQUIRED_FAMILIES`:
-`e2524170700884e9f708b3e540982f4291311438d3e0a3ff800c6b241a2720b7`.
-Las otras tres huellas coinciden; no se excluyen casos ni se derivan hashes de
-un reporte de ejecución. La colección incluye nombres parametrizados completos.
-
-Se seleccionan para ejecutar `backend/tests/test_caddy_config.py`,
-`backend/tests/test_caddy_deploy.py` y `backend/tests/test_caddy_smoke.py`, marker
-`unit and not integration_real`, sin `caddy_proxy`. Las 44 nuevas son `unit`, con
-dobles explícitos de Docker/systemd/peer/salud, archivos y datos sintéticos.
-El pytest raíz desactiva `.env` y fuerza mocks; además el proceso usa entorno
-saneado, `APP_ENV=test`, `MOCK_OCI=1`, `MOCK_GEMINI=1`, sin credenciales heredadas.
-No hay Caddy/Docker/Compose en PATH ni Linux/ARM64 nativo: las pruebas dependientes
-se registrarán como omitidas, sin acreditar su comportamiento. Los diez proxy
-sólo se recolectaron para el manifiesto; no se ejecutan ni se construye React.
-
-### Resultados observados del parche 17.1
-
-PC Windows AMD64; Python **3.11.9**, pytest **9.1.1**, Ruff **0.16.8**. Una única
-ejecución funcional de la selección, **código 0**, sin reintentos ni cambios de
-timeouts: **336 aprobadas, 52 omitidas, cero fallos/errores** en **74,73 s** de
-pytest (**81,52 s** del proceso supervisor). Los **44 casos nuevos aprobaron**,
-sin omisiones. Los resultados corresponden al parche sin commit sobre `e0d3377`,
-no a `5988244` ni a la evidencia histórica de `f292415`.
-
-| Módulo | Aprobadas | Omitidas | Alcance |
-| --- | ---: | ---: | --- |
-| `test_caddy_config.py` | 42 | 47 | Guardas/configuración offline; controles nativos omitidos por Caddy/Compose ausentes |
-| `test_caddy_deploy.py` | 181 | 5 | Incluye 44 casos nuevos; Docker/systemd/peer/salud, metadatos POSIX y publicación con dobles explícitos |
-| `test_caddy_smoke.py` | 113 | 0 | Regresiones del supervisor/reporte/diagnóstico con procesos y reportes sintéticos; no ejecuta el proxy real |
-
-Selección de comando ejecutada por el supervisor con entorno saneado y plugins
-automáticos deshabilitados (`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`):
-
-```powershell
-.venv/Scripts/python.exe -B -m pytest -p pytest_asyncio.plugin -o addopts= -q -ra -m "unit and not integration_real" backend/tests/test_caddy_config.py backend/tests/test_caddy_deploy.py backend/tests/test_caddy_smoke.py
+```text
+efc5f62dbd4401453e0c8e4f82bebd03141d9823fd5e029e4ce0aa1ac3ec7948
 ```
 
-Se añadieron `--basetemp`, `--junitxml` y `-o cache_dir=...` con destinos aislados
-nuevos bajo `.data/issue58-17-1-c94f37ee801e4746919c800bf052c9f1/` (ignorado),
-marcado `.synthetic-only`. Allí quedan invocación/colecciones, JUnit, stdout/stderr
-y resumen; este registro conserva versión, selección, resultados y límites sin
-depender de esos temporales. Una reproducción debe usar destinos nuevos; no
-reutilizar un `--basetemp` ocupado, que pytest puede limpiar.
+Contiene nueve documentos previos a la retirada, ocho archivos existentes de
+código/tests/manifiesto y tres archivos nuevos de 17.4; blobs de referencia de
+`e0d3377`; parches binarios del índice, working tree, 17.1 guardado y diferencias
+combinadas; inventario de Git y ambos directorios de evidencia sintética completos.
+`RECUPERAR.md`, `manifest.json`, `verification.json` y `withdrawal.json` explican
+la composición y las comprobaciones. Recuperar esas implementaciones requiere
+otra autorización y contrastar primero el estado local; no aplicar acumulativamente
+todos los parches ni sobrescribir cambios ajenos.
 
-Cobertura nueva: backend ausente/frontend presente y ambos ausentes; validación
-sin recreación; backend único; múltiples/ajenos por servicio; fallos de listado
-e inspección, JSON/identidad/configuración inspeccionada inconsistentes; rechazo
-de helper no registrado, modelo distinto y volumen sustituido antes de la
-admisión o durante cuarentena. Los fallos inyectados cubren recreación, peer,
-liberación, frontend, salud, publicación, activación, configuración efectiva y
-confirmación de estado; comprueban restauración o retención del journal, cierre
-antes de recrear y reutilización de ese journal por `--recover`. Una escritura
-fallida del journal no inicia cierre/recreación. Se conservan sentinelas de datos,
-secretos, certificados, ledger y obligaciones; no son bases productivas.
+Se restauraron desde la referencia exclusivamente:
 
-`ruff check .` aprobó; `ruff format --check .` aprobó (**241 archivos**);
-`git diff --check` aprobó. El manifiesto coincide con las **398 identidades** de
-la colección real, sin duplicar/excluir casos ni cambiar otras huellas. No se
-ejecutaron smoke proxy, suite general, builds, instalaciones, proveedores ni
-infraestructura. No se investigó ni repitió el fallo temporal conjunto anterior.
-Revisión documental final de los nueve documentos: **139 destinos locales y
-24 anclas**, sin errores/cercas abiertas; dos bloques Bash modificados aprobados
-por `bash -n` y un bloque PowerShell por `Parser.ParseInput`, sin ejecutar sus
-cuerpos. El análisis Bash se hizo fuera del sandbox por la restricción MSYS ya
-identificada. No se comprobaron enlaces HTTP externos.
+- `infra/caddy/verify_deployment.py`, `backend/tests/test_caddy_deploy.py` y
+  `.github/scripts/smoke_caddy.py` (17.1).
+- `backend/app/core/rag/vectorstore.py`, `backend/app/documents/ingestion.py`,
+  `backend/app/documents/lifecycle.py`, `backend/app/jobs/store.py` y
+  `backend/tests/test_document_delete.py` (17.4, incluida su modificación de espera).
 
-### Límites y aceptación que permanecen pendientes
+Se retiraron, tras comprobar sus copias, los tres archivos nuevos:
+`backend/app/documents/index_maintenance.py`,
+`backend/app/documents/rebuild_cli.py` y
+`backend/tests/test_private_index_maintenance.py`. Esas rutas son **históricas**,
+no enlaces ni entradas disponibles en este resultado. Los nueve documentos se
+conservaron; las instrucciones de runbook y README Caddy volvieron a los
+procedimientos existentes de `e0d3377`. No se cambiaron decisiones, planes,
+Compose, credenciales, datos operativos ni infraestructura.
 
-La lógica de 17.1 queda implementada y cubierta con dobles para el mismo modelo
-aprobado, pero no acreditada en Docker/systemd/peer nativos ni en OCI ARM64. Las
-52 omisiones no son resultados aprobados. El instalador/manifiesto sigue sin una
-vía automática de actualización: una instalación antigua requiere revisión y
-procedimiento autorizado por el equipo; no se copian helpers ni se editan hashes
-para ocultar ese impedimento. El tar operativo `5988244` no contiene este parche.
+### Ensayos de las implementaciones retiradas
 
-Permanecen pendientes la revisión del parche y humana independiente de la guía,
-17.4, demo→generación, el fallo temporal conjunto y #133. El parche no recupera
-datos perdidos ni revierte efectos externos; la frecuencia/custodia de backups
-sigue siendo decisión operativa. No se declara cerrado #58 ni completado #133.
+Los registros completos anteriores a la retirada permanecen en el respaldo:
+`working-files/docs/verificacion-issue-58.md`, los archivos de implementación y
+los directorios `evidence/issue58-17-1-c94f37ee801e4746919c800bf052c9f1/` y
+`evidence/issue58-17-4-final-b085b9253e7d47698cbcf8a45140171a/`. Incluyen versiones,
+invocaciones, huellas de código, JUnit, resultados, diagnósticos y fixtures.
+Los comandos que invocaban los tests/CLI retirados no son instrucciones ejecutables
+de este checkout. Esta síntesis conserva la trazabilidad sin presentarlos como
+validación del resultado documental ni como capacidades implementadas actualmente.
+
+| Ensayo histórico, 17/10/2026 | Código y alcance propios | Resultado conservado |
+| --- | --- | --- |
+| 17.1, selección Caddy | Parche entonces sin commit sobre `e0d3377`, guardado después en `0430255`; Python 3.11.9, pytest 9.1.1, Ruff 0.16.8; Docker/systemd/peer/POSIX con dobles, sin VM | 336 aprobados, 52 omitidos, cero fallos/errores; 74,73 s de pytest / 81,52 s del supervisor. Aprobaron 44 casos nuevos; el inventario del parche retirado tenía 398 identidades. Las omisiones no acreditan comportamiento nativo |
+| 17.4, primer intento en sandbox | Parche sin commit sobre `0430255`, temporales y OCI/embeddings dobles | 22 errores de setup, 10,77 s: `os.replace` bloqueado por permisos; no acredita comportamiento |
+| 17.4, primeros 22 fuera de sandbox | Misma implementación en desarrollo | 9 aprobados / 13 fallidos, 53,44 s; corrección posterior de deserialización JSON de fechas estrictas |
+| Comprobación dirigida de esa corrección | Un caso sintético | 1 aprobado, 8,95 s; no acreditaba la colección ampliada |
+| 17.4, colección ampliada de 31 | Fixtures sintéticas en desarrollo | 23 aprobados / 8 fallidos, 113,70 s; se corrigieron fuentes que reutilizaban embeddings y metadata visual incompleta, sin aumentar límites |
+| 17.4, primera regresión de 364 | Anterior al refuerzo por versión física | 362 aprobados / 2 fallidos, 558 advertencias, 489,93 s. Conexión/WAL abiertos en fixture de migración y espera de observador anterior a la limpieza; las correcciones de ese ensayo también están retiradas del resultado local |
+| 17.4, regresión final de 368 | Huellas de los ocho archivos de código/tests constantes durante la corrida; 37 casos nuevos; Python 3.11.9, pytest 9.1.1, Ruff 0.16.8, Chroma 1.5.9, Pydantic 2.13.5 | 367 aprobados / 1 fallido, 0 errores, 0 omitidos, 570 advertencias; 597,84 s de pytest / 604,08 s del supervisor. Aprobaron los 37 nuevos; la regresión no aprobó |
+| Única medición instrumentada del fallo HNSW | Mismo caso aislado, con registro de `Collection.delete/get`, sin cambiar argumentos, resultados ni timeouts | 1 aprobado, 9,12 s / 14,91 s del supervisor; borrados sólo en dos colecciones privadas, dos lecturas demo de un registro, tres colecciones conservadas y 14 archivos inventariados. Dos advertencias Chroma y una de permisos de caché pytest |
+
+Los módulos de la regresión de 368 fueron `test_private_index_maintenance`,
+`test_document_recovery`, `test_document_recovery_cleanup`, `test_document_ingestion`,
+`test_document_admission`, `test_document_lifecycle`, `test_document_delete`,
+`test_jobs_store`, `test_jobs_manager`, `test_common_admission`, `test_vectorstore`,
+`test_workspace_recovery` y `test_budgets`; marcadores `unit`/`integration_mock`,
+exclusión explícita `integration_real`. Su distribución y comandos exactos están
+en el registro completo respaldado. Ruff histórico aprobó sobre 241 archivos para
+17.1 y 244 para 17.4; no son comprobaciones nuevas de este resultado documental.
+
+El fallo HNSW fue
+`test_document_recovery_cleanup.py::test_b_en_otras_colecciones_se_retira_sin_tocar_otros_ambitos`:
+`InternalError: Error creating hnsw segment reader: Nothing found on disk`,
+al leer el snapshot demo después de compensar versiones privadas. El aislado no
+identificó la causa ni demostró estabilidad; no invalida el fallo conjunto ni
+permite atribuirlo o descartarlo en la base documental restaurada. Es distinto
+del fallo temporal histórico de presupuestos sobre `f292415`, que no se investigó
+ni repitió. Ninguno se traslada a #133 como si sólo faltara una prueba externa.
+
+### Capacidades actuales y aceptación pendiente
+
+La base operativa vuelve a ser exclusivamente `5988244` (SQLite 11). No hay CLI
+administrativa privada de 17.4 ni migración 12 en el código disponible; las bases
+12 de los ensayos fueron sólo sintéticas y no deben usarse como un estado operativo
+compatible con esta versión. No se ejecutaron migraciones sobre datos reales.
+
+- **17.1:** con backend eliminado y `current.json` conservado, parar. El helper
+  requiere un backend único; `--validate` no recrea servicios y `--recover` necesita
+  un journal auténtico. No borrar el modelo, fabricar un journal ni recrear por
+  fuera del helper para eludir los controles. Requiere decisión/implementación
+  del equipo; sigue afectando la suficiencia local del procedimiento de #58.
+- **17.4:** las funciones de biblioteca y H02 conservan sus contratos existentes.
+  H02 no se activa simplemente por perder Chroma con SQLite ya confirmada; no hay
+  entrada administrativa selectiva que complete ese caso. Usar sólo restauración
+  coherente existente cuando corresponda o parar/escalar. No borrar SQLite,
+  editar flags/contadores ni retirar lápidas para disparar reconstrucción.
+- **Demo→generación:** permanece la contradicción con fase 5. Precarga/catálogo,
+  carga privada y ejemplos guardados no sustituyen ese recorrido ni reducen el
+  requisito; requiere decisión y seguimiento funcional del equipo.
+- **Revisión humana:** la plantilla de revisión independiente de la guía continúa
+  sin aprobación atribuida; debe identificar la versión documental revisada.
+- **#133:** VM OCI, URL pública, reproducción del runbook y evidencia externa
+  continúan pendientes y separados de esa revisión humana y de los huecos locales.
+
+### Comprobaciones de la retirada documental
+
+- Inventario inicial limitado a los cambios revisados, sin cambios ajenos; rama,
+  HEAD e índice contrastados antes de escribir. Sin merge/rebase en curso.
+- Ocho archivos de código/tests/manifiesto restaurados idénticos a los blobs de
+  `e0d3377` y `5988244`; tres archivos nuevos de 17.4 ausentes. Diferencia neta
+  contra `5988244`: exclusivamente los nueve documentos, incluidos los tres
+  nuevos respecto de esa base. Índice vacío y HEAD conservado.
+- En los nueve documentos: **139 enlaces locales**, **24 anclas** y **15 destinos
+  Git inmutables** comprobados contra rutas, títulos y objetos locales; sin
+  destinos faltantes. No se consultaron proveedores ni se verificaron URLs
+  externas por red. Los bloques Markdown tienen cierres equilibrados.
+- Análisis sintáctico sin ejecutar procedimientos: **50 bloques Bash/sh** con
+  `bash --noprofile --norc -n`, **21 bloques PowerShell** con el parser de
+  PowerShell y **9 cuerpos Python embebidos** con `ast.parse`; sin errores.
+  El primer lanzamiento de Bash falló porque no estaba en PATH; se usó luego
+  el ejecutable instalado de Git, fuera del sandbox por la restricción MSYS
+  ya observada. Esto sólo acredita sintaxis, no comportamiento operativo.
+- `git diff --check` aprobado. Revisión separada de los tres documentos nuevos
+  respecto de `5988244`, incluidos enlaces, bloques y whitespace. Se conservan
+  tres saltos Markdown de dos espacios en README que ya existían en esa base.
+- Lectura de coherencia: 17.1 conserva la parada por backend ausente con modelo;
+  17.4 distingue H02 y funciones de biblioteca de una entrada administrativa
+  inexistente. Se conservan modos, paquetes, descargas y límites de rollback
+  documentados para `5988244`, con evidencia histórica identificada por su base.
+
+En esta retirada no se ejecutaron suites funcionales, Ruff, proveedores, builds,
+instalaciones, migraciones ni infraestructura. Las comprobaciones nuevas son
+lectura/identidad de blobs, alcance neto frente a `5988244`, enlaces/anclas,
+coherencia de los procedimientos existentes, sintaxis documental y whitespace.
+No se crearon issues ni se hicieron staging, commits, push o cambios de rama.
+#58 no se declara cerrado ni #133 completado.

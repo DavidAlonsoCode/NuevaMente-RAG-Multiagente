@@ -15,14 +15,6 @@ de instalación/deploy no cambiaron desde `f292415`; las corridas fechadas abajo
 conservan su código y alcance. No acreditan esta integración. El [runbook #58](../../docs/despliegue-oci.md)
 agrega modos, paquetes 1.0/1.1, recuperación/descargas y compatibilidad para rollback.
 
-El parche local posterior de #58 corrige la activación con backend ausente y
-`current.json` conservado: [escenario 17.1](../../docs/despliegue-oci.md#171-contenedores-perdidos-o-recreados-volumen-conservado).
-Exige helper ejecutado idéntico al instalado/manifiesto y modelo/volumen/imágenes
-sin cambios; no actualiza instalaciones antiguas ni relaja `--validate`/`--recover`.
-Su colección revisada eleva despliegue a 186 casos y el smoke a 398, conservando
-las otras tres familias. Las corridas fechadas anteriores conservan sus recuentos
-y alcance; los resultados locales nuevos se registran en la matriz de #58.
-
 La revisión documental de #58 del **16/10/2026**, sobre `develop` `f292415`,
 registró #48 integrado y cerrado, React (PR #135) y SSE de #33 (PR #136).
 Ese registro y las corridas Streamlit conservan fecha, versión y alcance
