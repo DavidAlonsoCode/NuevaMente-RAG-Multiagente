@@ -9,7 +9,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, mo
 from app.core.agents.graph_state import BorradorPedagogico
 from app.schemas.enums import DetailLevel, IndustryNiche, OutputLanguage, PedagogicalFormat, RecipientProfile
 from app.schemas.pedagogical import Referencia
-from app.schemas.responses import DocumentoFuente, EvaluacionCalidad, PedagogicalOutput, Trazabilidad
+from app.schemas.responses import DocumentoFuente, EvaluacionCalidad, PaqueteGenerado, Trazabilidad, modo_paquete
 
 Sha = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 Identifier = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_-]{2,79}$")]
@@ -101,7 +101,9 @@ class EvaluationArtifact(Contract):
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     @classmethod
-    def from_package(cls, dataset_id, case_id, package: PedagogicalOutput, mode):
+    def from_package(cls, dataset_id, case_id, package: PaqueteGenerado, mode):
+        if modo_paquete(package) != "multiagente":
+            raise ValueError("El modo básico no tiene evaluación independiente para comparar en #60")
         return cls(
             dataset_id=dataset_id,
             case_id=case_id,

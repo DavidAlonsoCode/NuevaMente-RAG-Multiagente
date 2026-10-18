@@ -20,7 +20,7 @@ from app.evaluation.models import (
     Review,
 )
 from app.evaluation.report import build_report, reviewer_material, validate_artifacts
-from app.schemas.responses import EvaluacionCalidad, PedagogicalOutput
+from app.schemas.responses import EvaluacionCalidad, PedagogicalOutput, cargar_paquete_json
 from pydantic import ValidationError
 from test_schemas import evaluacion_valida
 
@@ -69,6 +69,22 @@ def artifact_for(dataset, case, *, mode="real", approved=True):
             "parser_version": "1.0",
             "retrieval": {"k": 5, "fetch_k": 15, "lambda_mult": 0.7},
         },
+    )
+
+
+def package_for(artifact, generation_id="gen_test"):
+    return PedagogicalOutput(
+        schema_version="1.0",
+        generation_id=generation_id,
+        status="aprobado",
+        metadatos=artifact.draft.metadatos,
+        documento_fuente=artifact.source,
+        contenido_adaptado=artifact.draft.contenido_adaptado,
+        evaluacion_calidad=artifact.judge,
+        referencias=artifact.references,
+        created_at=NOW,
+        trazabilidad=artifact.trace,
+        almacenamiento_oci={"bucket": "test", "objeto_id": "outputs/test/content.json"},
     )
 
 
@@ -325,7 +341,33 @@ def test_captura_rechaza_urls_inseguras_antes_de_leer_sesion(dataset, tmp_path, 
         capture_cases(dataset, url, tmp_path / "inexistente", tmp_path / "bindings", "real", tmp_path)
 
 
-def test_captura_doce_paquetes_y_reanuda_sin_generar_otra_vez(dataset, tmp_path):
+@pytest.mark.parametrize("modo", ["multiagente", "basico"])
+def test_importa_exportacion_actual_solo_con_evaluacion_independiente(dataset, tmp_path, modo, capsys):
+    caso = dataset.cases[0]
+    datos = package_for(artifact_for(dataset, caso)).model_dump(mode="json")
+    datos.update(schema_version="1.1", modo_generacion=modo)
+    if modo == "basico":
+        datos.update(status="no_evaluado", evaluacion_calidad={"estado_evaluacion": "no_realizada"})
+        datos["trazabilidad"]["modelo_verificacion"] = None
+    # Es un canónico válido de producción en ambos modos; básico carece de juez.
+    cargar_paquete_json(json.dumps(datos))
+    entrada, salida = tmp_path / "paquete.json", tmp_path / "artifacts"
+    write_json(entrada, datos)
+    result = main(
+        ["import-package", "--case", caso.case_id, "--package", str(entrada), "--mode", "mock", "--out", str(salida)]
+    )
+    if modo == "basico":
+        assert result == 2 and "básico" in capsys.readouterr().out
+        assert not salida.exists()
+    else:
+        assert result == 0
+        artefacto = EvaluationArtifact.model_validate_json((salida / f"{caso.case_id}-r1.json").read_bytes())
+        assert artefacto.mode == "mock" and artefacto.judge.estado_evaluacion == "aprobada"
+        assert artefacto.source.hash == datos["documento_fuente"]["hash"]
+
+
+@pytest.mark.parametrize("schema_version", ["1.0", "1.1"])
+def test_captura_doce_paquetes_y_reanuda_sin_generar_otra_vez(dataset, tmp_path, schema_version):
     (tmp_path / "token.txt").write_text("token-test")
     write_json(tmp_path / "bindings.json", {source: "doc_test" for source in dataset.sources})
     packages, count = {}, 0
@@ -342,19 +384,11 @@ def test_captura_doce_paquetes_y_reanuda_sin_generar_otra_vez(dataset, tmp_path)
             )
             artifact = artifact_for(dataset, case, mode="mock")
             gid = f"gen_test_{count}"
-            packages[gid] = PedagogicalOutput(
-                schema_version="1.0",
-                generation_id=gid,
-                status="aprobado",
-                metadatos=artifact.draft.metadatos,
-                documento_fuente=artifact.source,
-                contenido_adaptado=artifact.draft.contenido_adaptado,
-                evaluacion_calidad=artifact.judge,
-                referencias=artifact.references,
-                created_at=NOW,
-                trazabilidad=artifact.trace,
-                almacenamiento_oci={"bucket": "test", "objeto_id": "outputs/test/content.json"},
-            )
+            packages[gid] = package_for(artifact, gid)
+            if schema_version == "1.1":
+                datos = packages[gid].model_dump(mode="json")
+                datos.update(schema_version="1.1", modo_generacion="multiagente")
+                packages[gid] = cargar_paquete_json(json.dumps(datos))
             return httpx.Response(202, json={"generation_id": gid})
         gid = request.url.path.rsplit("/", 1)[-1]
         if request.url.path.startswith("/api/generations/"):

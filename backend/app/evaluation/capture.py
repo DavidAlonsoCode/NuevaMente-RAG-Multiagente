@@ -12,7 +12,7 @@ import httpx
 from app.evaluation.cli import import_package, load_json, write_json
 from app.evaluation.models import EvaluationArtifact
 from app.evaluation.report import validate_artifacts
-from app.schemas.responses import PedagogicalOutput
+from app.schemas.responses import cargar_paquete_json
 
 
 def capture_cases(dataset, api_url, token_file, bindings_file, mode, out, *, transport=None, timeout=330):
@@ -89,7 +89,7 @@ def capture_cases(dataset, api_url, token_file, bindings_file, mode, out, *, tra
                     raise ValueError("La API no ofrece material canónico revisable; no contar como falso rechazo")
                 response = client.get(f"/api/exports/{generation_id}", params={"format": "json"})
                 response.raise_for_status()
-                package = PedagogicalOutput.model_validate(response.json())
+                package = cargar_paquete_json(response.content)
                 if (
                     package.generation_id != generation_id
                     or package.documento_fuente.document_id != request["document_id"]

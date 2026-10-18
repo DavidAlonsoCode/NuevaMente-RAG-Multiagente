@@ -1,6 +1,6 @@
 {
   "dataset_id": "nm-pedagogical-eval60",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "sources": {
     "vcn": {
       "path": "documents/redes_vcn_oci.pdf",
@@ -12,8 +12,10 @@
     },
     "pagos": {
       "path": "documents/integracion_apis_pagos.md",
-      "sha256": "33425198b6dffdc2ccaff01d46e3ff1969f1267b1890e7fba41db8f1904280bf",
-      "previous_hashes": []
+      "sha256": "a536a1c1f9960850cf0e7ffa80b946a0e9de5fde0104343fc98722c45aa90944",
+      "previous_hashes": [
+        "33425198b6dffdc2ccaff01d46e3ff1969f1267b1890e7fba41db8f1904280bf"
+      ]
     },
     "salud": {
       "path": "documents/gobernanza_datos_salud.md",

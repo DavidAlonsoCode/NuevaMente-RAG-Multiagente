@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from app.evaluation.models import Annotation, Dataset, EvaluationArtifact, ResolutionLog, Review
 from app.evaluation.report import build_report, reviewer_material, validate_artifacts
-from app.schemas.responses import PedagogicalOutput
+from app.schemas.responses import cargar_paquete_json
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_MANIFEST = ROOT / "docs/evidencia/issue-60/casos.json"
@@ -193,14 +193,14 @@ def main(argv=None):
         dataset = load_dataset(args.manifest)
         if args.command == "validate":
             print(
-                f"Matriz válida: {len(dataset.cases)} casos, 3 idiomas, 4 perfiles por idioma y ≥3 formatos por idioma."
+                f"Matriz válida: {len(dataset.cases)} casos, 3 idiomas, 4 perfiles por idioma y al menos 3 formatos por idioma."
             )
         elif args.command == "schemas":
             for model in (EvaluationArtifact, Review, ResolutionLog):
                 write_json(args.out / f"{model.__name__}.schema.json", model.model_json_schema())
             print("Esquemas de artefactos, anotaciones y resoluciones exportados.")
         elif args.command == "import-package":
-            package = PedagogicalOutput.model_validate(load_json(args.package))
+            package = cargar_paquete_json(json.dumps(load_json(args.package)))
             artifact = import_package(dataset, args.case, package, args.mode, args.out)
             print(f"Artefacto importado: {artifact.case_id}; sha256={artifact.digest()}")
         elif args.command == "capture":

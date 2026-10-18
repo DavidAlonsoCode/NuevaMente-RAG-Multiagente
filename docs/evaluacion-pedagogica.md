@@ -10,10 +10,17 @@ independiente del orden de claves o los espacios del archivo de trabajo.
 
 ## Estado y separación de responsabilidades
 
-El PR se mantiene en draft por decisión del equipo. Aporta la matriz, validación,
-preparación de materiales para dos revisores y comparación reproducible. No
-incluye puntuaciones humanas inventadas ni declara que el #60 esté terminado.
+Por decisión del responsable del 18/10/2026, el PR puede integrar las herramientas
+preparadas antes de completar la evaluación humana. Aporta la matriz, validación,
+materiales para dos revisores y comparación reproducible. El #60 sigue abierto
+hasta reunir sus doce casos reales, dos revisiones y correcciones verificadas;
+el merge del PR no completa esos criterios ni inventa puntuaciones humanas.
 Los modelos y umbrales del sistema conservan su política vigente.
+
+Se aceptan los canónicos multiagente 1.0 y 1.1 exportados por React/API. El modo
+básico se rechaza para esta comparación porque no tiene juez independiente.
+`mode=real/mock` identifica al proveedor, no al modo de generación. La captura
+conserva sus solicitudes e idempotencia previas y usa el multiagente por defecto.
 
 La preparación puede empezar sin frontend ni VM. Para incorporar materiales se
 necesitan paquetes del backend o capturas de revisión interna, su procedencia y
@@ -129,7 +136,10 @@ resultado bloqueado para mejorar las métricas.
 
 ## Fuentes VCN y evidencia final
 
-La matriz 1.1.0 usa VCN **v2**, corregida en el [PR #132](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/pull/132).
+La matriz 1.2.0 conserva VCN **v2**, corregida en el [PR #132](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/pull/132),
+y actualiza el hash de pagos a la fuente vigente tras `c9050d9`. Mantiene los
+mismos doce casos; `historico/matriz-1.1.0.json` y `previous_hashes` conservan la
+procedencia anterior, que no se cuenta como muestra actual.
 La trazabilidad está en `documents/redes_vcn_oci.version.json`. El conjunto previo
 se conserva como histórico: no cambiar un hash dentro de un paquete aprobado para
 atribuirlo a la fuente nueva. `previous_hashes` permite auditar esas corridas,

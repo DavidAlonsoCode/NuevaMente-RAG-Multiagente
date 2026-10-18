@@ -1,4 +1,12 @@
-# Evidencia del #60 — preparación en draft
+# Evidencia del #60 — herramientas preparadas, evaluación pendiente
+
+Estado al 18/10/2026: el responsable autorizó integrar las herramientas del PR
+#119 por separado. La matriz vigente es 1.2.0 (pagos actualizado a `c9050d9`);
+la 1.1.0 queda en `historico/`. El reporte provisional fue regenerado sin
+materiales ni notas: muestra comparable 0. El #60 continúa abierto hasta la
+revisión humana y sus correcciones; integrar código no constituye esa revisión.
+
+## Registro anterior
 
 Estado al 15 de octubre de 2026: **pendiente**. El PR implementa la preparación y
 comparación automatizable; el equipo decidió dejar la evaluación en draft hasta
