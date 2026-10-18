@@ -93,6 +93,7 @@ siendo necesarias para cerrar el issue; no simular el catálogo ni sus resultado
 - Grabación completa de respaldo (la grabación no sustituye la integración activa ni la prueba funcional nueva — §18.3).
 - Ensayo general con cronómetro y registro de desvíos; plan B técnico (si Gemini/VM fallan: resultados precargados + grabación + explicación honesta).
 - Checklist de evidencias por diferencial y por requisito mínimo, con enlaces (objetos OCI, capturas, video).
+- Ejecutar el [protocolo manual E2E M1–M5](../verificacion-issue-53.md) transferido de #53 el 18/10/2026: tres adaptaciones, recuperación de historial/progreso, teclado/foco/contraste/320 px, exportaciones legibles y estados/procedencia distinguibles. Archivar capturas/video saneados y la revisión identificada de dos personas, declarando los proveedores usados.
 
 **Trabajo en paralelo**: preparar el guion y ensayar tramos desde el inicio,
 sin esperar el cierre de todas las dependencias. La grabación final y el cierre
@@ -104,6 +105,7 @@ la integración activa o acreditan un despliegue inexistente.
 - [ ] Ensayo completo dentro del tiempo sin errores bloqueantes.
 - [ ] Cada ítem del checklist §18.2 enlaza su evidencia; los tramos que requieren proveedores reales o URL pública identifican su aceptación pendiente en #133, sin declararlos ejecutados.
 - [ ] El guion prevé ejecución en vivo con proveedores reales y contingencia honesta, sin prometer disponibilidad; su prueba funcional real se acepta en #133.
+- [ ] Protocolo manual E2E M1–M5 ejecutado localmente, con commit/configuración, capturas/video, resultados y firma de dos personas. Trasladado de #53 por autorización del responsable el 18/10/2026; la repetición pública/real se acepta en #133 y la anotación pedagógica de #60 conserva su alcance.
 
 **Verificación**: ensayo frente al equipo completo con retroalimentación.
 

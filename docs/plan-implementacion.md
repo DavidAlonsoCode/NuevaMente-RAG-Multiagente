@@ -73,6 +73,8 @@ Ajuste autorizado del 16/10: las comprobaciones pendientes que requieren Gemini/
 
 **Complemento autorizado 33.1**: [modos de generación](modos-generacion.md) agrega básico con RAG sin evaluación independiente y conserva el multiagente. Ambos reutilizan el documento e índice; cambiar de modo crea otro material. Se integra antes de cerrar 51/53 y se documenta en 56/57/58; 46 puede avanzar en paralelo. La comparación real de consumo/calidad queda en #133; 60 conserva sus 12 casos y revisores.
 
+**Ajuste autorizado del 18/10 — E2E**: #53 entrega automatización, matriz de los 14 criterios y [protocolo manual preparado](verificacion-issue-53.md). La ejecución manual local, capturas/video y firma de dos personas se aceptan en #56 junto al ensayo y sus evidencias. Su repetición pública/con proveedores reales sigue en #133. No se declara realizada esa revisión ni se modifica la muestra pedagógica de #60.
+
 - **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
   40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
   microinteracciones y efectos forman parte del acabado visual; deben conservar
