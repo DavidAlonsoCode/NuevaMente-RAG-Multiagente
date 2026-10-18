@@ -1,0 +1,8 @@
+# #51: falsos positivos revisados, limitados al commit, archivo, regla y línea.
+# Identidad de widgets de la interfaz anterior; no es una credencial.
+e7a4d52787cad5cc518e6917a9c7368ba4209283:frontend/components/result.py:generic-api-key:73
+# Clave sintética repetitiva de fixtures Caddy, sin acceso a proveedores reales.
+e1082fc8e850ceb59709d47b9549953cb3f5d1a5:backend/tests/integration/caddy_fixture.py:generic-api-key:23
+e1082fc8e850ceb59709d47b9549953cb3f5d1a5:backend/tests/test_caddy_config.py:generic-api-key:21
+# Nombres de parámetros token/idempotency_key; no contienen un valor secreto.
+ba8887206f328d24ab67ef4f55c4fd9594ced423:frontend/api_client.py:generic-api-key:203

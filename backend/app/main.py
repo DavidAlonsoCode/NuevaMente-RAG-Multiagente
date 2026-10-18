@@ -22,7 +22,7 @@ fábrica permite construir la aplicación con configuración inyectada (los
 tests crean instancias aisladas sin tocar el entorno). ``app`` queda
 disponible al final del módulo para que uvicorn la encuentre:
 
-    uvicorn app.main:app --host 0.0.0.0 --port 8000
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
 
 Los "middleware" y "handlers" en lenguaje llano: FastAPI procesa cada
 petición como una cadena — el middleware corre ANTES y DESPUÉS de la ruta
@@ -83,6 +83,18 @@ if TYPE_CHECKING:
 request_id_actual: ContextVar[str] = ContextVar("request_id", default="sin-request")
 
 logger = logging.getLogger("nuevamente.api")
+
+
+class _FiltroErrorServidor(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info:
+            record.msg = "Excepcion ASGI tipo=%s"
+            record.args = (getattr(record.exc_info[0], "__name__", "desconocido"),)
+            record.exc_info = None
+            record.exc_text = None
+            record.stack_info = None
+        return True
+
 
 # Cabecera estándar de trazabilidad del proyecto (contratos-api.md:
 # "toda respuesta incluye cabecera X-Request-ID").
@@ -149,6 +161,9 @@ def crear_app(
     mensaje accionable, no a mitad de una generación).
     """
     ajustes = configuracion or config
+    log_servidor = logging.getLogger("uvicorn.error")
+    if not any(isinstance(filtro, _FiltroErrorServidor) for filtro in log_servidor.filters):
+        log_servidor.addFilter(_FiltroErrorServidor())
     ajustes.validar_critico()
     if cuotas_proveedor is None:
         cuotas = cuotas_configuradas(ajustes)
@@ -359,7 +374,13 @@ def crear_app(
             # Siempre restaurar el contexto, aun si la ruta explotó.
             request_id_actual.reset(token)
         respuesta.headers[CABECERA_REQUEST_ID] = request_id
-        logger.info("%s %s request_id=%s", request.method, request.url.path, request_id)
+        ruta_log = getattr(request.scope.get("route"), "path", "ruta_no_encontrada")
+        metodo_log = (
+            request.method
+            if request.method in {"GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"}
+            else "OTRO"
+        )
+        logger.info("%s %s request_id=%s", metodo_log, ruta_log, request_id)
         return respuesta
 
     # ------------------------- CORS opcional (§11.2) -------------------------

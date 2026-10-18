@@ -235,7 +235,7 @@ la entrega; el plazo reservado para revisión no sustituye esa corrección.
 - [ ] Escaneo de secretos del historial de Git limpio.
 - [ ] Pruebas de seguridad de este issue: accesos cruzados entre espacios a documento, SSE, export y progreso devuelven 404. Issue 53 reutiliza estas pruebas; cerrar Issue 51 no depende de completar Issue 53.
 
-**Verificación**: documento de revisión + rerun de tests de aislamiento.
+**Verificación**: documento de revisión + rerun de tests de aislamiento. Evidencia: [revisión de seguridad](../revision_seguridad.md) y [metadatos del escaneo](../evidencia-seguridad-51.json).
 
 ---
 
