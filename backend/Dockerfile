@@ -26,4 +26,4 @@ ENV HOME=/tmp
 USER 10001:10001
 EXPOSE 8000
 # Un solo proceso Uvicorn mantiene el único worker y escritor SQLite/Chroma.
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-access-log"]

@@ -1427,6 +1427,7 @@ const FileUpload: React.FC<{
       <div id="file-upload-help" style={{ fontSize: '0.85rem', color: 'var(--ink-muted)' }}>
         {t('upload.formatos_soportados', idioma)} · {t('upload.limite', idioma)}
       </div>
+      <p className="nm-alert nm-alert-info">{t('upload.aviso_privacidad', idioma)}</p>
       <input
         aria-labelledby="file-upload-title"
         aria-describedby="file-upload-help"
@@ -1499,6 +1500,7 @@ const PasteTextUpload: React.FC<{
   return (
     <div className="nm-card">
       <h3 style={{ marginTop: 0 }}>{t('upload.enviar_texto', idioma)}</h3>
+      <p className="nm-alert nm-alert-info">{t('upload.aviso_privacidad', idioma)}</p>
       {localErr && <div className="nm-alert nm-alert-error">{localErr}</div>}
       <div style={{ marginBottom: '0.75rem' }}>
         <label className="nm-label" htmlFor="app-field-7">{t('upload.texto_titulo', idioma)}</label>

@@ -231,10 +231,11 @@ def test_envoltorios_http_con_request_id(entorno, monkeypatch, http, codigo):
     assert "privado" not in json.dumps(datos)
 
 
-@pytest.mark.parametrize("ruta", ["estado", "sse", "export", "quiz", "documento"])
-def test_dos_espacios_recursos_ajenos_404(entorno, ruta):
+@pytest.mark.parametrize("modo", ["multiagente", "basico"])
+@pytest.mark.parametrize("ruta", ["estado", "sse", "export", "quiz", "documento", "progreso"])
+def test_dos_espacios_recursos_ajenos_404(entorno, ruta, modo):
     e = entorno
-    recibo = generar(e, formato_salida="quiz").json()
+    recibo = generar(e, formato_salida="quiz", modo_generacion=modo).json()
     esperar(e, recibo)
     otro = e.cliente.post("/api/workspaces").json()
     headers = {"Authorization": "Bearer " + otro["token"]}
@@ -244,7 +245,15 @@ def test_dos_espacios_recursos_ajenos_404(entorno, ruta):
         "export": "/api/exports/" + recibo["generation_id"],
         "documento": "/api/documents/" + e.doc,
     }
-    if ruta == "quiz":
+    llamadas = (e.doble.llamadas_generacion, e.doble.llamadas_verificacion)
+    if ruta == "progreso":
+        res = e.cliente.post(
+            "/api/progress/events",
+            headers=headers,
+            json={"event_id": "ajeno", "tipo": "concepto_revisado", "document_id": e.doc, "concepto": "VCN"},
+        )
+        assert e.cliente.get("/api/progress", headers=headers).json()["conceptos_revisados"] == 0
+    elif ruta == "quiz":
         res = e.cliente.post(
             "/api/quizzes/" + recibo["generation_id"] + "/answers",
             headers=headers,
@@ -253,6 +262,7 @@ def test_dos_espacios_recursos_ajenos_404(entorno, ruta):
     else:
         res = e.cliente.get(urls[ruta], headers=headers)
     envoltorio(res, 404, "NOT_FOUND")
+    assert llamadas == (e.doble.llamadas_generacion, e.doble.llamadas_verificacion)
 
 
 @pytest.mark.parametrize("fallos,terminal", [(2, "completed"), (99, "failed")])

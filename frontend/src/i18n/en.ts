@@ -72,6 +72,7 @@ export const CATALOGO_EN: Record<string, string> = {
   "sidebar.sin_secciones": "This document has no identified sections: it is adapted as a whole.",
   "sidebar.seccion_lineas": "{titulo} (lines {inicio}–{fin})",
   "upload.titulo": "Upload a document",
+  "upload.aviso_privacidad": "Use only public or synthetic material you are authorized to process. Excerpts and images may be sent to the AI provider. Do not upload secrets, confidential documents or sensitive personal data.",
   "upload.arrastrar": "Drop a PDF, Markdown or TXT file here",
   "upload.seleccionar": "or choose a file",
   "upload.formatos_soportados": "Formats: PDF, Markdown (.md) and plain text (.txt)",
