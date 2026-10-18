@@ -63,11 +63,13 @@ logs/
 .coverage
 htmlcov/
 
-# Streamlit
-.streamlit/secrets.toml
-
 # IDE & OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+frontendSinArchivosCompilacion/
+node_modules/
+**/node_modules/
+*.zip
+*.tsbuildinfo

@@ -11,6 +11,7 @@
     "nicho_sector": "general",
     "nivel_detalle": "didactico",
     "idioma_salida": "pt",
+    "modo_generacion": "multiagente",
     "alcance": {
       "tipo": "documento_completo",
       "seccion_id": null

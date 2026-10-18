@@ -2,7 +2,6 @@
 
 import contextlib
 import gzip
-import hashlib
 import json
 import os
 import socket
@@ -33,7 +32,7 @@ def private_write(path, content):
 def clean_environment():
     allowed = {"PATH", "SYSTEMROOT", "TEMP", "TMP", "HOME", "PLAYWRIGHT_BROWSERS_PATH", "NM_BROWSER_EXECUTABLE"}
     env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
-    paths = [str(ROOT / "backend"), str(ROOT / "backend/tests"), str(ROOT / "frontend")]
+    paths = [str(ROOT / "backend"), str(ROOT / "backend/tests")]
     tools = os.environ.get("NM_TEST_TOOLS_PYTHONPATH")
     if tools:
         paths.insert(0, tools)
@@ -45,7 +44,6 @@ def clean_environment():
         LANGSMITH_TRACING="false",
         LANGCHAIN_TRACING_V2="false",
         PYTHONUNBUFFERED="1",
-        STREAMLIT_BROWSER_GATHER_USAGE_STATS="false",
     )
     return env
 
@@ -127,7 +125,10 @@ def native_policy(base, local, ports):
 
 
 class ProxyHarness:
-    def __init__(self, directory):
+    def __init__(self, directory, *, frontend="react", reject_quality=False):
+        assert frontend == "react"
+        self.frontend = frontend
+        self.reject_quality = reject_quality
         self.directory = Path(directory)
         self.processes, self.handles = {}, []
         self.evidence = {"platform": sys.platform, "caddy": "2.11.7", "checks": []}
@@ -224,7 +225,12 @@ class ProxyHarness:
             self.directory / "backend-config.json",
             json.dumps(
                 self.ports
-                | {"directory": str(self.directory), "secret": SECRET, "diagnostic_mode": self.diagnostic_mode}
+                | {
+                    "directory": str(self.directory),
+                    "secret": SECRET,
+                    "diagnostic_mode": self.diagnostic_mode,
+                    "reject_quality": self.reject_quality,
+                }
             ),
         )
         self.start(
@@ -239,35 +245,7 @@ class ProxyHarness:
         self.wait_http("http://127.0.0.1:" + str(self.ports["backend_port"]) + "/api/health", "backend")
         self.start("caddy", [self.binary, "run", "--config", str(self.config)], self.env)
         self.wait_http(self.url + "/api/health", "caddy")
-        env = clean_environment() | {
-            "HOME": str(self.directory),
-            "USERPROFILE": str(self.directory),
-            "API_URL": "http://127.0.0.1:" + str(self.ports["backend_port"]),
-            "NM_UI_ORIGIN_DIGEST": hashlib.sha256(SECRET.encode()).hexdigest(),
-            "NM_UI_AUDIT": str(self.directory / "ui-origin.json"),
-            "NM_PUBLIC_AUTHORITY": self.authority,
-        }
-        self.start(
-            "streamlit",
-            [
-                sys.executable,
-                "-m",
-                "streamlit",
-                "run",
-                str(ROOT / "backend/tests/integration/caddy_ui.py"),
-                "--server.address=127.0.0.1",
-                "--server.port=" + str(self.ports["ui_port"]),
-                "--server.headless=true",
-                "--server.enableCORS=true",
-                "--server.enableXsrfProtection=true",
-                "--server.enableStaticServing=false",
-                "--browser.gatherUsageStats=false",
-                "--browser.serverAddress=localhost",
-                "--browser.serverPort=" + str(self.ports["https_port"]),
-            ],
-            env,
-        )
-        self.wait_http(self.url + "/_stcore/health", "streamlit")
+        self.launch_ui()
         with self.client() as client:
             self.owner = self.workspace(client)
             self.other = self.workspace(client)
@@ -277,6 +255,20 @@ class ProxyHarness:
             "generation_calls": self.counters()["generation_calls"],
             "providers": "explicit-doubles",
         }
+
+    def launch_ui(self):
+        assert (ROOT / "frontend/dist/index.html").is_file(), "react-build-required"
+        self.start(
+            "react",
+            [sys.executable, str(ROOT / "frontend/entrypoint.py")],
+            clean_environment()
+            | {
+                "API_URL": "http://127.0.0.1:" + str(self.ports["backend_port"]),
+                "PORT": str(self.ports["ui_port"]),
+                "FRONTEND_HOST": "127.0.0.1",
+            },
+        )
+        self.wait_http(self.url + "/healthz", "react")
 
     def wait_http(self, url, process):
         deadline = time.monotonic() + 35

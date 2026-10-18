@@ -274,10 +274,7 @@ def test_effective_compose_env_files_are_replaced_not_merged(composition):
     assert backend["APP_ENV"] == "production" and backend["MOCK_OCI"] == backend["MOCK_GEMINI"] == "0"
     assert backend["FORWARDED_ALLOW_IPS"] == values["FORWARDED_ALLOW_IPS"]
     assert not set(frontend) & {"TRUSTED_ORIGIN_SECRET", "GOOGLE_API_KEY", "OCI_CONFIG_FILE", "FORWARDED_ALLOW_IPS"}
-    assert frontend["API_URL"] == "http://backend:8000"
-    assert frontend["STREAMLIT_BROWSER_SERVER_ADDRESS"] == DOMAIN
-    assert frontend["STREAMLIT_BROWSER_SERVER_PORT"] == "443"
-    assert frontend["STREAMLIT_SERVER_ENABLE_CORS"] == frontend["STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION"] == "true"
+    assert frontend == {"API_URL": "http://backend:8000", "API_HEALTH_WAIT_SECONDS": "60"}
 
 
 def test_effective_compose_restrictions_network_volumes_and_launch(composition):

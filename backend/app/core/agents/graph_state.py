@@ -20,6 +20,7 @@ from app.schemas.responses import (
     Metadatos,
     PedagogicalOutput,
     PersistenciaInfo,
+    ReviewedPedagogicalOutputV11,
     Trazabilidad,
 )
 
@@ -38,6 +39,7 @@ class DocumentoGeneracion(ContratoGrafo):
     secciones: tuple[str, ...] = ()
     vision_pendiente: bool = False
     contiene_material_visual: bool = False
+    secciones_visuales: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -105,7 +107,7 @@ class EstadoGrafo(ContratoGrafo):
     """
 
     graph_state_version: Literal["1.0"] = "1.0"
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     workspace_id: str = Field(min_length=1)
     generation_id: str = Field(min_length=1)
     document_id: str | None = None
@@ -135,7 +137,7 @@ class EstadoGrafo(ContratoGrafo):
     persistencia: PersistenciaInfo | None = None
     almacenamiento: AlmacenamientoOCI | None = None
     trazabilidad: Trazabilidad | None = None
-    paquete_aprobado: PedagogicalOutput | None = None
+    paquete_aprobado: PedagogicalOutput | ReviewedPedagogicalOutputV11 | None = None
 
     @model_validator(mode="after")
     def terminal_sin_borrador(self):

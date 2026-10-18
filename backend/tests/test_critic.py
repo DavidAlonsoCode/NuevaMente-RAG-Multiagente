@@ -158,11 +158,14 @@ def test_schema_descomposicion_compatible_con_gemini_conserva_el_contrato(entorn
     pedagogia = doble.entradas_verificacion[2]["response_json_schema"]
     assert pedagogia["properties"]["feedback"]["maxItems"] == 20
     juicio = doble.entradas_verificacion[1]["response_json_schema"]
-    assert juicio["$defs"]["VeredictoFactual"]["properties"]["estado"]["enum"] == [
-        "respaldada",
-        "contradicha",
-        "sin_evidencia",
-    ]
+    afirmaciones = json.loads(doble.entradas_verificacion[1]["prompt"])["afirmaciones"]
+    con_prueba, sin_prueba = juicio["$defs"]["VeredictoFactual"]["anyOf"]
+    propiedades = con_prueba["properties"]
+    assert propiedades["id_afirmacion"]["enum"] == [a["id"] for a in afirmaciones]
+    assert propiedades["referencias"]["items"]["enum"] == ["ch_1"]
+    assert propiedades["estado"]["enum"] == ["respaldada", "contradicha"]
+    assert propiedades["referencias"]["minItems"] == 1
+    assert sin_prueba["properties"]["estado"]["enum"] == ["sin_evidencia"]
 
 
 @pytest.mark.parametrize("exceso", ["texto", "afirmaciones"])
@@ -469,6 +472,7 @@ def test_visual_adjunta_original_y_reserva_tokens(entorno):
     assert nuevo.evaluacion_pedagogica.verificacion_visual == "aprobada"
     solicitud = deps.proveedor.entradas_verificacion[-1]
     assert solicitud["imagen_original"] == imagen.contenido and solicitud["mime_type"] == "image/png"
+    assert solicitud["response_json_schema"]["properties"]["chunk_id"]["enum"] == [imagen.chunk_id]
     assert nuevo.presupuesto.usadas == 5
     assert deps.grafo.ejecucion.cuotas._tokens["juez-test"][-1][1] > imagen.tokens_estimados
 

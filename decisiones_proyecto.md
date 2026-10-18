@@ -7,6 +7,8 @@
 > **Estado**: Decisiones de diseño acordadas; cumplimiento funcional sujeto a evidencia de ejecución
 > **Revisión**: 18 de septiembre de 2026
 
+> **Ampliación autorizada — 16/10/2026**: [modos de generación, complemento 33.1](docs/modos-generacion.md). Se conserva el multiagente predeterminado y se agrega un generador básico con RAG sin evaluación independiente. La excepción permite publicar material estructuralmente válido como `no_evaluado`, nunca como aprobado ni con score inventado; se mantiene el contrato 1.0 y se versiona la ampliación como 1.1. Los bloqueos y garantías de aprobación existentes siguen rigiendo al multiagente. Cambiar de modo crea otra adaptación sobre el mismo documento/índice y conserva los materiales anteriores.
+
 Este documento define la entrega completa: requisitos mínimos, todos los diferenciales del enunciado y los extras acordados. No constituye un plan de implementación ni acredita funcionalidades implementadas. La solución se orienta a capacitación técnica reutilizable; no presupone una adopción comercial por parte de Oracle.
 
 ---
@@ -133,7 +135,7 @@ La API de Embedding 2 distingue el envío agregado de contenidos de los embeddin
 | RAG | langchain-community, langchain-text-splitters, langchain-chroma, chromadb |
 | Ingestión | pypdf para texto y pypdfium2 para rasterizar páginas |
 | Backend | fastapi, uvicorn, pydantic v2 |
-| Frontend | streamlit, requests |
+| Frontend | React 18, TypeScript y Vite; pruebas Vitest y navegador con Caddy |
 | Cloud | oci |
 | Exportación | genanki, reportlab; csv de la biblioteca estándar |
 | Calidad | ruff, pytest, httpx, pytest-mock |
@@ -151,11 +153,17 @@ Las librerías de extracción y renderizado se validan en ARM64 antes de conside
 
 Se mantienen dos servicios de aplicación:
 
-- Streamlit presenta documentos, parámetros, resultados, historial y actividades.
+- El frontend React presenta documentos, parámetros, resultados, historial y actividades.
 - FastAPI valida contratos, gestiona acceso, ejecuta RAG y agentes, y persiste en OCI.
 
 El frontend consume HTTP y no accede directamente al bucket, al índice ni a las claves del proveedor.
 Esta separación permite trabajo independiente con contratos compartidos y pruebas sin la interfaz.
+El 15 de octubre de 2026 se autorizó reemplazar la presentación Streamlit por
+React/TypeScript/Vite, conservando FastAPI y el alcance funcional del plan.
+El 17/10, #139 retira la implementación anterior, su configuración, dependencias
+y pruebas exclusivas. Los registros históricos se conservan como evidencia de
+su versión, sin presentarlos como comprobaciones de React.
+Arranque, límites de la verificación y migración: [frontend/README.md](frontend/README.md).
 Los agentes del producto son nodos del grafo LangGraph; Supervisor y Finalizer pueden ser deterministas.
 No se necesita una llamada LLM por cada nodo.
 
@@ -195,7 +203,7 @@ Los estados de trabajo son queued, running, completed, rejected_quality, failed 
 Un fallo de OCI se representa como failed con error.code=STORAGE_UNAVAILABLE; no como rejected_quality.
 
 - El stream usa text/event-stream y heartbeat; StreamingResponse requiere el encuadre SSE correcto.
-- Streamlit consume el stream desde su servidor con requests; no se asume EventSource nativo sobre POST.
+- React consume SSE con fetch y Authorization Bearer; reconcilia el estado al reconectar y conserva Last-Event-ID. La admisión POST y el stream GET son solicitudes distintas.
 - Una reconexión consulta el trabajo existente y no vuelve a generar.
 - Last-Event-ID permite continuar mientras se conserve el registro; si no, se consulta status_url.
 - Cerrar el stream no cancela el trabajo; existe una acción explícita para cancelar.
@@ -366,32 +374,28 @@ Los ejemplos ilustran estructura y tono; no aportan hechos externos al documento
 
 ## 6. Interfaz de Usuario (Frontend)
 
-### 6.1 Framework: Streamlit
+### 6.1 Framework: React + TypeScript + Vite
 
-Se eligió Streamlit como framework de UI por las siguientes razones:
+La UI se ejecuta en el navegador y consume FastAPI por HTTP al mismo origen.
+Vite redirige `/api` en desarrollo; la imagen sirve el build estático mediante
+`frontend/entrypoint.py`. Los proveedores y sus secretos pertenecen al backend.
+El estado de presentación y el token viven en memoria; sólo el idioma de interfaz
+se guarda en `sessionStorage`. Los datos durables se consultan desde la API.
 
-- **Personalización CSS**: El design system Linear (paleta oscura, hairline borders, tipografía Inter) requiere inyección de CSS custom que Streamlit soporta con `st.markdown(unsafe_allow_html=True)`.
-- **Session state**: Conserva la presentación y el token durante la sesión. Historial y progreso persistentes se recuperan desde el backend.
-- **File upload nativo**: `st.file_uploader` facilita seleccionar archivos; el backend valida su formato real y sus límites.
-- **Columnas y layout**: `st.sidebar`, `st.columns`, `st.expander` permiten construir un layout profesional sin JavaScript.
+### 6.2 Diseño visual: Oracle oscuro
 
-### 6.2 Diseño Visual: Linear Dark Design System
-
-La interfaz adopta una estética oscura inspirada en Linear, con jerarquía visual, navegación consistente y foco en la lectura del material.
-
-**Paleta de Colores**:
+Los tokens vigentes están en `frontend/src/styles/oracle-theme.css`:
 
 | Token | Hex | Uso |
 |---|---|---|
-| `canvas` | `#010102` | Fondo raíz de la aplicación |
-| `surface-1` | `#0f1011` | Tarjetas principales, sidebar |
-| `surface-2` | `#141516` | Tarjetas anidadas, inputs |
-| `hairline` | `#23252a` | Bordes sutiles de 1px |
-| `primary` | `#5e6ad2` | Acento lavanda-azul (botones, highlights) |
-| `ink` | `#f7f8f8` | Texto principal |
-| `ink-muted` | `#d0d6e0` | Texto secundario |
-| `semantic-success` | `#27a644` | Score alto, respuesta correcta |
-| `semantic-error` | `#ef4444` | Score bajo, respuesta incorrecta |
+| `--bg-canvas` | `#090b0f` | Fondo raíz |
+| `--surface-1` | `#12151c` | Tarjetas y sidebar |
+| `--surface-2` | `#181c26` | Superficies anidadas |
+| `--border-hairline` | `#262b38` | Bordes |
+| `--oracle-red` | `#c74634` | Acciones principales |
+| `--oracle-coral` | `#ff6b4a` | Énfasis y selección |
+| `--ink-primary` | `#f6f7f9` | Texto principal |
+| `--ink-secondary` | `#c5ccd9` | Texto secundario |
 
 **Tipografía**:
 
@@ -399,7 +403,7 @@ La interfaz adopta una estética oscura inspirada en Linear, con jerarquía visu
 - Body: Inter Regular 400, line-height 1.5
 - Code/Métricas: JetBrains Mono 400/600
 
-**Decisión: Por qué un design system custom y no el tema default de Streamlit**:
+**Decisión: identidad visual propia y controles accesibles**:
 
 La personalización da identidad a NuevaMente y distingue contenido, fuentes y acciones. Se priorizan controles nativos accesibles; el CSS no debe ocultar foco, etiquetas o mensajes. La estética se verifica en móvil y con teclado.
 
@@ -413,59 +417,21 @@ sigue requiriendo comprobación en la VM. Detalle: [plan §2.1](docs/plan-implem
 
 ### 6.3 Layout: Sidebar + Área Principal
 
-```
-┌──────────────┬──────────────────────────────────────────────┐
-│              │                                               │
-│   SIDEBAR    │              ÁREA PRINCIPAL                   │
-│              │                                               │
-│ ┌──────────┐ │  ┌─────────────────────────────────────────┐  │
-│ │ Logo     │ │  │ Contenido generado (flashcards/quiz/    │  │
-│ │ NuevaMte │ │  │ tutorial/resumen/guion) con             │  │
-│ └──────────┘ │  │ componentes interactivos                │  │
-│              │  │                                         │  │
-│ ┌──────────┐ │  │ O bien:                                 │  │
-│ │ Subir    │ │  │ - Estado vacío con onboarding           │  │
-│ │ Document │ │  │ - Chat RAG interactivo                  │  │
-│ └──────────┘ │  │ - Historial de generaciones             │  │
-│              │  │ - Quiz interactivo con feedback          │  │
-│ ┌──────────┐ │  │                                         │  │
-│ │ Perfil   │ │  └─────────────────────────────────────────┘  │
-│ │ Destino  │ │                                               │
-│ └──────────┘ │  ┌─────────────────────────────────────────┐  │
-│              │  │ Barra de progreso de estudio            │  │
-│ ┌──────────┐ │  │ (conceptos revisados, quizzes, etc.)    │  │
-│ │ Formato  │ │  └─────────────────────────────────────────┘  │
-│ │ Salida   │ │                                               │
-│ └──────────┘ │                                               │
-│              │                                               │
-│ ┌──────────┐ │                                               │
-│ │ Nicho    │ │                                               │
-│ └──────────┘ │                                               │
-│              │                                               │
-│ ┌──────────┐ │                                               │
-│ │ Nivel    │ │                                               │
-│ │ Detalle  │ │                                               │
-│ └──────────┘ │                                               │
-│              │                                               │
-│ [GENERAR]    │                                               │
-│              │                                               │
-│ ┌──────────┐ │                                               │
-│ │ Historial│ │                                               │
-│ └──────────┘ │                                               │
-└──────────────┴──────────────────────────────────────────────┘
-```
+En escritorio, el sidebar agrupa idioma de interfaz, selección de fuente y
+parámetros de generación, acceso al historial, presupuesto y acciones de sesión.
+La carga de archivos se encuentra en el área principal derecha, junto con texto
+pegado y biblioteca demo. La vista de documentos permite volver desde un resultado.
+En móvil el layout apila el sidebar y el área principal; no promete un menú plegable.
 
-**Justificación del layout sidebar**:
-
-- En escritorio los parámetros permanecen accesibles; en pantallas pequeñas la sidebar es desplegable.
-- El área principal queda libre para el contenido, que es la estrella del producto.
-- La sidebar esconde el historial en un expander para no sobrecargar visualmente.
+Los resultados muestran el modo guardado, material interactivo, fuentes y calidad
+cuando fue evaluada, además de tutor, glosario y progreso. El historial es una vista
+completa con filtros, comparación y descargas, y mantiene el acceso reciente lateral.
 
 ### 6.4 Componentes UI Especializados
 
 Se usan widgets nativos para acciones y estado, con templates HTML/CSS escapados para presentación:
 
-1. **Flashcard**: Pregunta visible y botón nativo «Mostrar respuesta», con estado identificable para registrar la revisión. La apariencia de tarjeta no depende de un evento HTML que Streamlit no registre.
+1. **Flashcard**: Pregunta visible y botón nativo «Mostrar respuesta», con estado identificable para registrar la revisión. La presentación usa controles React accesibles y registra sólo acciones observadas.
 2. **Quiz Card**: Preguntas con opciones radio, feedback inmediato con banner verde/rojo y justificación pedagógica.
 3. **Tutorial Step**: Pasos numerados con badges de acento, bloques de código con estilo JetBrains Mono y verificación esperada.
 4. **Executive Summary**: Layout de dos columnas (Impacto en Negocio + Implicaciones Arquitectónicas) con badges informativas.
@@ -592,8 +558,8 @@ El UUID identifica el espacio; el código acredita acceso y no aparece en rutas 
 - El usuario debe guardarlo: quien lo posea puede acceder al espacio.
 - El servidor conserva solo su hash; nunca el código en claro, logs, analítica o prompts.
 - POST /api/sessions/recover lo valida y emite un token de sesión opaco separado.
-- Los tokens se transmiten en Authorization: Bearer entre Streamlit y FastAPI.
-- Streamlit conserva el token en su estado del servidor; al perder la sesión se solicita el código.
+- Los tokens se transmiten en Authorization: Bearer entre React y FastAPI.
+- React conserva el token en memoria; al recargar o perder la sesión se solicita el código.
 - Las sesiones usan tokens aleatorios de al menos 256 bits, duran como máximo 24 horas y se pueden revocar.
 - El código sirve mientras exista el espacio o hasta su rotación.
 - No hay recuperación por correo si se pierde el código.
@@ -603,7 +569,7 @@ La recuperación persiste en un manifiesto privado de OCI con hash, workspace_id
 La base operativa mantiene los hashes de tokens y el estado de revocación.
 Toda lectura/escritura comprueba ownership desde la sesión validada, nunca desde un workspace_id arbitrario del cliente.
 Se limitan creación y recuperación por origen confiable y globalmente; un X-Forwarded-For aportado por el cliente no decide el límite.
-Caddy sobrescribe la IP de conexión y autentica su origen con `TRUSTED_ORIGIN_SECRET`, compartido con el backend; Streamlit transmite esa información desde el servidor. La clave no llega al navegador ni a logs. Los intentos en vuelo también reservan las cinco plazas de recuperación.
+Caddy sobrescribe la IP de conexión y autentica su origen con `TRUSTED_ORIGIN_SECRET`, compartido con el backend; el navegador consulta la API al mismo origen y Caddy agrega esas cabeceras al reenviar. La clave no llega al navegador ni a logs. Los intentos en vuelo también reservan las cinco plazas de recuperación.
 La actividad se registra agrupada cada cinco minutos y los manifiestos pendientes se sincronizan cada minuto y al arrancar, sin extender tokens. Una lápida pendiente de confirmación en OCI exige conservar el registro local hasta sincronizarla; no se promete reconstruir un cambio que nunca llegó a storage después de perder también SQLite.
 
 **Por qué**: permite retomar el aprendizaje sin registro, con un mecanismo real de acceso.
@@ -699,7 +665,11 @@ La documentación distingue 20 GB combinados para cuentas Always Free sin prueba
 Presupuestos propios iniciales, inferiores a las asignaciones verificadas:
 
 - Hasta 1 GB total de objetos del proyecto, incluidos originales, exportaciones y temporales.
-- Hasta 5.000 solicitudes de almacenamiento mensuales, contando lecturas, listados y borrados.
+- Hasta 20.000 solicitudes de almacenamiento mensuales, contando lecturas, listados y borrados.
+  Ajuste autorizado el 15/10/2026 para pruebas y demo; no reinicia los contadores.
+  Es un presupuesto propio, inferior a las 50.000 solicitudes mensuales publicadas
+  para Object Storage Always Free; el operador sigue verificando el consumo agregado
+  de la tenancy. Se conserva el 10% para limpieza y la alerta al 80%.
 - Hasta cinco documentos y veinte generaciones conservadas por espacio.
 - Reservar capacidad antes de aceptar un archivo o exportación.
 - Alertar al 80% y rechazar nuevas escrituras al límite del presupuesto.
@@ -739,7 +709,7 @@ La selección del sistema operativo se fija en Ubuntu 24.04 LTS para evitar dos 
 ### 9.2 Red y Operación
 
 - Docker Compose aloja backend y frontend.
-- Caddy en el host actúa como proxy HTTPS y soporta la conexión de Streamlit.
+- Caddy en el host actúa como proxy HTTPS y sirve la UI React y enruta `/api` al backend.
 - Solo HTTPS es público para la aplicación; HTTP se limita a redirección/validación de certificado cuando corresponda.
 - Puertos 8000 y 8501 se vinculan a loopback, no a internet.
 - SSH se restringe a las direcciones de administración.
@@ -804,9 +774,9 @@ El progreso distingue:
 Ver una tarjeta no prueba que se domina un concepto.
 La aplicación no otorga certificaciones ni afirma dominio profesional por completar un quiz.
 Las respuestas repetidas se registran sin inflar los aciertos del primer intento.
-Los eventos usan identificadores idempotentes para que un rerun de Streamlit no duplique progreso.
+Los eventos usan identificadores idempotentes para que un renderizado o reintento de la interfaz no duplique progreso.
 
-El backend es la fuente de verdad; session_state es solo estado de presentación.
+El backend es la fuente de verdad; el estado React sólo conserva la presentación.
 El progreso se guarda en OCI y se recupera con el mismo espacio y su código.
 Cambiar de idioma no borra el historial; cada actividad referencia la generación concreta.
 
@@ -1048,7 +1018,7 @@ Con 6 personas trabajando en paralelo en diferentes módulos (RAG, agentes, UI, 
 | RAG | Documento, chunk, evidencia y filtros de acceso |
 | LangGraph | Estado, borrador tipado, evaluación y resultado |
 | FastAPI | Peticiones, errores, autorización y trabajos |
-| Streamlit | Contratos API, etiquetas traducidas y eventos |
+| React | Contratos API, etiquetas traducidas y eventos |
 | OCI | StorageProvider, manifiestos y confirmaciones |
 | Calidad y documentación | Fixtures y criterios de aceptación comunes |
 
@@ -1191,29 +1161,17 @@ G10-Equipo38-NuevaMente/
 │       ├── test_api_documents.py
 │       ├── test_api_generate.py
 │       └── test_e2e_pipeline.py
-├── frontend/                          # Servicio Streamlit
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── app.py                         # Punto de entrada Streamlit
-│   ├── .streamlit/
-│   │   └── config.toml                # Tema Linear
-│   ├── components/
-│   │   ├── theme.py                   # CSS inyectado del design system
-│   │   ├── sidebar.py                 # Panel lateral con parámetros
-│   │   ├── flashcard.py               # Componente de flashcards
-│   │   ├── quiz.py                    # Componente de quiz interactivo
-│   │   ├── tutorial.py                # Componente de tutorial paso a paso
-│   │   ├── summary.py                 # Componente de resumen ejecutivo
-│   │   ├── script.py                  # Componente de guion de clase
-│   │   ├── chat.py                    # Chat RAG interactivo
-│   │   ├── progress.py                # Barra de progreso de estudio
-│   │   ├── glossary.py                # Panel de glosario
-│   │   ├── export_download.py         # Botones de descarga multiformato
-│   │   └── history.py                 # Panel de historial
-│   ├── i18n/                          # Catálogos ES/EN/PT
-│   ├── api_client.py                  # Cliente HTTP para consumir FastAPI
-│   └── pages/
-│       └── home.py                    # Página principal
+├── frontend/                          # React + TypeScript + Vite
+│   ├── Dockerfile                     # Build Node + servidor estático Python
+│   ├── package.json / package-lock.json
+│   ├── entrypoint.py / vite.config.ts
+│   └── src/
+│       ├── App.tsx / main.tsx
+│       ├── api/                       # HTTP, SSE y tipos
+│       ├── components/                # Material, fuentes, estudio y descargas
+│       ├── flows/                     # Validación, seguimiento y pruebas
+│       ├── i18n/                      # Catálogos ES/EN/PT
+│       └── styles/                    # Tokens y estilos Oracle
 ├── documents/                         # Documentos demo precargados
 │   ├── redes_vcn_oci.pdf
 │   ├── integracion_apis_pagos.md
@@ -1564,7 +1522,7 @@ OCI_CONFIG_PROFILE=DEFAULT
 OCI_AUTH_TYPE=api_key
 # Confirmar manualmente capacidad gratuita disponible; nunca asumir que el trial alcanza.
 OCI_ALWAYS_FREE_CONFIRMED=0
-OCI_MAX_REQUESTS_PER_MONTH=5000
+OCI_MAX_REQUESTS_PER_MONTH=20000
 OCI_MAX_STORAGE_BYTES=1000000000
 OCI_TIMEOUT_SECONDS=30
 
@@ -1602,7 +1560,7 @@ Nunca se usa una región elegida al azar para ocultar un dato de configuración 
 flowchart TB
     User["Usuario: material público"]
     Proxy["Proxy HTTPS del host"]
-    UI["Streamlit: ES / EN / PT"]
+    UI["React: ES / EN / PT"]
     API["FastAPI: sesión y ownership"]
     Recovery["Código de recuperación<br/>hash y token de sesión"]
     Jobs["Trabajos, cola e idempotencia<br/>SQLite local"]

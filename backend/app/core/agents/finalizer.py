@@ -5,7 +5,7 @@ from datetime import datetime
 from app.core.agents.draft_validation import validar_borrador
 from app.core.agents.graph_state import EstadoGrafo
 from app.schemas.enums import JobStatus
-from app.schemas.responses import AlmacenamientoOCI, PedagogicalOutput
+from app.schemas.responses import AlmacenamientoOCI, PedagogicalOutput, ReviewedPedagogicalOutputV11
 from app.storage.object_keys import clave_output
 
 
@@ -40,7 +40,8 @@ def finalizer(estado: EstadoGrafo, *, bucket: str, created_at: datetime) -> Peda
     borrador, referencias = validar_borrador(estado.borrador.model_dump_json(), estado)
     if borrador != estado.borrador or referencias != estado.referencias:
         raise ValueError("El contenido o sus citas cambiaron después de la revisión")
-    return PedagogicalOutput(
+    modelo = ReviewedPedagogicalOutputV11 if estado.schema_version == "1.1" else PedagogicalOutput
+    return modelo(
         schema_version=estado.schema_version,
         generation_id=estado.generation_id,
         status="aprobado",

@@ -6,10 +6,14 @@
 | [`issues/fase-0-fundaciones.md`](issues/fase-0-fundaciones.md) → [`issues/fase-6-demo-entrega.md`](issues/fase-6-demo-entrega.md) | Detalle de cada issue (objetivo, tareas, criterios de aceptación, dependencias, verificación), listo para copiar a GitHub | Al crear los issues y al tomar trabajo |
 | [`arquitectura.md`](arquitectura.md) | Diagramas del sistema: contexto, contenedores, flujo E2E, RAG, grafo multi-agente, fidelidad, persistencia y despliegue | Onboarding, diseño y base del README final |
 | [`contratos-api.md`](contratos-api.md) | Contrato API v1: rutas, envolvente de errores, enums, SSE, `PedagogicalOutput` con ejemplo completo | Contrato compartido backend/frontend; cambios = `contract-change` |
+| [`api_reference.md`](api_reference.md) y [`openapi.json`](openapi.json) | Referencia de las 37 operaciones y recorridos curl encadenados, con comprobación local y snapshot del runtime | Consumir la API y verificar #59 localmente; aceptación pública seguida en #133 |
 | [`guia-trabajo-equipo.md`](guia-trabajo-equipo.md) | Git flow, conventional commits, PRs, tablero, ceremonias y reglas de convivencia entre carriles | Desde el día 1 y en cada PR |
 | [`../decisiones_proyecto.md`](../decisiones_proyecto.md) | **Documento padre**: todas las decisiones de diseño con su justificación | Referencia normativa de todo lo demás |
 
 ## Mantenimiento
+
+La migración de presentación a React está descrita en
+[frontend/README.md](../frontend/README.md), con arranque y verificación aislada.
 
 - La trazabilidad va siempre en este orden: **cambio de decisión → `decisiones_proyecto.md` → este plan/issues → código**.
 - Los contratos (`contratos-api.md` + schemas) solo cambian por PR `contract-change` con revisión multi-carril.

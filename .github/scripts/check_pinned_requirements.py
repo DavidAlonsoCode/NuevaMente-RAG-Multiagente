@@ -12,7 +12,7 @@ declara una dependencia flotante; imprime archivo y línea exactos para que
 corregir sea trivial.
 
 Uso:  python .github/scripts/check_pinned_requirements.py <requirements...>
-Si no se pasan archivos, revisa los tres que administra el proyecto.
+Si no se pasan archivos, revisa los dos que administra el proyecto.
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ ESPECIFICADORES_FLOTANTES = (">=", "<=", "~=", "===", "!=", ">", "<")
 # Archivos que el proyecto administra cuando el llamador no indica ninguno.
 REQUISITOS_POR_DEFECTO = (
     "backend/requirements.txt",
-    "frontend/requirements.txt",
     "requirements-dev.txt",
 )
 

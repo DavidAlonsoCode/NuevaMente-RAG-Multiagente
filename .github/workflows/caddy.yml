@@ -57,12 +57,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Compilar React para la prueba con Caddy
+        working-directory: frontend
+        run: npm ci && npm run build
       - name: Dependencias fijadas y herramientas Python verificadas
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/nm48-playwright-download
         run: |
           test ! -e "$PLAYWRIGHT_BROWSERS_PATH"
-          python -m pip install -r requirements-dev.txt -r backend/requirements.txt -r frontend/requirements.txt
+          python -m pip install -r requirements-dev.txt -r backend/requirements.txt
           python -m pip install --require-hashes --only-binary=:all: -r .github/requirements-caddy.lock
           python .github/scripts/check_pinned_requirements.py .github/requirements-caddy.txt
           python -m playwright install --with-deps chromium
@@ -259,6 +267,13 @@ jobs:
               print(json.dumps(report, separators=(",", ":")), file=sys.stderr)
               sys.exit(1)
           PY
+      - name: React compilado en navegador por Caddy y TLS locales
+        env:
+          CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
+          COMPOSE_BIN: ${{ runner.temp }}/caddy-tools/docker-compose
+          PLAYWRIGHT_BROWSERS_PATH: /nm48-playwright-ci/browsers
+          NM_CADDY_EVIDENCE_DIR: .data/caddy-evidence
+        run: python -m pytest -o addopts= -q backend/tests/integration/test_react_caddy.py
       - name: Sintaxis de wrappers y smoke requerido, sin skips
         env:
           CADDY_BIN: ${{ runner.temp }}/caddy-tools/caddy
@@ -278,5 +293,8 @@ jobs:
           path: |
             .data/caddy-evidence/observations.json
             .data/caddy-evidence/required-tests.xml
+            .data/caddy-evidence/react-observations.json
+            .data/caddy-evidence/generation-sse.json
+            .data/caddy-evidence/generation-modes.json
           if-no-files-found: error
           retention-days: 14

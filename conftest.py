@@ -49,7 +49,23 @@ def pytest_configure(config):
             raise pytest.UsageError("La suite integration_real exige MOCK_OCI=0 y MOCK_GEMINI=0 explícitos")
     else:
         os.environ.update(MOCK_OCI="1", MOCK_GEMINI="1")
+        # Las pruebas declaran sus cuotas/proveedores. El .env personal puede
+        # habilitar integraciones y secretos que no pertenecen a ese escenario.
+        # Un test de configuración puede seguir pasando _env_file explícito.
+        from app.config import Configuracion
+
+        Configuracion.model_config["env_file"] = None
     os.environ["APP_ENV"] = "ci" if os.environ.get("APP_ENV") == "ci" else "test"
+
+
+def pytest_collection_modifyitems(items):
+    """Un E2E debe declarar sus proveedores para no salir de la selección ordinaria."""
+    for item in items:
+        if item.get_closest_marker("e2e") is not None:
+            mock = item.get_closest_marker("integration_mock") is not None
+            real = item.get_closest_marker("integration_real") is not None
+            if mock == real:
+                raise pytest.UsageError(f"{item.nodeid}: e2e exige exactamente integration_mock o integration_real")
 
 
 @pytest.fixture

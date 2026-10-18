@@ -35,12 +35,6 @@ services:
   frontend:
     env_file: !override []
     ports: !override ["127.0.0.1:8501:8501"]
-    environment:
-      STREAMLIT_BROWSER_SERVER_ADDRESS: ${NUEVAMENTE_DOMAIN:?Required explicit public DNS hostname}
-      STREAMLIT_BROWSER_SERVER_PORT: "443"
-      STREAMLIT_SERVER_ENABLE_CORS: "true"
-      STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION: "true"
-      STREAMLIT_SERVER_ENABLE_STATIC_SERVING: "false"
 volumes:
   backend_data:
     name: nuevamente_backend_data

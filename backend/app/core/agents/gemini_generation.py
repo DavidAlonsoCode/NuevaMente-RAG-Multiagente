@@ -1,6 +1,7 @@
 """Adaptador síncrono de google-genai; ctx.llamar es el único dueño de retries."""
 
 import json
+import logging
 import math
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -12,6 +13,8 @@ from google.genai import errors, types
 
 from app.config import Configuracion
 from app.jobs.manager import CuotaAgotadaError, ReintentableError
+
+logger = logging.getLogger(__name__)
 
 
 class GeneracionGeminiError(RuntimeError):
@@ -176,6 +179,7 @@ class ClienteGeminiGeneracion:
                 raise ReintentableError(
                     "Gemini no está disponible temporalmente", retry_after=_retry_after(error)
                 ) from None
+            logger.warning("Gemini rechazó la solicitud: HTTP %s", error.code)
             raise GeneracionGeminiError("Gemini rechazó la solicitud; revisar configuración y modelo") from None
         except httpx.TransportError:
             raise ReintentableError("La solicitud Gemini falló por transporte o timeout") from None

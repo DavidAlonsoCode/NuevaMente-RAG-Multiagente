@@ -38,9 +38,17 @@ class GenerateRequest(ModeloContenido):
     nicho_sector: IndustryNiche
     nivel_detalle: DetailLevel
     idioma_salida: OutputLanguage
+    modo_generacion: Literal["multiagente", "basico"] = "multiagente"
     alcance: AlcanceSolicitud = Field(
         default_factory=AlcanceSolicitud, description="Documento completo o sección explícita."
     )
+
+    def parametros_persistidos(self):
+        datos = self.model_dump(mode="json")
+        # Mantener la identidad idempotente de solicitudes anteriores al selector.
+        if self.modo_generacion == "multiagente":
+            datos.pop("modo_generacion")
+        return datos
 
 
 class UploadRequest(ModeloContenido):

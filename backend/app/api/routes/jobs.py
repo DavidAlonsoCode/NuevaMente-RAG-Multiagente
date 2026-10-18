@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_sesion_actual, get_session_manager
+from app.api.openapi_metadata import CURSOR_SSE, RESULTADOS_JOBS, parametros, respuestas, stream
 from app.jobs.manager import DeadlineExcedidoError, GestorTrabajos, TrabajoCanceladoError
 from app.schemas.enums import JobStatus
 from app.schemas.errors import ErrorAplicacion, ErrorCode
@@ -97,7 +98,14 @@ def _autorizar_resultado(request, trabajo, token=None):
     return trabajo
 
 
-@router.get("/{job_id}", response_model=TrabajoComunResponse, summary="Consultar trabajo")
+@router.get(
+    "/{job_id}",
+    response_model=TrabajoComunResponse,
+    summary="Consultar trabajo",
+    responses=respuestas(401, 404, 409, 422, 503),
+    openapi_extra=parametros(),
+    description=RESULTADOS_JOBS,
+)
 def consultar(
     job_id: str,
     request: Request,
@@ -109,7 +117,15 @@ def consultar(
     )
 
 
-@router.post("/{job_id}/cancel", response_model=TrabajoComunResponse, summary="Cancelar trabajo")
+@router.post(
+    "/{job_id}/cancel",
+    response_model=TrabajoComunResponse,
+    summary="Cancelar trabajo",
+    responses=respuestas(401, 404, 409, 422),
+    openapi_extra=parametros(),
+    description="Cancelación cooperativa. Repetir cancelled conserva el resultado; otro terminal devuelve 409. "
+    "En ejecución puede devolver running hasta que el worker observe la cancelación. " + RESULTADOS_JOBS,
+)
 def cancelar(
     job_id: str,
     sesion: dict = Depends(get_sesion_actual),
@@ -176,13 +192,15 @@ async def _stream(
 @router.get(
     "/{job_id}/events",
     response_class=StreamingResponse,
-    responses={200: {"content": {"text/event-stream": {}}}},
+    responses=respuestas(401, 404, 409, 422, 503, **stream("job_id")),
+    openapi_extra=parametros(),
+    description=stream("job_id")["descripcion"],
     summary="Seguir progreso del trabajo",
 )
 def eventos(
     job_id: str,
     request: Request,
-    ultimo_id: Annotated[int, Header(alias="Last-Event-ID", ge=0, le=2**63 - 1)] = 0,
+    ultimo_id: Annotated[int, Header(alias="Last-Event-ID", ge=0, le=2**63 - 1, description=CURSOR_SSE)] = 0,
     sesion: dict = Depends(get_sesion_actual),
     gestor: GestorTrabajos = Depends(get_gestor),
     manager: SessionManager = Depends(get_session_manager),

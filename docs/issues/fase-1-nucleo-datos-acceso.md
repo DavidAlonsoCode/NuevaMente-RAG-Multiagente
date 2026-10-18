@@ -20,7 +20,7 @@ graph TD
     I12["Issue 12 Chunker estructural con metadatos y chunk_id estable"]
     I13["Issue 13 Cliente de embeddings Gemini"]
     I14["Issue 14 Proveedor OCI Object Storage real"]
-    I15["Issue 15 Esqueleto Streamlit con tema Linear"]
+    I15["Issue 15 Esqueleto React con tema Oracle"]
     I16["Issue 16 Cliente de API y gestión de sesión en el frontend"]
     I03 --> I07
     I07 --> I08
@@ -234,27 +234,27 @@ La reconstrucción ante pérdida de volumen y las lápidas durables se verifican
 - [x] Error de red simulado (DNS roto) produce `failed`/`STORAGE_UNAVAILABLE`, no mock.
 - [x] Sin credenciales y `MOCK_OCI=0`: arranque falla con mensaje claro.
 
-**Verificación**: `pytest backend/tests/test_storage_oci.py backend/tests/test_storage_oci_sdk.py backend/tests/test_verify_oci.py` (SDK/HTTP simulados) + `python -m app.tools.verify_oci` contra OCI real. Guía: `docs/oci-storage.md`. La aceptación completa exige el reporte manual satisfactorio; los dobles no lo sustituyen.
+**Verificación de implementación**: `pytest backend/tests/test_storage_oci.py backend/tests/test_storage_oci_sdk.py backend/tests/test_verify_oci.py` (SDK/HTTP simulados). La comprobación real de `python -m app.tools.verify_oci`, sus permisos mínimos y prefijos se trazan en #133, reutilizando la evidencia válida ya registrada. Guía: `docs/oci-storage.md`. No se borra esa evidencia ni se ejecutan nuevas solicitudes para cerrar administrativamente el issue; cualquier hueco real queda pendiente en #133 y los dobles no lo acreditan.
 
 **Evidencia manual — 2026-10-08**: prueba real en la home region `sa-vinhedo-1` con usuario técnico y grupo dedicado, sin Administrators. Dos objetos técnicos (original y JSON) escritos, leídos y listados; bytes verificados y temporales eliminados. Se contabilizaron 16 solicitudes, sin reservas inciertas. También se verificó la denegación de `ListUsers` y `ListBuckets`. Esto acredita almacenamiento real del Issue 14; no acredita Gemini ni despliegue completo.
 
 ---
 
-### `Issue 15` — Esqueleto Streamlit con tema Linear
+### `Issue 15` — Esqueleto React con tema Oracle
 **F1** · **UI** · **M** · **Depende de**: `Issue 03`, `Issue 06` · **Referencia**: decisiones_proyecto.md §6.1–§6.3
 
-**Objetivo**: aplicación Streamlit con el design system Linear aplicado (tokens, tipografías, hairlines) y el layout sidebar + área principal en estado vacío.
+**Objetivo**: aplicación React/TypeScript/Vite con el tema Oracle aplicado (tokens, tipografías, hairlines) y el layout sidebar + área principal en estado vacío.
 
 **Tareas**:
-- `.streamlit/config.toml` con tokens del design system (canvas `#010102`, surfaces, primary `#5e6ad2`, ink).
-- `components/theme.py`: inyección CSS (Inter + JetBrains Mono auto-hospedadas si es viable — §6.6), cards, hairlines, foco visible, respeto de `prefers-reduced-motion`.
-- `app.py` + `pages/home.py`: layout §6.3 — sidebar (logo, selector idioma UI, espacios para carga y parámetros, historial en expander) + área principal con estado vacío/onboarding.
+- `frontend/src/styles/oracle-theme.css` con tokens oscuros y acentos rojo/coral.
+- `frontend/src/styles/oracle-theme.css`: estilos (Inter + JetBrains Mono auto-hospedadas si es viable — §6.6), cards, hairlines, foco visible, respeto de `prefers-reduced-motion`.
+- `frontend/src/App.tsx`: layout §6.3 — sidebar con logo, idioma, parámetros e historial; área principal con carga de archivos, texto pegado, biblioteca y onboarding.
 - Integración de `Issue 06`: helper `t()` y selector de idioma que cambia etiquetas sin recargar datos.
 - Estado vacío accesible: las 4 entradas del onboarding (subir, pegar texto, demo, recuperar espacio) como botones nativos.
 - `frontend/Dockerfile` inicial (arranque básico) para que `Issue 26` tenga base.
 
 **Criterios de aceptación**:
-- [ ] `streamlit run frontend/app.py` muestra la app con tema oscuro completo, con controles nativos accesibles y estilo consistente.
+- [ ] `npm --prefix frontend run dev` muestra la app con tema oscuro completo, con controles nativos accesibles y estilo consistente.
 - [ ] Cambiar idioma de UI re-traduce la pantalla en caliente.
 - [ ] Contraste de texto ≥ 4.5:1 verificado con herramienta (WCAG AA §6.6).
 - [ ] Navegable por teclado con foco visible.
@@ -266,11 +266,11 @@ La reconstrucción ante pérdida de volumen y las lápidas durables se verifican
 ### `Issue 16` — Cliente de API y gestión de sesión en el frontend
 **F1** · **UI** · **M** · **Depende de**: `Issue 15`, `Issue 09` · **Referencia**: decisiones_proyecto.md §6.1, §7.4
 
-**Objetivo**: `api_client.py` tipado contra `docs/contratos-api.md` y el flujo de sesión del usuario en Streamlit.
+**Objetivo**: `frontend/src/api/client.ts` tipado contra `docs/contratos-api.md` y el flujo de sesión del usuario en React.
 
 **Tareas**:
-- `api_client.py`: métodos para workspaces/sesiones/docs/generaciones/exports con manejo del envoltorio de error, `request_id` en logs y timeouts; sin acceso directo a storage ni claves.
-- Gestión de sesión: token en `st.session_state` (nunca en el cliente), creación de workspace al primer uso, recuperación con código (con recordatorio de guardarlo y aviso de que se muestra una sola vez), cierre de sesión.
+- `frontend/src/api/client.ts`: métodos para workspaces/sesiones/docs/generaciones/exports con manejo del envoltorio de error, `request_id` en logs y timeouts; sin acceso directo a storage ni claves.
+- Gestión de sesión: token únicamente en memoria React (nunca en localStorage/sessionStorage), creación de workspace al primer uso, recuperación con código (con recordatorio de guardarlo y aviso de que se muestra una sola vez), cierre de sesión.
 - Estados de error amigables y traducidos (catálogo `Issue 06`), distinguindo 401 (pedir código) de fallos técnicos.
 - Acciones de copiar/descargar el código, rotación con token nuevo y borrado del espacio con confirmación; nunca exponer códigos en capturas/logs.
 - Pantalla de recuperación: entrada del código agrupado + feedback de éxito/fallo/bloqueo por intentos.
@@ -281,7 +281,7 @@ La reconstrucción ante pérdida de volumen y las lápidas durables se verifican
 - [ ] Los errores del backend se muestran traducidos con código estable visible solo en «detalles técnicos».
 - [ ] El token nunca se loguea ni viaja a otra capa que no sea el header `Authorization`.
 
-**Verificación**: flujo manual con backend real levantado + `pytest frontend/tests/test_api_client.py` contra una API simulada.
+**Verificación**: flujo manual con backend real levantado + `npm --prefix frontend test` contra una API simulada.
 
 ---
 

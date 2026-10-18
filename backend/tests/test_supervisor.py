@@ -100,6 +100,17 @@ def test_vision_pendiente_no_pasa_anticipadamente(entorno):
     assert crear(entorno).rubrica.requiere_revision_visual
 
 
+def test_vision_se_exige_solo_en_el_alcance_que_contiene_diagramas(entorno):
+    documento = entorno[1]
+    documento.contiene_material_visual = True
+    documento.secciones_visuales = ("sec_1",)
+    assert crear(entorno).rubrica.requiere_revision_visual
+    assert crear(entorno, alcance={"tipo": "seccion", "seccion_id": "sec_1"}).rubrica.requiere_revision_visual
+    assert not crear(entorno, alcance={"tipo": "seccion", "seccion_id": "sec_2"}).rubrica.requiere_revision_visual
+    documento.vision_pendiente = True
+    assert crear(entorno, alcance={"tipo": "seccion", "seccion_id": "sec_2"}).error.code == "INVALID_STATE"
+
+
 @pytest.mark.parametrize("ajeno", ["workspace", "documento", "inexistente", "estado"])
 def test_ownership_desde_runtime(entorno, ajeno):
     dependencias, documento, consultas = entorno

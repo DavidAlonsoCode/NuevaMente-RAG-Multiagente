@@ -48,7 +48,7 @@ REQUIRED_FAMILIES = {
     ),
     "backend.tests.integration.test_caddy_proxy": (
         10,
-        "6dce368434b44737ae8069b22c9fb77b55fd0ec1fbe0b9a27775be6b9438b9af",
+        "6d1ef9021996561296917028b34c2df2ad11eaf37f25aefc19e3f50278330c20",
     ),
 }
 

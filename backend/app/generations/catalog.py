@@ -1,4 +1,4 @@
-"""Lectura autorizada del aprobado, independiente de proveedores LLM o de la cola."""
+"""Lectura autorizada del material guardado, independiente de proveedores LLM o cola."""
 
 import json
 from datetime import datetime, timezone
@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from app.schemas.errors import ErrorAplicacion, ErrorCode
-from app.schemas.responses import PedagogicalOutput
+from app.schemas.responses import cargar_paquete_json, modo_paquete
 from app.session.manifests import ManifiestoEspacio
 from app.storage.object_keys import clave_output, clave_workspace
 from app.storage.provider import StorageNotFound, StorageUnavailable
@@ -59,7 +59,7 @@ class CatalogoGeneraciones:
             datos = self.storage.get(clave)
             # Un JSON ambiguo no puede ser fuente común de dos exportaciones.
             json.loads(datos, object_pairs_hook=_pares_unicos, parse_constant=_constante_invalida)
-            paquete = PedagogicalOutput.model_validate_json(datos)
+            paquete = cargar_paquete_json(datos)
         except (ValueError, RecursionError, StorageNotFound):
             raise StorageUnavailable("El paquete publicado no es verificable") from None
         if (
@@ -67,6 +67,8 @@ class CatalogoGeneraciones:
             or paquete.documento_fuente != fuente
             or paquete.almacenamiento_oci.objeto_id != clave
             or paquete.almacenamiento_oci.bucket != self.bucket
+            or modo_paquete(paquete)
+            != json.loads(fila["parametros_json"] or "{}").get("modo_generacion", "multiagente")
         ):
             raise StorageUnavailable("El paquete no corresponde a la fuente vigente")
         self.validar_fuente(token, paquete)
@@ -102,7 +104,7 @@ class CatalogoGeneraciones:
         return actual, fuente
 
     def validar_fuente(self, token, paquete):
-        """Revalida la identidad del aprobado inmutable sin volver a descargarlo."""
+        """Revalida la identidad del material inmutable sin volver a descargarlo."""
         _, fuente = self.fuente(token, paquete.generation_id)
         if fuente != paquete.documento_fuente:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente cambió durante la consulta.")

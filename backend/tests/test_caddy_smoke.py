@@ -464,6 +464,7 @@ def test_browser_child_diagnostic_tracks_real_probe_stage(
     package, api = ModuleType("playwright"), ModuleType("playwright.sync_api")
     package.__path__ = []
     api.sync_playwright = Manager
+    api.expect = lambda *_: pytest.fail("No debe alcanzar aserciones de interacción")
     monkeypatch.setitem(sys.modules, "playwright", package)
     monkeypatch.setitem(sys.modules, "playwright.sync_api", api)
     # POSIX options are simulated here, not evidence of native Ubuntu execution.
@@ -659,11 +660,10 @@ def test_browser_parent_retains_success_assertions_and_diagnostic(
     state = browser_parent_double
     state.exit_code = 0
     (tmp_path / "browser-0.diagnostic.json").write_text(json.dumps(protocol.success()))
-    (tmp_path / "ui-origin.json").write_text(json.dumps({"origin_authenticated": True}))
-    (tmp_path / "browser-result.json").write_text(json.dumps({"websockets": 2, "received_frames": 3}))
+    (tmp_path / "browser-result.json").write_text(json.dumps({"interactions": 2, "reload_verified": True}))
     module.browser_probe(state.proxy)
     assert state.proxy.evidence["checks"][0]["diagnostic"] == protocol.success()
-    assert state.proxy.evidence["checks"][0]["websockets"] == 2
+    assert state.proxy.evidence["checks"][0]["interactions"] == 2
     assert state.wait_timeouts == [90]
 
 

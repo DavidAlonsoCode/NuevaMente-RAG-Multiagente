@@ -63,7 +63,7 @@ jobs:
               --mount "type=bind,source=${{ github.workspace }}/.github/scripts/smoke_chroma.py,target=/tmp/smoke_chroma.py,readonly" \
               nuevamente-backend:arm64 /tmp/smoke_chroma.py
           else
-            docker run --rm --platform linux/arm64 --entrypoint python nuevamente-frontend:arm64 -c "import streamlit; print(streamlit.__version__)"
+            docker run --rm --platform linux/arm64 --entrypoint python nuevamente-frontend:arm64 -c "from pathlib import Path; assert Path('/app/dist/index.html').is_file(); assert list(Path('/app/dist/assets').glob('*.js'))"
           fi
 
   compose:

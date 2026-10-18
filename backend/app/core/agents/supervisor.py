@@ -109,7 +109,14 @@ def supervisor(estado: EstadoGrafo, dependencias: DependenciasGrafo) -> dict:
                 requisitos_formato=_FORMATOS[solicitud.formato_salida],
                 max_llamadas=min(20, estado.presupuesto.limite),
             ),
-            "rubrica": RubricaSalida(requiere_revision_visual=documento.contiene_material_visual),
+            "rubrica": RubricaSalida(
+                requiere_revision_visual=documento.contiene_material_visual
+                and (
+                    solicitud.alcance.tipo == "documento_completo"
+                    or documento.secciones_visuales is None
+                    or solicitud.alcance.seccion_id in documento.secciones_visuales
+                )
+            ),
         }
     except TrabajoCanceladoError:
         return _fallo("CANCELLED", "El trabajo fue cancelado o el espacio fue retirado.", status=JobStatus.CANCELLED)

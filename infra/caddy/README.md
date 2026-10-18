@@ -1,5 +1,15 @@
 # Proxy del host — Issue 48, implementación y protocolo de aceptación
 
+> **Frontend vigente — #139, 17/10/2026:** sólo se despliega y prueba React.
+> El harness de proxy usa el build real para interacción, recarga, carga en el
+> área principal y auditoría de secretos; conserva HTTP/1.1, HTTP/2, SSE,
+> cancelación, subidas lentas y diagnósticos cerrados. No hay WebSocket de UI
+> ni configuración CORS/XSRF de Streamlit que activar. Las corridas anteriores
+> que mencionan Streamlit/WebSocket son evidencia histórica de sus commits,
+> no controles ejecutables del frontend actual. Para arranque y cobertura vigente,
+> ver [frontend](../../frontend/README.md) y [#139](../../docs/verificacion-issue-139.md).
+
+
 ## Guía principal: instalar → arrancar → comprobar
 
 Esta guía sigue el alcance vigente de [#48](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/48)
@@ -85,7 +95,7 @@ requiere revisión y autorización independiente.
 | --- | --- |
 | HTTP TCP/80, hostname explícito | ACME HTTP-01 nativo y redirección 308 a `https://hostname{uri}` |
 | HTTPS TCP/443, `/api` o `/api/*` | `127.0.0.1:8000`, sin retirar prefijo ni reescribir rutas |
-| HTTPS TCP/443, resto | `127.0.0.1:8501`, WebSocket nativo de Streamlit |
+| HTTPS TCP/443, resto | `127.0.0.1:8501`, build estático de React |
 | Administración | `unix//run/caddy/admin.sock|0200`, sin listener TCP administrativo |
 
 El nombre DNS se carga como `NUEVAMENTE_DOMAIN`: hostname ASCII/punycode en
@@ -104,13 +114,15 @@ la selección automática de CA interna por un hostname mal configurado.
 
 Ambos upstreams reciben `Host` y `X-Forwarded-Host` públicos,
 `X-Forwarded-Proto: https` y `X-Forwarded-For` sobrescrito con la IP de conexión.
-Se descartan `Forwarded` y `X-Real-IP` del cliente. Se conserva `Origin`, para que
-Streamlit compruebe el origen de WebSocket con su hostname/puerto público 443.
-El overlay mantiene **CORS y XSRF activos**; no agrega CSP (corresponde a #51).
+Se descartan `Forwarded` y `X-Real-IP` del cliente. Se conserva `Origin`.
+React solicita `/api` al mismo origen; el navegador no recibe la clave privada
+del proxy. El servidor estático agrega CSP y sirve las tipografías localmente.
+El overlay no configura variables de Streamlit; las evidencias históricas de sus pruebas
+de WebSocket se conservan y no acreditan la nueva interfaz.
 No se alteran `Authorization`, `Idempotency-Key`, `Last-Event-ID`, `X-Request-ID`,
 `Retry-After`, `Content-Type`, `Cache-Control` ni `X-Accel-Buffering` del contrato.
 
-En API, UI y handshake WebSocket se **sobrescriben**, nunca se agregan a la cadena
+En API y UI se **sobrescriben**, nunca se agregan a la cadena
 del cliente, `X-NuevaMente-Client-IP` y `X-NuevaMente-Origin-Key`. Se retiran ambas
 de respuestas, incluida protección global sobre respuestas HTTP locales. El
 frontend existente transmite estas cabeceras desde `st.context.headers` al
@@ -132,7 +144,7 @@ cursor `Last-Event-ID` y trabajo independiente de la conexión.
 | Headers públicos | 15 s | Acotar conexiones incompletas antes de recibir body |
 | Inactividad de lectura de body | 60 s | Upload lento permitido mientras avance; sin límite total de lectura |
 | Headers iniciales API | Sin límite del proxy | OCI tiene llamadas/deadline y reintentos; no existe presupuesto total HTTP común a todos los endpoints |
-| Headers iniciales UI | 60 s | Inicio de respuesta Streamlit; no duración de sesión/WS |
+| Headers iniciales UI | 60 s | Inicio de respuesta del servidor de archivos React |
 | Escritura bloqueada | 60 s de inactividad de escritura | Caddy 2.11.7 limita escrituras bloqueadas, no espera entre eventos |
 | Conexión HTTP keep-alive ociosa | 120 s | Conexiones sin solicitudes; no streams activos |
 
@@ -1454,8 +1466,10 @@ Inspeccionar la cadena hasta una raíz pública reconocida (el almacén local pu
 tener raíces privadas), issuer, vigencia, SAN y advertencias. Registrar sólo
 metadatos públicos permitidos. Abrir la UI, crear/acceder al espacio de prueba,
 realizar una interacción que produzca cambio visible y navegar por contenido.
-Observar conexión `wss://<dominio>/_stcore/stream`, mensajes entrantes/salientes
-y efecto de la interacción, sin exportar frames. Interrumpir la red brevemente,
+Observar las solicitudes de React a `/api` y el efecto visible de la interacción,
+sin exportar tokens ni cuerpos privados. La UI React no usa el WebSocket de
+React. El seguimiento SSE de generación está implementado en #33; su aceptación pública queda en #133.
+Interrumpir la red brevemente,
 restaurarla y confirmar reconexión **más** una nueva interacción funcional; 101
 aislado no sirve. Anotar navegador/versión, UTC, acciones y resultados saneados.
 
