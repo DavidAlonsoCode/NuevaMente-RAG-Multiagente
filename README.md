@@ -113,7 +113,7 @@ El modo se elige al arrancar, no ante un error de OCI. En desarrollo, `completed
 | Parámetro | Opciones Soportadas | Enfoque Pedagógico |
 |---|---|---|
 | **Perfil del Destinatario** | 1. `Principiante / Transición de Carrera`<br/>2. `Desarrollador Junior / Semi Senior`<br/>3. `Líder Técnico / Arquitecto`<br/>4. `Gestor / Ejecutivo (No Técnico)` | Desde analogías didácticas y sin asunciones previas hasta análisis de trade-offs, SLAs, código funcional y valor de negocio. |
-| **Formato de Salida** | 1. `Guía Práctica Paso a Paso (Tutorial)`<br/>2. `Flashcards de Memorización`<br/>3. `Quiz Interactivo con Justificaciones`<br/>4. `Resumen Ejecutivo (TL;DR)`<br/>5. `Guion de Clase / Video` | Contratos tipados con Pydantic v2 y descargas JSON/Markdown (#43) y [PDF didáctico](docs/exportacion-pdf.md) (#44). Flashcards exportables también a CSV/TSV/APKG (#45). Interfaz de estudio (#34) y botones de descarga (#46) pendientes. |
+| **Formato de Salida** | 1. `Guía Práctica Paso a Paso (Tutorial)`<br/>2. `Flashcards de Memorización`<br/>3. `Quiz Interactivo con Justificaciones`<br/>4. `Resumen Ejecutivo (TL;DR)`<br/>5. `Guion de Clase / Video` | Contratos tipados con Pydantic v2 y descargas JSON/Markdown (#43) y [PDF didáctico](docs/exportacion-pdf.md) (#44). Flashcards exportables también a CSV/TSV/APKG (#45). Interfaz de estudio (#34) y [descargas desde resultado e historial (#46)](docs/verificacion-issue-46.md) integradas en React; aceptación externa pendiente en #133. |
 | **Nicho de Aplicación** | 1. `Fintech`<br/>2. `Salud`<br/>3. `E-commerce`<br/>4. `General` | Terminología situada, ejemplos contextuales y casos de uso realistas por industria. |
 | **Nivel de Detalle** | 1. `Didáctico / Conceptual`<br/>2. `Práctico / Orientado a Código`<br/>3. `Técnico Profundo / Arquitectura` | Graduación de profundidad técnica según el objetivo formativo. |
 
@@ -232,6 +232,10 @@ docker compose up --build --detach --wait --wait-timeout 120
 
 Para el arranque Docker sin credenciales, usá `.env.docker.example`; pasos,
 persistencia y verificación ARM64 en [docs/docker.md](docs/docker.md).
+
+La [guía de instalación y operación en OCI](docs/despliegue-oci.md) y su
+[registro de verificación](docs/verificacion-issue-58.md) distinguen comprobaciones
+locales, revisión humana pendiente y reproducción real en #133.
 
 ## Segmentación de documentos (issue #12)
 

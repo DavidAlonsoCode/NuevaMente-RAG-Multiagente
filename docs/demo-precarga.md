@@ -2,14 +2,28 @@
 
 Este runbook prepara las tres fuentes de `documents/`: VCN, pagos y salud.
 Es mantenimiento administrativo offline; no expone una ruta de escritura.
-El despliegue y la comprobación en la URL pública dependen del #48.
+Registro documental del **16/10/2026**, `develop` `f292415`: #48 y #49 estaban
+integrados y cerrados; la activación y comprobación públicas se aceptan en
+[#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
+
+Contraste por lectura del **17/10/2026**, base integrada `5988244` (#137/#138/#140):
+precarga, archivos canónicos y exclusividad conservan sus procedimientos. React
+es la única UI desplegable; Streamlit fue retirado. Básico/multiagente reutilizan
+la preparación documental, pero no habilitan el puente demo→generación pendiente.
+Los paquetes 1.0/1.1 y las descargas privadas se describen en el
+[runbook](despliegue-oci.md#123-modos-recuperación-de-materiales-y-descargas).
+Los ejemplos publicados siguen exigiendo material multiagente aprobado;
+`completed` básico no lo sustituye. No se repitieron pruebas ni precarga.
 
 Preparar las fuentes significa leer e indexar los tres documentos de ejemplo
 una vez, para que luego la biblioteca pueda consultarlos sin repetir ese trabajo.
-El PR integra esa preparación y esta guía; no cierra el #49 ni acredita una VM
-operativa. Conserva el alcance acordado: no añade generación desde documentos demo.
-Para una demostración local de generación se puede subir el mismo archivo como
-documento privado y usar el recorrido habitual de la aplicación.
+La preparación integrada no acredita una VM operativa. La revisión del código
+vigente detectó una contradicción sobre demo→generación: fase 5 describe el
+puente como probado, pero React y la autorización del backend no habilitan ese
+recorrido. El [registro de #58](verificacion-issue-58.md#contradicción-demo-generación)
+identifica las referencias y la decisión/seguimiento funcional pendientes del equipo.
+El requisito de generar desde una fuente demo sin subir un archivo se conserva.
+La carga privada y los ejemplos guardados no son equivalentes ni lo satisfacen.
 
 ## Alcance y pendientes
 
@@ -25,11 +39,11 @@ documento privado y usar el recorrido habitual de la aplicación.
   cobertura es incompleta, no se publica evidencia de disponibilidad.
 - La biblioteca de fuentes funciona sin resultados. Este comando no genera ni
   simula adaptaciones educativas; la publicación de ejemplos etiquetados es #55.
-  Sus futuros resultados deben conservar fuente, fecha y parámetros y rotularse
-  como ejemplos guardados, diferenciados de una nueva ejecución.
-- La generación desde la biblioteca sigue pendiente: #32 bloquea la selección
-  demo para generar y #31 autoriza documentos privados. Resolver ese acceso
-  requiere contrato y pruebas API/UI; la precarga no elude esa autorización.
+  #55 ya integró los [ejemplos reales publicados](evidencia/issue-55/v2/README.md),
+  con fuente, fecha y parámetros, diferenciados de una nueva ejecución.
+- En el código revisado, React bloquea generar desde la selección demo y el
+  backend exige un documento propio. La contradicción con fase 5 requiere una
+  decisión del equipo; la precarga no elude esa autorización ni prueba el puente.
 - Quedan pendientes OCI/Gemini reales en la VM y navegación por la URL pública
   tras #48, incluida la generación demo cuando esté integrada.
 
@@ -45,8 +59,9 @@ además de la configuración crítica vigente. El storage real conserva sus
 presupuestos Always Free y tres intentos totales. No activar mocks para ocultar
 un fallo real. No aprovisionar recursos ni contratar capacidad desde este comando.
 
-Comprobar primero los archivos del checkout y el parser, sin escrituras ni
-solicitudes OCI/Gemini:
+Para el entorno local de Compose base, comprobar los archivos del checkout y
+el parser. `--check` no escribe ni solicita OCI/Gemini; construir la imagen sí
+puede descargar dependencias:
 
 ```sh
 docker compose build backend
@@ -63,6 +78,14 @@ $env:PYTHONPATH = "backend"
 `--check` no publica documentos y no acredita integración real.
 
 ## Publicar o recargar
+
+El bloque siguiente corresponde al entorno local de Compose base, con su
+configuración explícita. No es una receta de activación productiva: producción
+usa base + OCI + producción, archivos canónicos y el helper de
+[Caddy](../infra/caddy/README.md). Un `compose up` directo omite la compuerta de
+observación del peer. El [runbook de instalación](despliegue-oci.md#10-precarga-productiva-con-un-solo-escritor)
+documenta la precarga productiva y su activación/reactivación administrativa;
+esa receta todavía no fue ejecutada ni aceptada sobre la VM.
 
 Primero drenar la actividad y detener UI/API. La API y el mantenimiento toman
 el mismo bloqueo de proceso sobre el volumen; no se permiten dos escritores.
