@@ -28,6 +28,7 @@ HOP_BY_HOP = {
 }
 
 
+# con esta funcion espero activamente que el backend este disponible respondiendo exitosamente en su ruta de diagnostico (health check)
 def esperar_api(api_url: str, *, timeout: float = 60.0) -> None:
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("API_HEALTH_WAIT_SECONDS debe ser positivo y finito")
@@ -45,6 +46,7 @@ def esperar_api(api_url: str, *, timeout: float = 60.0) -> None:
     raise TimeoutError("La API no estuvo disponible dentro del plazo de arranque")
 
 
+# con este manejador http sirvo la aplicacion web construida en react y reenvio peticiones de api hacia fastapi como un proxy inverso
 class FrontendHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     api_url = os.environ.get("API_URL", "http://backend:8000").rstrip("/")
@@ -52,6 +54,7 @@ class FrontendHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         return
 
+    # aqui reenvio la peticion hacia el backend filtrando cabeceras de salto (hop by hop) y soportando flujos de eventos sse
     def _proxy_api(self) -> None:
         route = urlsplit(self.path)
         if route.scheme or route.netloc or not (route.path.startswith("/api/") or route.path == "/api"):
@@ -134,6 +137,7 @@ class FrontendHandler(BaseHTTPRequestHandler):
         finally:
             conn.close()
 
+    # con este metodo entrego los archivos estaticos generados por vite o redirijo cualquier ruta no encontrada hacia index html para la navegacion spa
     def _serve_static(self) -> None:
         if self.path in ("/_stcore/health", "/healthz"):
             body = b"ok"
@@ -187,6 +191,7 @@ class FrontendHandler(BaseHTTPRequestHandler):
         self._proxy_api()
 
 
+# con esta funcion principal inicio el servidor web multihilo escuchando las conexiones del usuario en el puerto configurado
 def main() -> None:
     api_url = os.environ.get("API_URL", "http://backend:8000")
     wait_seconds = float(os.environ.get("API_HEALTH_WAIT_SECONDS", "60"))

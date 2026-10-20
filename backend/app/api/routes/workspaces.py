@@ -11,11 +11,15 @@ from app.schemas.requests import RecoverSessionRequest
 from app.schemas.responses import RotatedCodeResponse, SessionResponse, WorkspaceCreatedResponse
 from app.session.manager import SessionManager
 
+# defino el enrutador de fastapi para gestionar los espacios de trabajo anonimos de los usuarios
+# con estos limitadores de tasa (RateLimiter) protejo los puntos de creacion y recuperacion contra ataques de fuerza bruta
 router = APIRouter(tags=["Workspaces"])
 limitar_creacion = RateLimiter(key="workspace_creation", limite_global=50, limite_ip=5)
 limitar_recuperacion = RateLimiter(key="workspace_recovery", limite_global=100, limite_ip=10)
 
 
+# con esta clase de pydantic defino el esquema de respuesta para el estado y consumo de recursos del espacio
+# utilizo tipos conscientes de zona horaria (AwareDatetime) para asegurar el manejo exacto de los vencimientos
 class EstadoEspacio(BaseModel):
     model_config = ConfigDict(extra="forbid")
     workspace_id: str
@@ -32,6 +36,8 @@ class EstadoEspacio(BaseModel):
     responses=respuestas(401, 503),
     openapi_extra=parametros(),
 )
+# aqui obtengo la informacion de uso y fecha de expiracion del espacio de trabajo correspondiente a la sesion activa
+# consulto tanto la base de datos operativa como el estado del presupuesto en oracle cloud infrastructure (oci)
 def estado_workspace(request: Request, workspace_id: str = Depends(get_workspace_actual)):
     db, storage = request.app.state.db, request.app.state.storage_provider
     datos = db.obtener_workspace(workspace_id)
@@ -60,6 +66,8 @@ def estado_workspace(request: Request, workspace_id: str = Depends(get_workspace
     responses=respuestas(400, 429, 503, exito=201),
     openapi_extra=parametros(),
 )
+# en este punto de entrada creo un nuevo espacio de trabajo totalmente anonimo sin requerir correos ni contrasenias
+# devuelvo por unica vez el identificador del espacio y un codigo seguro de recuperacion de alta entropia
 def create_workspace(manager: SessionManager = Depends(get_session_manager)) -> WorkspaceCreatedResponse:
     """
     Crea un espacio anónimo.
@@ -78,6 +86,8 @@ def create_workspace(manager: SessionManager = Depends(get_session_manager)) -> 
     responses=respuestas(400, 401, 409, 422, 429, 503, exito=201, recuperacion=True),
     openapi_extra=parametros(),
 )
+# aqui permito restaurar el acceso a un espacio de trabajo previo mediante el codigo de recuperacion
+# utilizo un administrador de contexto (intento_recuperacion) para auditar intentos fallidos y mitigar accesos no autorizados
 def recover_workspace(
     request: Request, recovery_request: RecoverSessionRequest, manager: SessionManager = Depends(get_session_manager)
 ) -> SessionResponse:
@@ -97,6 +107,8 @@ def recover_workspace(
     responses=respuestas(401, exito=204),
     openapi_extra=parametros(),
 )
+# con esta ruta revoco y cierro de forma inmediata la sesion vinculada al token enviado en la cabecera
+# devuelvo un codigo http 204 no content indicando que la operacion se realizo con exito sin enviar cuerpo de respuesta
 def close_session(
     sesion: str = Depends(get_sesion_actual), manager: SessionManager = Depends(get_session_manager)
 ) -> Response:
@@ -115,6 +127,8 @@ def close_session(
     responses=respuestas(401, 409, 503),
     openapi_extra=parametros(),
 )
+# aqui ejecuto la rotacion del codigo de recuperacion del espacio de trabajo actual
+# esta accion invalida inmediatamente todas las sesiones anteriores activas para prevenir accesos indebidos
 def rotate_recovery_code(
     workspace_id: str = Depends(get_workspace_actual), manager: SessionManager = Depends(get_session_manager)
 ) -> RotatedCodeResponse:
@@ -134,6 +148,8 @@ def rotate_recovery_code(
     responses=respuestas(401, exito=204),
     openapi_extra=parametros(),
 )
+# con esta ruta solicito el borrado definitivo del espacio de trabajo actual y todos sus recursos
+# programo la limpieza de documentos y artefactos persistidos cumpliendo las politicas de privacidad del sistema
 def delete_workspace(
     workspace_id: str = Depends(get_workspace_actual), manager: SessionManager = Depends(get_session_manager)
 ) -> Response:

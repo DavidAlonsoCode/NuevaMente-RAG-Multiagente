@@ -9,6 +9,7 @@ from app.schemas.responses import AlmacenamientoOCI, PedagogicalOutput, Reviewed
 from app.storage.object_keys import clave_output
 
 
+# aqui implemento el nodo finalizador que empaqueta y sella el contenido educativo una vez que supero todas las revisiones segun el issue 20
 def finalizer(estado: EstadoGrafo, *, bucket: str, created_at: datetime) -> PedagogicalOutput:
     factual, calidad = estado.evaluacion_factual, estado.evaluacion_pedagogica
     if (
@@ -37,9 +38,11 @@ def finalizer(estado: EstadoGrafo, *, bucket: str, created_at: datetime) -> Peda
         or created_at.tzinfo is None
     ):
         raise ValueError("Finalizer exige revisión completa y aprobada")
+    # revalido nuevamente el borrador y sus citas para garantizar que el contenido no sufrio alteraciones posteriores a la revision
     borrador, referencias = validar_borrador(estado.borrador.model_dump_json(), estado)
     if borrador != estado.borrador or referencias != estado.referencias:
         raise ValueError("El contenido o sus citas cambiaron después de la revisión")
+    # construyo el paquete final aprobado con sus copias profundas (deep copy) y la clave de almacenamiento en oci object storage
     modelo = ReviewedPedagogicalOutputV11 if estado.schema_version == "1.1" else PedagogicalOutput
     return modelo(
         schema_version=estado.schema_version,

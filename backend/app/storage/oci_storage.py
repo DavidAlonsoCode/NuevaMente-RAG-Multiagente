@@ -69,6 +69,8 @@ _LOCKS: dict[Path, object] = {}
 _LOCKS_GUARD = threading.Lock()
 
 
+# con este decorador sincronizo las operaciones sobre el almacenamiento para garantizar exclusion mutua entre hilos
+# utilizo un cerrojo reentrante (threading.RLock) para proteger el archivo de metadatos contra accesos concurrentes
 def _serializado(metodo):
     @wraps(metodo)
     def ejecutar(self, *args, **kwargs):
@@ -78,6 +80,8 @@ def _serializado(metodo):
     return ejecutar
 
 
+# con esta funcion realizo la escritura de archivos en disco de forma completamente atomica y segura
+# escribo primero en un archivo temporal (NamedTemporaryFile) y luego utilizo os.replace para evitar lecturas parciales
 def _escribir_atomico(ruta: Path, contenido: bytes) -> None:
     temporal = None
     try:
@@ -90,6 +94,8 @@ def _escribir_atomico(ruta: Path, contenido: bytes) -> None:
             temporal.unlink(missing_ok=True)
 
 
+# con esta clase emulo localmente el comportamiento de oracle cloud infrastructure object storage (oci)
+# guardo los archivos y un indice de metadatos json en el disco local para permitir desarrollo y pruebas sin conexion a la nube
 class LocalMockStorageProvider(StorageProvider):
     """Proveedor de desarrollo: archivos locales con semántica idéntica a OCI.
 
@@ -138,6 +144,8 @@ class LocalMockStorageProvider(StorageProvider):
     # ------------------------- operaciones -------------------------
 
     @_serializado
+    # aqui almaceno un objeto binario o de texto calculando su huella sha256 como identificador de version (ETag)
+    # aplico control de concurrencia optimista mediante el parametro if_match para impedir que se pisen cambios simultaneos
     def upload(
         self,
         object_name: str,
@@ -191,6 +199,8 @@ class LocalMockStorageProvider(StorageProvider):
         )
 
     @_serializado
+    # con este metodo leo y devuelvo el contenido binario del objeto solicitado desde el almacenamiento
+    # verifico la existencia del archivo en disco y compruebo la coincidencia del etag si el llamador lo requiere
     def get(self, object_name: str, *, if_match: str | None = None) -> bytes:
         ruta = self._ruta(object_name)
         if not ruta.exists():
@@ -204,6 +214,8 @@ class LocalMockStorageProvider(StorageProvider):
         return self.get(object_name, if_match=if_match).decode("utf-8")
 
     @_serializado
+    # aqui listen los objetos almacenados filtrando por prefijo de ruta y ordenandolos alfabeticamente
+    # implemento navegacion paginada mediante un cursor opaco para no saturar la memoria con catalogos extensos
     def list(
         self,
         prefix: str = "",
@@ -236,6 +248,8 @@ class LocalMockStorageProvider(StorageProvider):
         return StoragePage(items=items, next_cursor=pagina[-1] if resto else None)
 
     @_serializado
+    # con esta funcion elimino un objeto tanto del sistema de archivos local como del registro de metadatos
+    # aseguro la liberacion limpia del espacio cumpliendo las directivas de retirada de artefactos
     def delete(self, object_name: str) -> None:
         ruta = self._ruta(object_name)
         if not ruta.exists():
@@ -246,6 +260,9 @@ class LocalMockStorageProvider(StorageProvider):
         self._escribir_meta(meta)
 
 
+# aqui implemento la fabrica principal (factory pattern) que selecciona el proveedor de almacenamiento adecuado
+# si la variable de entorno mock_oci esta activada uso el almacenamiento local con control presupuestario
+# en caso contrario instancio el cliente real de oci validando credenciales y region sin tolerar caidas silenciosas
 def get_storage_provider(base_dir: Path | str | None = None, *, configuracion=None) -> StorageProvider:
     """Fábrica del proveedor de almacenamiento según MOCK_OCI (§8.2).
 

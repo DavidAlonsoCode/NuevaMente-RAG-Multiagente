@@ -25,6 +25,7 @@ from app.schemas.enums import JobStatus
 logger = logging.getLogger(__name__)
 
 
+# aqui defino las dependencias inmutables del redactor validando que el proveedor de lenguaje sincrono coincida con la configuracion de pruebas
 @dataclass(frozen=True)
 class DependenciasWriter:
     grafo: DependenciasGrafo = field(repr=False)
@@ -44,6 +45,7 @@ class DependenciasWriter:
             raise TypeError("La adaptación de entrada requiere una función síncrona")
 
 
+# aqui implemento el nodo redactor (writer) que genera el borrador educativo con referencias verificables segun el issue 16
 def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
     """Update del nodo; entrega un borrador para Critic, nunca aprobación/completed.
 
@@ -119,6 +121,7 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
         if redacciones >= max_redacciones:
             return fallo("VALIDATION_ERROR", "Se agotaron las redacciones disponibles.", JobStatus.REJECTED_QUALITY)
 
+        # ejecuto el ciclo de generacion permitiendo hasta tres intentos para corregir errores de estructura o citas
         while redacciones < max_redacciones:
             invalido = revalidar()
             if invalido:
@@ -141,6 +144,7 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
                 sistema, prompt, schema = dependencias.transformar_entrada(sistema, prompt, schema)
             # La ubicación la resuelve el backend desde el chunk autorizado; el LLM
             # sólo elige su ID. El validador sigue rechazando ubicaciones falsas.
+            # restrinjo el esquema json para que el modelo solo elija identificadores de fragmentos reales recuperados por el investigador
             referencia = schema["$defs"]["Referencia"]
             referencia["properties"] = {
                 "chunk_id": {"type": "string", "enum": [e.chunk.chunk_id for e in estado.evidencia]}
@@ -151,6 +155,7 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
             estimados = TokenizadorBPE().contar(sistema + prompt + json.dumps(schema)) + max_output
             iniciada = False
 
+            # con esta funcion envio la peticion estructurada a gemini reservando cuota y presupuesto en el contexto de ejecucion
             def solicitar(*, timeout):
                 nonlocal redacciones, iniciada
                 if not iniciada:
@@ -172,6 +177,7 @@ def writer(estado: EstadoGrafo, dependencias: DependenciasWriter) -> dict:
                 tokens_estimados=estimados,
                 presupuesto=presupuesto,
             )
+            # valido la estructura del borrador y compruebo que todas las citas apunten a fragmentos autorizados
             try:
                 borrador, referencias = validar_borrador(texto, estado)
             except BorradorInvalidoError as error:

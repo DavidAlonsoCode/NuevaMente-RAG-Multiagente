@@ -31,15 +31,15 @@ graph TD
     I55 --> I56
     I53 --> I56
     I54 --> I56
-    I60 --> I56
+    I60 -. coordinación recomendada .-> I56
     I48 --> I57
     I53 --> I57
     I54 --> I57
     I55 --> I57
-    I56 --> I57
-    I58 --> I57
+    I56 -. coordinación recomendada .-> I57
+    I58 -. coordinación recomendada .-> I57
     I59 --> I57
-    I60 --> I57
+    I60 -. coordinación recomendada .-> I57
     I48 --> I58
     I49 --> I58
     I50 --> I58
@@ -84,7 +84,9 @@ siendo necesarias para cerrar el issue; no simular el catálogo ni sus resultado
 ---
 
 ### `Issue 56` — Guion de demo, grabación de respaldo y evidencias
-**F6** · **QAD** · **M** · **Depende de**: `Issue 55`, `Issue 53`, `Issue 54`, `Issue 60` · **Referencia**: decisiones_proyecto.md §18.2, §18.3
+**F6** · **QAD** · **M** · **Depende de**: `Issue 55`, `Issue 53`, `Issue 54` · **Referencia**: decisiones_proyecto.md §18.2, §18.3
+
+**Para empezar**: preparar el guion y ensayar localmente puede hacerse mientras avanza #60, sin VM. Conviene aprovechar una sesión para probar, reunir capturas y ensayar; para el repaso final, usar los materiales corregidos de #60. La prueba pública/real queda para el último seguimiento, #133.
 
 **Objetivo**: guion minuto a minuto ensayado, con grabación de respaldo y la evidencia de cada diferencial.
 
@@ -114,7 +116,9 @@ la integración activa o acreditan un despliegue inexistente.
 ---
 
 ### `Issue 57` — README final con arquitectura y guía de instalación
-**F6** · **QAD** · **M** · **Depende de**: `Issue 48`, `Issue 53`, `Issue 54`, `Issue 55`, `Issue 56`, `Issue 58`, `Issue 59`, `Issue 60` · **Referencia**: decisiones_proyecto.md §15, §20; enunciado (requisito 8)
+**F6** · **QAD** · **M** · **Depende de**: `Issue 48`, `Issue 53`, `Issue 54`, `Issue 55`, `Issue 59` · **Referencia**: decisiones_proyecto.md §15, §20; enunciado (requisito 8)
+
+**Para empezar**: el README puede actualizarse ahora, en paralelo con #56/#58/#60. Conviene enlazar las guías existentes y probar sus comandos, declarando los pendientes; un repaso al terminar esas tareas permite incorporar resultados y enlaces finales. La URL y aceptación pública siguen en #133.
 
 **Objetivo**: README de repositorio que cumple el requisito 8: arquitectura, diagrama del flujo RAG/Agentes y guía de instalación, coherentes con el sistema ejecutable.
 
@@ -137,6 +141,8 @@ la integración activa o acreditan un despliegue inexistente.
 
 ### `Issue 58` — Guía de despliegue en OCI
 **F6** · **INF** · **S** · **Depende de**: `Issue 48`, `Issue 49`, `Issue 50` · **Referencia**: decisiones_proyecto.md §9, §14; diferencial 1
+
+**Para empezar**: la guía puede avanzar sin VM. Conviene consolidar las recetas existentes y pedir una lectura a otro integrante; la reproducción sobre la VM se acepta al final en #133. El trabajo y responsable del #58 conservan su alcance.
 
 **Objetivo**: runbook reproducible del despliegue completo en la capa Always Free.
 
@@ -176,6 +182,8 @@ la integración activa o acreditan un despliegue inexistente.
 
 ### `Issue 60` — Evaluación pedagógica multilingüe con anotación humana
 **F6** · **QAD** (con apoyo AGT) · **L** · **Depende de**: `Issue 29`, `Issue 05`, `Issue 31` · **Referencia**: decisiones_proyecto.md §12.1, §12.2
+
+**Para empezar**: dos personas revisan los mismos doce materiales, sin necesitar VM. Conviene reutilizar paquetes reales compatibles de #55 y las herramientas del PR #119. Por autorización del 18/10/2026, ese PR puede integrarse como preparación mientras #60 permanece abierto hasta completar sus criterios humanos. #56/#57 pueden trabajar en paralelo; #133 sigue como último cierre.
 
 **Objetivo**: set de casos revisados por humanos en ES/EN/PT que mide utilidad pedagógica y detecta falsos aprobados del juez automático.
 

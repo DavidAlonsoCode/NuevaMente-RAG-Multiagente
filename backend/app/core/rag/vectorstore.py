@@ -37,12 +37,14 @@ class IndiceInconsistenteError(RuntimeError):
     """El índice derivado está incompleto/incompatible; requiere reconstrucción."""
 
 
+# con esta estructura inmutable represento una coincidencia hallada en la base vectorial con su distancia y vector numerico
 @dataclass(frozen=True)
 class CoincidenciaVectorial:
     chunk: Chunk
     distancia: float
     vector: tuple[float, ...]
 
+    # aqui convierto la distancia vectorial a una puntuacion de similitud acotada entre cero y uno donde uno significa maxima coincidencia
     @property
     def similitud(self) -> float:
         """Relevancia coseno acotada; NO es una evaluación de fidelidad."""
@@ -56,6 +58,7 @@ class ResultadoIndexacion:
     reutilizado: bool
 
 
+# con esta funcion genero una huella criptografica sha256 del contenido y orden de los fragmentos para detectar si ya estan indexados
 def _huella(chunks: list[Chunk]) -> str:
     # Los IDs/etiquetas cambian entre documentos idénticos. El texto, orden y
     # trazabilidad/configuración deben coincidir antes de copiar sus vectores.
@@ -63,6 +66,7 @@ def _huella(chunks: list[Chunk]) -> str:
     return hashlib.sha256(json.dumps(datos, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+# aqui construyo el diccionario de filtros que entiende chromadb para aislar las consultas estrictamente por espacio de trabajo y documento
 def _filtro(workspace_id: str, document_id: str, version: str | None = None) -> dict:
     condiciones = [{"workspace_id": workspace_id}, {"document_id": document_id}]
     if version is not None:
@@ -70,6 +74,7 @@ def _filtro(workspace_id: str, document_id: str, version: str | None = None) -> 
     return {"$and": condiciones}
 
 
+# con esta funcion obtengo una etiqueta estructural clara para el fragmento ya sea por identificador de seccion o por numero de pagina
 def seccion_del_chunk(chunk: Chunk) -> str:
     """ID estructural; una página identifica ubicación, no un tema del PDF."""
     if chunk.seccion_id:
@@ -79,6 +84,7 @@ def seccion_del_chunk(chunk: Chunk) -> str:
     return chunk.seccion if chunk.seccion and chunk.seccion.strip() else "documento"
 
 
+# con esta funcion valido que no existan secciones repetidas ambiguas cuando no se dispone de un identificador estructural
 def validar_secciones_heredadas(chunks: list[Chunk]) -> None:
     """Sin ID no se pueden distinguir dos encabezados iguales de una sección larga."""
     vistos = set()
@@ -89,6 +95,7 @@ def validar_secciones_heredadas(chunks: list[Chunk]) -> None:
             vistos.add(chunk.seccion)
 
 
+# con esta clase administro el almacenamiento vectorial local en chromadb y su catalogo complementario en sqlite asegurando aislamiento segun el issue 17
 class VectorStoreChroma:
     """Un único escritor, ruta dentro de DATA_DIR; catálogo SQLite WAL derivado.
 
@@ -97,6 +104,7 @@ class VectorStoreChroma:
     índice anterior y nunca publica un documento a medias.
     """
 
+    # este metodo estatico me permite consultar rapidamente si un documento fue marcado como retirado sin tener que inicializar el cliente vectorial
     @staticmethod
     def lapidas_persistidas(ruta: str | Path) -> set[tuple[str, str]]:
         """Control sobreviviente de retirada, sin abrir Chroma ni consumir cuotas."""
@@ -109,6 +117,7 @@ class VectorStoreChroma:
         finally:
             db.close()
 
+    # en el constructor configuro la conexion a chromadb creo el cerrojo de concurrencia y me aseguro de que las tablas en sqlite esten creadas
     def __init__(self, ruta: str | Path, embeddings: GeminiEmbeddings, *, tamano_lote: int = 64) -> None:
         if type(tamano_lote) is not int or tamano_lote < 1:
             raise ValueError("tamano_lote debe ser un entero positivo")
@@ -137,6 +146,7 @@ class VectorStoreChroma:
                     workspace TEXT NOT NULL, documento TEXT NOT NULL, PRIMARY KEY (workspace, documento));
             """)
 
+    # con este metodo cierro la conexion persistente de chromadb de manera segura e idempotente
     def cerrar(self) -> None:
         """Libera el cliente persistente, sin borrar ni modificar el índice.
 
@@ -146,6 +156,7 @@ class VectorStoreChroma:
         with self._lock:
             self._cliente.close()
 
+    # con este metodo obtengo o creo una coleccion en chromadb validando que su configuracion y distancia coseno sean compatibles
     def _coleccion(self, nombre: str, metadata: dict):
         coleccion = self._cliente.get_or_create_collection(
             nombre,
@@ -157,6 +168,7 @@ class VectorStoreChroma:
             raise IndiceInconsistenteError("Colección incompatible con modelo, dimensión o preparación")
         return coleccion
 
+    # con este administrador de contexto (contextmanager) abro una conexion a sqlite con modo wal (write ahead logging) para lecturas concurrentes seguras
     @contextmanager
     def _db(self):
         with self._lock:
@@ -169,12 +181,14 @@ class VectorStoreChroma:
             finally:
                 db.close()
 
+    # con este metodo valido que la peticion tenga permiso sobre el espacio privado y verifico que el trabajo no haya sido cancelado
     def _autorizar(self, workspace_id: str, document_id: str, contexto: ContextoEjecucion) -> None:
         clave_documento(workspace_id, document_id)  # valida identificadores portables
         if workspace_id == DEMO_WORKSPACE_ID or contexto.workspace_id != workspace_id:
             raise PermissionError("El contexto no autoriza este espacio privado")
         contexto.chequear()
 
+    # con este metodo verifico si el documento se encuentra en la tabla de retirados (tombstone) para no devolver informacion eliminada
     def _retirado(self, workspace_id: str, document_id: str) -> bool:
         with self._db() as db:
             return (
@@ -184,6 +198,7 @@ class VectorStoreChroma:
                 is not None
             )
 
+    # aqui obtengo el registro del documento activo en el catalogo para saber que version exacta de indice debemos consultar
     def _activo(self, coleccion, workspace_id: str, document_id: str):
         with self._db() as db:
             if self._retirado(workspace_id, document_id):
@@ -193,6 +208,7 @@ class VectorStoreChroma:
                 (coleccion.name, workspace_id, document_id),
             ).fetchone()
 
+    # con este metodo recupero los datos almacenados en chromadb verificando que la cantidad de fragmentos coincida con el catalogo
     def _datos(self, coleccion, activo, *, vectores: bool = False):
         resultado = coleccion.get(
             where=_filtro(activo["workspace"], activo["documento"], activo["version"]),
@@ -202,11 +218,13 @@ class VectorStoreChroma:
             raise IndiceInconsistenteError("Faltan chunks del documento; reconstruir desde su original")
         return resultado
 
+    # con este metodo cuento la cantidad de fragmentos que tiene indexados un documento previa validacion de permisos
     def contar(self, workspace_id: str, document_id: str, *, contexto: ContextoEjecucion) -> int:
         self._autorizar(workspace_id, document_id, contexto)
         activo = self._activo(self._privada, workspace_id, document_id)
         return len(self._datos(self._privada, activo)["ids"]) if activo else 0
 
+    # aqui inicio el proceso de indexacion de fragmentos en el espacio privado validando los permisos del contexto
     def indexar(
         self,
         workspace_id: str,
@@ -219,6 +237,7 @@ class VectorStoreChroma:
         self._autorizar(workspace_id, document_id, contexto)
         return self._indexar(self._privada, workspace_id, document_id, chunks, contexto, confirmar)
 
+    # aqui indexo un lote de fragmentos coordinando la insercion de vectores en chromadb y actualizando el puntero activo en sqlite
     def _indexar(
         self,
         coleccion,
@@ -278,8 +297,10 @@ class VectorStoreChroma:
                 vectores = [list(map(float, vector)) for _, vector in orden]
             except IndiceInconsistenteError:
                 vectores = None  # Los originales, no el índice roto, son la verdad.
+        # genero un identificador unico universal (uuid) para esta version de indexacion asegurando aislamiento ante ejecuciones concurrentes
         version = uuid.uuid4().hex
         try:
+            # con este bucle proceso los fragmentos en lotes calculando sus vectores con gemini e insertandolos en chromadb
             for inicio in range(0, len(chunks), self.tamano_lote):
                 contexto.chequear()
                 if self._retirado(workspace_id, document_id):
@@ -344,10 +365,12 @@ class VectorStoreChroma:
             raise TrabajoCanceladoError()
         return ResultadoIndexacion(document_id, len(chunks), vectores is not None)
 
+    # con este metodo borro un documento del espacio privado eliminando tanto sus vectores como su registro en el catalogo
     def borrar(self, workspace_id: str, document_id: str, *, contexto: ContextoEjecucion) -> None:
         self._autorizar(workspace_id, document_id, contexto)
         self._borrar(self._privada, workspace_id, document_id)
 
+    # aqui elimino fisicamente los registros del documento en sqlite y los fragmentos asociados en todas las colecciones vectoriales
     def _borrar(self, coleccion, workspace_id: str, document_id: str, *, definitivo: bool = True) -> None:
         # La lápida se confirma ANTES del borrado físico; una ejecución en vuelo
         # no puede publicar de nuevo. El #19 también debe persistirla en OCI.
@@ -416,6 +439,7 @@ class VectorStoreChroma:
                 raise IndiceInconsistenteError("El índice conservado cambió durante la compensación")
             self._datos(self._privada, actual)
 
+    # con este metodo devuelvo el inventario completo de fragmentos de un documento privado sin necesidad de consultar el modelo de embeddings
     def listar_chunks(
         self,
         workspace_id: str,
@@ -428,6 +452,7 @@ class VectorStoreChroma:
         self._autorizar(workspace_id, document_id, contexto)
         return self._listar_chunks(self._privada, workspace_id, document_id, contexto, source_hash)
 
+    # con este metodo devuelvo el inventario de fragmentos de un documento de demostracion validando la firma de publicacion
     def listar_chunks_demo(
         self,
         document_id: str,
@@ -502,6 +527,7 @@ class VectorStoreChroma:
             raise IndiceInconsistenteError("El índice cambió durante la lectura de secciones")
         return chunks
 
+    # con este metodo ejecuto una busqueda vectorial para documentos privados transformando la consulta en vector y buscando los vecinos mas cercanos
     def buscar(
         self,
         workspace_id: str,
@@ -516,6 +542,7 @@ class VectorStoreChroma:
         self._autorizar(workspace_id, document_id, contexto)
         return self._buscar(self._privada, workspace_id, document_id, consulta, contexto, limite, seccion, tipo_fuente)
 
+    # con este metodo busco documentos dentro de la coleccion de demostracion publica garantizando aislamiento de los documentos privados
     def buscar_demo(
         self,
         document_id: str,
@@ -532,6 +559,7 @@ class VectorStoreChroma:
             self._demo, DEMO_WORKSPACE_ID, document_id, consulta, contexto, limite, seccion, tipo_fuente
         )
 
+    # en esta funcion interna implemento la logica comun de busqueda aplicando filtros de seccion y tipo de fuente antes de ordenar por similitud
     def _buscar(self, coleccion, workspace_id, document_id, consulta, contexto, limite, seccion, tipo_fuente=None):
         if tipo_fuente not in (None, "pdf", "md", "txt", "text", "image_description"):
             raise ValueError("Tipo de fuente no soportado")

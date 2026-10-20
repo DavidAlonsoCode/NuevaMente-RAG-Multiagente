@@ -32,6 +32,7 @@ from app.schemas.internal import Chunk as ChunkContratoInterno
 _PALABRA = re.compile(r"[\w]+|[^\w\s]", re.UNICODE)
 
 
+# aqui defino la configuracion inmutable (dataclass frozen) para controlar el tamano maximo y solapamiento de los fragmentos (chunks) segun el issue 12
 @dataclass(frozen=True)
 class ConfigChunker:
     """Parámetros de §4.3 (750/120) más la tolerancia y la versión del algoritmo.
@@ -50,11 +51,13 @@ class ConfigChunker:
     tolerancia_proporcion: float = 0.10
     version_algoritmo: str = "v2"
 
+    # con esta propiedad calculo el limite maximo estricto sumando el objetivo mas el margen de tolerancia permitido
     @property
     def tamano_maximo(self) -> int:
         """Techo duro: objetivo + tolerancia (criterio 1)."""
         return int(self.tamano_objetivo * (1 + self.tolerancia_proporcion))
 
+    # con esta funcion genero una huella criptografica (sha256) de los parametros para asegurar identificadores unicos si cambian las reglas de corte
     def huella(self, limites_parser: LimitesIngesta | None = None) -> str:
         """Huellita estable de la configuración (chunker + parser) para el id.
 
@@ -65,6 +68,7 @@ class ConfigChunker:
         datos = {"chunker": asdict(self), "parser": asdict(limites_parser) if limites_parser else None}
         return hashlib.sha256(json.dumps(datos, sort_keys=True).encode()).hexdigest()
 
+    # en este metodo de validacion posterior compruebo que los parametros numericos sean validos y que no existan inconsistencias matematicas
     def __post_init__(self):
         if type(self.tamano_objetivo) is not int or self.tamano_objetivo < 1:
             raise ValueError("tamano_objetivo debe ser un entero positivo")
@@ -81,6 +85,7 @@ class ConfigChunker:
 # --------------------------------------------------------------------------
 
 
+# con esta clase modelo cada fragmento (chunk) con todos sus metadatos de trazabilidad como pagina numero de linea y hash del documento original
 @dataclass
 class ChunkTexto:
     """Un chunk con todos sus metadatos de trazabilidad (§4.3).
@@ -110,6 +115,7 @@ class ChunkTexto:
     tokenizer: str = ""
     section_id: str | None = None
 
+    # con este metodo preparo un diccionario limpio para la base vectorial (chromadb) omitiendo valores nulos para evitar errores de almacenamiento
     def metadatos_chroma(self) -> dict[str, str | int | float | bool]:
         """Metadatos adaptados a lo que Chroma acepta (sin None).
 
@@ -140,6 +146,7 @@ class ChunkTexto:
             metadatos["linea_fin"] = self.linea_fin
         return metadatos
 
+    # aqui transformo el modelo a la estructura interna del contrato (pydantic) para que el resto del sistema lo consuma de forma homogenea
     def como_chunk_interno(self) -> ChunkContratoInterno:
         """Adaptador al `Chunk` del contrato interno (#03): quien ya consume
         esa forma (fixtures, evidencia del retriever) no cambia nada."""
@@ -179,6 +186,7 @@ _FRECUENTES = {
 }
 
 
+# aqui implemento una deteccion rapida y determinista del idioma contando palabras frecuentes para enriquecer los metadatos de busqueda
 def detectar_idioma(texto: str) -> str:
     """Heurística es/en/pt por palabras frecuentes (metadata de §17.2)."""
     palabras = [palabra.lower() for palabra in _PALABRA.findall(texto)]
@@ -193,6 +201,7 @@ def detectar_idioma(texto: str) -> str:
 # --------------------------------------------------------------------------
 
 
+# con esta estructura interna represento un bloque indivisible de texto como un parrafo tabla o bloque de codigo manteniendo sus lineas originales
 @dataclass
 class _Bloque:
     """Unidad indivisible de corte: párrafo, tabla o bloque de código.
@@ -213,11 +222,13 @@ class _Bloque:
     prefijo: str = ""
     sufijo: str = ""
 
+    # la propiedad texto une las lineas con saltos de linea y les adjunta los prefijos o sufijos necesarios para preservar el contexto estructural
     @property
     def texto(self) -> str:
         return self.prefijo + "\n".join(self.lineas) + self.sufijo
 
 
+# con esta funcion auxiliar verifico si una linea pertenece a una tabla en formato markdown para evitar cortarla por la mitad
 def _es_linea_tabla(linea: str) -> bool:
     """Fila markdown de tabla: | celda | celda | (§4.3: límites lógicos)."""
     limpia = linea.strip()
@@ -240,6 +251,7 @@ def _fragmento(bloque: _Bloque, inicio: int, fin: int) -> _Bloque:
     )
 
 
+# con esta funcion realizo una busqueda binaria sobre el texto para hallar la longitud maxima que cabe dentro del presupuesto de tokens
 def _maximo_prefijo(texto: str, cabe) -> int:
     izquierda, derecha = 0, len(texto)
     while izquierda < derecha:
@@ -251,6 +263,7 @@ def _maximo_prefijo(texto: str, cabe) -> int:
     return izquierda
 
 
+# aqui busco un punto de corte natural respetando parrafos oraciones y palabras sin separar expresiones negativas ni unidades de medida
 def _corte_logico(texto: str, hasta: int) -> int:
     if hasta == len(texto):
         return hasta
@@ -271,6 +284,7 @@ def _corte_logico(texto: str, hasta: int) -> int:
     return hasta  # Una secuencia sin separadores exige corte por caracteres Unicode.
 
 
+# con esta funcion divido un bloque excesivamente grande en partes mas pequenas asegurando no romper filas de tablas ni exceder el tamano maximo
 def _partir_bloque(bloque: _Bloque, config: ConfigChunker, contar, contexto: str = "") -> list[_Bloque]:
     cuerpo = "\n".join(bloque.lineas)
 
@@ -304,6 +318,7 @@ def _partir_bloque(bloque: _Bloque, config: ConfigChunker, contar, contexto: str
     return partes
 
 
+# con esta funcion agrupo las lineas del documento en bloques logicos identificando tablas delimitadores de codigo y parrafos
 def _bloques_de_lineas(
     lineas: list[str], linea_base: int | None, page: int | None, section_title: str | None, start_index: int = 0
 ) -> list[_Bloque]:
@@ -373,6 +388,7 @@ def _bloques_de_lineas(
     return bloques
 
 
+# aqui extraigo la porcion final del bloque previo para usarla como solapamiento (overlap) en el siguiente fragmento sin cortar palabras
 def _cola(bloque: _Bloque, limite: int, contar) -> list[_Bloque]:
     if not limite or bloque.prefijo or bloque.sufijo:
         return []  # Tablas/código repiten sus propios encabezados, no fragmentos malformados.
@@ -385,6 +401,7 @@ def _cola(bloque: _Bloque, limite: int, contar) -> list[_Bloque]:
     return [_fragmento(bloque, inicio, len(texto))] if inicio < len(texto) else []
 
 
+# aqui implemento la funcion principal de segmentacion (chunking) requerida en el issue 12 que procesa el resultado del parser y entrega los fragmentos
 def trocear(
     resultado: ResultadoParseo,
     workspace_id: str,
@@ -419,6 +436,7 @@ def trocear(
         idioma,
     ]
     grupos = []
+    # aqui proceso el documento segun su formato dividiendo por paginas en pdf o por encabezados en markdown y texto plano
     if resultado.extension == "pdf":
         for pagina in resultado.paginas:
             grupos.append(
@@ -450,6 +468,7 @@ def trocear(
     else:
         raise ValueError("Formato no soportado por el chunker")
 
+    # aqui recorro los bloques generados y los empaqueto dentro de fragmentos finales cuidando no exceder el presupuesto de tokens
     chunks = []
     for bloques, contexto, section_id in grupos:
 
@@ -465,6 +484,7 @@ def trocear(
         paquete = []
         nuevo = False
 
+        # con esta funcion interna calculo el hash criptografico del fragmento y lo registro en la lista final con su trazabilidad completa
         def cerrar():
             nonlocal paquete, nuevo
             if not nuevo:

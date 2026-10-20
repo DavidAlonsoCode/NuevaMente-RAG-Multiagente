@@ -15,12 +15,14 @@ import tiktoken
 SHA256_VOCABULARIO = "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7"
 
 
+# con este protocolo formalizo el contrato minimo para contar tokens desacoplando el algoritmo de segmentacion de bibliotecas externas
 class Tokenizador(Protocol):
     identidad: str  # Debe cambiar si cambian vocabulario, reglas o versión.
 
     def contar(self, texto: str) -> int: ...
 
 
+# con esta funcion cargo y mantengo en memoria cache el vocabulario local cl100k de tiktoken validando su integridad con sha256
 @lru_cache(maxsize=1)
 def _encoding() -> tiktoken.Encoding:
     datos = (Path(__file__).parent / "assets" / "cl100k_base.tiktoken").read_bytes()
@@ -35,6 +37,7 @@ def _encoding() -> tiktoken.Encoding:
     )
 
 
+# aqui implemento el tokenizador bpe de referencia que mide la longitud en tokens para la segmentacion del issue 12 sin consumir cuotas de api
 class TokenizadorBPE:
     identidad = f"tiktoken-0.12.0:cl100k_base:{SHA256_VOCABULARIO}"
 

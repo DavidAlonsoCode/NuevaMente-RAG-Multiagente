@@ -26,6 +26,7 @@ from app.storage.object_keys import BUCKET_PRODUCCION
 from app.storage.provider import StorageUnavailable
 
 
+# con esta estructura inmutable agrupo todas las dependencias necesarias para orquestar el grafo asegurando que los nodos compartan el mismo contexto de ejecucion
 @dataclass(frozen=True)
 class DependenciasOrquestacion:
     grafo: DependenciasGrafo = field(repr=False)
@@ -43,6 +44,7 @@ class DependenciasOrquestacion:
             raise TypeError("La investigación y persistencia requieren adaptadores síncronos")
 
 
+# aqui genero el diccionario de estado terminal ante errores cancelaciones o fallos tecnicos limpiando los borradores temporales
 def _terminal(code, message, status=JobStatus.FAILED):
     return {
         "status": status,
@@ -54,6 +56,7 @@ def _terminal(code, message, status=JobStatus.FAILED):
     }
 
 
+# con esta funcion de orden superior envuelvo cada nodo de langgraph para verificar cancelaciones registrar pasos y asegurar que los contadores no retrocedan
 def _envolver(nombre, funcion):
     def nodo(estado: EstadoGrafo, runtime: Runtime[DependenciasOrquestacion]):
         deps, ctx = runtime.context, runtime.context.grafo.ejecucion
@@ -88,6 +91,7 @@ def _envolver(nombre, funcion):
     return nodo
 
 
+# aqui ejecuto la persistencia definitiva en oci object storage comprobando que la autorizacion y la version de la fuente se mantengan intactas
 def _finalizar(estado, deps):
     # Revalidar acceso, versión y reglas inmediatamente antes de persistir.
     autorizacion = supervisor(estado, deps.grafo)
@@ -118,10 +122,12 @@ def _finalizar(estado, deps):
     }
 
 
+# con esta funcion decido el flujo del grafo pasando al siguiente nodo si el estado sigue en ejecucion o terminando inmediatamente
 def _siguiente(estado, destino):
     return destino if estado.status == JobStatus.RUNNING else END
 
 
+# aqui evaluo el veredicto del critico para enrutar el flujo hacia una nueva investigacion una nueva redaccion o la finalizacion del contenido
 def _revision(estado):
     if estado.status != JobStatus.RUNNING:
         return END
@@ -130,6 +136,7 @@ def _revision(estado):
     return "sin_salida"
 
 
+# con esta funcion construyo el grafo de estados (stategraph) conectando supervisor investigador redactor critico y finalizador segun el issue 9
 def crear_grafo(*, solo_revision=False):
     builder = StateGraph(EstadoGrafo, context_schema=DependenciasOrquestacion)
     builder.add_node("supervisor", _envolver("supervisor", lambda s, d: supervisor(s, d.grafo)))
@@ -157,6 +164,7 @@ def crear_grafo(*, solo_revision=False):
     return builder.compile()
 
 
+# aqui ejecuto una version reducida del grafo util para evaluar borradores en el chat interactivo sin persistir el archivo final en oci
 def revisar_sin_publicar(estado: EstadoGrafo, dependencias: DependenciasOrquestacion) -> EstadoGrafo:
     """Chat #37 comparte todo el grafo de revisión; no declara persistencia OCI.
 
@@ -179,6 +187,7 @@ def revisar_sin_publicar(estado: EstadoGrafo, dependencias: DependenciasOrquesta
         )
 
 
+# aqui ejecuto el grafo completo con un limite de recursion para evitar bucles infinitos devolviendo el estado final validado
 def ejecutar_grafo(estado: EstadoGrafo, dependencias: DependenciasOrquestacion) -> EstadoGrafo:
     try:
         datos = crear_grafo().invoke(estado.model_dump(), {"recursion_limit": 20}, context=dependencias)
@@ -194,6 +203,7 @@ def ejecutar_grafo(estado: EstadoGrafo, dependencias: DependenciasOrquestacion) 
         )
 
 
+# con esta funcion ejecuto el pipeline desde un proceso en segundo plano (worker) extrayendo el contenido aprobado o lanzando la excepcion adecuada
 def ejecutar_en_worker(estado: EstadoGrafo, dependencias: DependenciasOrquestacion) -> PedagogicalOutput:
     """Invocar desde la función encolada del #20; nunca reinicia el pipeline."""
     final = ejecutar_grafo(estado, dependencias)

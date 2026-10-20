@@ -64,6 +64,8 @@ from app.schemas.enums import DocumentStatus
 
 
 @dataclass(frozen=True)
+# con esta clase de configuracion inmutable defino todos los limites operativos de seguridad y rendimiento
+# establezco topes estrictos de memoria bytes y tiempo de procesamiento para prevenir ataques de denegacion de servicio (dos)
 class LimitesIngesta:
     """Límites configurables de la ingesta. Valores por defecto = §4.1.
 
@@ -93,6 +95,8 @@ class LimitesIngesta:
 # --------------------------------------------------------------------------
 
 
+# defino el catalogo exhaustivo de codigos de error estables que puede emitir el analizador sintactico (parser)
+# utilizar una enumeracion formal (Enum) facilita mapear cada error interno a codigos http especificos en la api
 class ParserErrorCode(str, Enum):
     """Códigos estables de rechazo de ingesta (ver docstring del módulo)."""
 
@@ -189,11 +193,15 @@ class ResultadoParseo:
 # --------------------------------------------------------------------------
 
 
+# con esta funcion calculo la cantidad exacta de tokens del texto utilizando el algoritmo de subpalabras (BPE)
+# utilizo el tokenizador local de cl100k_base para medir el costo computacional antes de invocar a los modelos
 def estimar_tokens(texto: str) -> int:
     """Conteo BPE local exacto; nombre conservado por compatibilidad."""
     return TokenizadorBPE().contar(texto)
 
 
+# con esta funcion auxiliar compruebo los primeros bytes del archivo en busca de la firma magica de pdf (%PDF-)
+# esta comprobacion a nivel de bytes impide que un usuario disfrace un archivo binario malicioso renombrando su extension
 def _firma_pdf(contenido: bytes) -> bool:
     """True si el contenido tiene la firma %PDF- al inicio.
 
@@ -204,6 +212,8 @@ def _firma_pdf(contenido: bytes) -> bool:
     return b"%PDF-" in contenido[:1024]
 
 
+# aqui analizo el contenido de archivos markdown dividiendo el texto segun los encabezados de nivel uno a seis
+# registro las lineas iniciales y finales de cada seccion para permitir que las citas educativas tengan trazabilidad exacta
 def _secciones_markdown(texto: str) -> list[SeccionTexto]:
     """Divide el Markdown por encabezados (#, ##, ...) con rango de líneas.
 
@@ -263,6 +273,8 @@ def _secciones_markdown(texto: str) -> list[SeccionTexto]:
     return secciones
 
 
+# con este validador inspecciono que los archivos de texto cumplan estrictamente con el estandar utf-8
+# rechazo cualquier documento que contenga caracteres de control invisibles o bytes nulos tipicos de archivos ejecutables
 def _validar_texto_plano(contenido: bytes, extension: str, limites: LimitesIngesta) -> str:
     """Valida y decodifica MD/TXT: UTF-8 estricto y sin contenido binario.
 
@@ -304,6 +316,8 @@ def _rechazo_limite(codigo: ParserErrorCode, limite: int, recibido, unidad: str)
 # --------------------------------------------------------------------------
 
 
+# aqui ejecuto el proceso aislado que analiza archivos pdf restringiendo el consumo maximo de memoria virtual
+# en entornos linux aprovecho el modulo resource del sistema operativo para matar el subproceso si supera el limite
 def _worker_pdf(canal, contenido: bytes, titulo: str, limites: LimitesIngesta) -> None:
     """Proceso descartable: memoria acotada en Linux (OCI)."""
     try:
@@ -322,6 +336,8 @@ def _worker_pdf(canal, contenido: bytes, titulo: str, limites: LimitesIngesta) -
         canal.close()
 
 
+# con esta funcion ejecuto el analisis de archivos pdf en un proceso secundario independiente (multiprocessing spawn)
+# aislar la lectura del pdf en otro proceso protege al servidor principal frente a caidas por corrupcion o bucles infinitos
 def _pdf_aislado(contenido: bytes, titulo: str, limites: LimitesIngesta) -> ResultadoParseo:
     contexto = multiprocessing.get_context("spawn")
     receptor, emisor = contexto.Pipe(duplex=False)
@@ -350,6 +366,8 @@ def _pdf_aislado(contenido: bytes, titulo: str, limites: LimitesIngesta) -> Resu
         emisor.close()
 
 
+# con esta heuristica analizo los operadores graficos internos del pdf para detectar si una pagina contiene diagramas
+# distingo entre lineas estructurales de tablas y graficos complejos para derivar la pagina al flujo de vision computacional
 def _tiene_graficos_relevantes(operaciones) -> bool:
     """Heurística conservadora: ignora reglas/tablas simples, no diagramas junto al texto.
 
@@ -380,6 +398,8 @@ def _tiene_graficos_relevantes(operaciones) -> bool:
     return rectangulos_trazados >= 3
 
 
+# en esta funcion principal extraigo el texto de cada pagina del pdf controlando el tiempo de ejecucion con un temporizador
+# si una pagina no contiene suficiente texto seleccionable la clasifico como pagina visual para posterior analisis multimodal
 def _parsear_pdf(contenido: bytes, titulo_etiqueta: str, limites: LimitesIngesta) -> ResultadoParseo:
     """Extrae texto por página de un PDF ya validado en firma y tamaño."""
     try:
@@ -519,6 +539,8 @@ def _parsear_pdf(contenido: bytes, titulo_etiqueta: str, limites: LimitesIngesta
 # --------------------------------------------------------------------------
 
 
+# con esta funcion proceso documentos en formato markdown o texto plano verificando el presupuesto de tokens
+# estructuro el texto en secciones jerarquicas y calculo la huella sha256 para el registro de auditoria
 def _parsear_texto(contenido: bytes, titulo_etiqueta: str, extension: str, limites: LimitesIngesta) -> ResultadoParseo:
     """MD/TXT: validar UTF-8/binario, secciones y límites de tokens."""
     texto = _validar_texto_plano(contenido, extension, limites)
@@ -566,6 +588,8 @@ def _parsear_texto(contenido: bytes, titulo_etiqueta: str, extension: str, limit
 # --------------------------------------------------------------------------
 
 
+# aqui realizo una validacion preliminar y rapida sobre el tamanio del archivo y su encabezado binario
+# esta verificacion previa ahorra procesamiento computacional al rechazar documentos invalidos antes de cargarlos en memoria
 def validar_entrada_archivo(contenido: bytes, nombre_etiqueta: str, limites: LimitesIngesta | None = None) -> str:
     """Validación barata compartida por admisión y extracción; no parsea PDF ni cuenta tokens."""
     limites = limites or LimitesIngesta()
@@ -591,6 +615,8 @@ def validar_entrada_archivo(contenido: bytes, nombre_etiqueta: str, limites: Lim
     return "md" if extension == "markdown" else extension
 
 
+# con este punto de entrada publico proceso cualquier archivo recibido delegando la extraccion segun su tipo
+# transformo el contenido en una estructura estandarizada que servira de insumo para el segmentador de texto (chunker)
 def parsear_archivo(contenido: bytes, nombre_etiqueta: str, limites: LimitesIngesta | None = None) -> ResultadoParseo:
     """Punto de entrada para archivos subidos (upload de #19).
 
@@ -618,6 +644,8 @@ def parsear_archivo(contenido: bytes, nombre_etiqueta: str, limites: LimitesInge
     return _parsear_texto(contenido, nombre_limpio, extension, limites)
 
 
+# aqui proceso fragmentos de texto pegados directamente en la interfaz transformandolos en un documento virtual
+# calculo la misma huella sha256 que tendria un archivo txt equivalente para evitar indexaciones redundantes (deduplicacion)
 def parsear_texto_pegado(
     documento_titulo: str, documento_contenido: str, limites: LimitesIngesta | None = None
 ) -> ResultadoParseo:

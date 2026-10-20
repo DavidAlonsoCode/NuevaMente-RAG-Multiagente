@@ -1,9 +1,11 @@
 # Preserve the official vocabulary bytes and its SHA-256 on every platform.
 backend/app/core/rag/assets/*.tiktoken -text
 infra/oci/*.sh text eol=lf
-documents/*.pdf binary
-docs/openapi.json text eol=lf
+# Freeze demo bytes across Windows/Linux: source SHA-256 is used by evaluation/RAG.
 documents/*.md text eol=lf
+documents/*.pdf binary
+docs/evidencia/issue-60/**/*.pdf binary
+docs/openapi.json text eol=lf
 
 # Conservar los bytes exactos de las descargas usadas como evidencia SHA-256.
 docs/evidencia/issue-54/resultado.json -text

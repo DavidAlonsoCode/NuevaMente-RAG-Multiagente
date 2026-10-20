@@ -13,6 +13,7 @@ class BorradorInvalidoError(ValueError):
     """Corrección pedagógica de estructura/citas, distinta del retry técnico."""
 
 
+# con este gancho (hook) de python para json rechazo cualquier respuesta que contenga claves duplicadas para prevenir inyecciones o ambiguedades
 def _sin_duplicados(pares):
     resultado = {}
     for clave, valor in pares:
@@ -22,15 +23,18 @@ def _sin_duplicados(pares):
     return resultado
 
 
+# con esta funcion rechazo valores especiales como nan o infinito en el json devuelto por el modelo para mantener integridad numerica
 def _constante_invalida(valor):
     raise BorradorInvalidoError("El JSON no admite NaN ni valores infinitos.")
 
 
+# aqui proceso la cadena json con controles rigurosos evitando estructuras malformadas antes de pasarlas a pydantic
 def parsear_json_estricto(texto: str):
     """Rechaza claves duplicadas, NaN/inf y cercas Markdown en cualquier rol."""
     return json.loads(texto, object_pairs_hook=_sin_duplicados, parse_constant=_constante_invalida)
 
 
+# con esta funcion valido exhaustivamente la estructura del borrador comprobando que coincida con el perfil formato y citas autorizadas
 def validar_borrador(texto: str, estado: EstadoGrafo) -> tuple[BorradorPedagogico, list[Referencia]]:
     try:
         datos = parsear_json_estricto(texto)
@@ -51,6 +55,7 @@ def validar_borrador(texto: str, estado: EstadoGrafo) -> tuple[BorradorPedagogic
         "idioma_salida": solicitud.idioma_salida,
         "idioma_origen": estado.idioma_origen,
     }
+    # compruebo que los metadatos aplicados en el borrador coincidan exactamente con la solicitud original del usuario
     if any(getattr(metadatos, campo) != valor for campo, valor in esperados.items()):
         raise BorradorInvalidoError(
             "Los metadatos deben respetar perfil, formato, nicho, detalle e idiomas solicitados."
@@ -64,6 +69,7 @@ def validar_borrador(texto: str, estado: EstadoGrafo) -> tuple[BorradorPedagogic
     referencias = {}
     contenido = validado.contenido_adaptado.model_dump(mode="json")
 
+    # recorro recursivamente la estructura del contenido para validar que cada cita pertenezca a la evidencia recuperada y sustituirla por su forma canonica
     def recorrer(valor):
         if isinstance(valor, dict):
             for campo, item in valor.items():

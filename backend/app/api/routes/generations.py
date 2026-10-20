@@ -16,9 +16,13 @@ from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.requests import GenerateRequest
 from app.schemas.responses import GenerationJobResponse
 
+# aqui defino el enrutador (APIRouter) de fastapi que agrupa todos los puntos de entrada para la generacion pedagogica
+# esto se relaciona con el requisito de gestion de trabajos asincronos del issue 31
 router = APIRouter(prefix="/api", tags=["Generaciones"])
 
 
+# con este modelo de pydantic (BaseModel) estructuro los datos historicos de una generacion para el cliente
+# utilizo la configuracion extra forbid para rechazar cualquier campo adicional no especificado en el contrato
 class GeneracionHistorial(BaseModel):
     model_config = ConfigDict(extra="forbid")
     generation_id: str
@@ -28,12 +32,16 @@ class GeneracionHistorial(BaseModel):
     parametros: GenerateRequest | None
 
 
+# con esta clase defino la estructura de paginacion para devolver listas de generaciones de forma ordenada
+# incluyo un cursor firmado (next_cursor) para permitir la navegacion eficiente sin sobrecargar la base de datos
 class PaginaGeneraciones(BaseModel):
     model_config = ConfigDict(extra="forbid")
     items: list[GeneracionHistorial]
     next_cursor: str | None
 
 
+# aqui defino la funcion de inyeccion de dependencias (Depends) para obtener el servicio de generaciones
+# accedo al estado global de la aplicacion (request.app.state) y valido que los proveedores de inteligencia artificial esten listos
 def get_generaciones(request: Request):
     servicio = request.app.state.generations
     if servicio is None:
@@ -41,6 +49,8 @@ def get_generaciones(request: Request):
     return servicio
 
 
+# con esta funcion auxiliar envuelvo la ejecucion de operaciones para atrapar errores operativos tipicos
+# convierto excepciones internas de cola o cancelacion en respuestas formales de error (ErrorAplicacion) segun el contrato
 def _operar(funcion, *args):
     try:
         return funcion(*args)
@@ -64,6 +74,9 @@ def _operar(funcion, *args):
     "Usar status_url/events_url; contenido sólo se entrega al completar y confirmar persistencia. "
     "El quiz es la vista estudiante, sin correct_option_id ni justificacion; el export autorizado es canónico.",
 )
+# en este punto de entrada recibo la solicitud para iniciar una nueva adaptacion educativa
+# respondo con codigo http 202 accepted porque la generacion es un proceso pesado que ejecuto en segundo plano
+# utilizo el parametro clave para garantizar idempotencia (Idempotency-Key) y evitar cobros o tareas duplicadas
 def generar(
     solicitud: GenerateRequest,
     sesion=Depends(get_sesion_actual),
@@ -84,6 +97,8 @@ def generar(
     "desde/hasta requieren zona horaria y desde <= hasta; fechas se convierten a UTC. "
     "documento filtra por document_id; perfil/formato/idioma usan los enums existentes.",
 )
+# aqui expongo la consulta del historial de generaciones pertenecientes a la sesion activa
+# valido los filtros temporales convirtiendo las fechas a formato estandar utc y aplico paginacion basada en cursores
 def listar(
     sesion=Depends(get_sesion_actual),
     servicio=Depends(get_generaciones),
@@ -125,6 +140,8 @@ def listar(
     "contenido es null salvo completed con persistencia confirmada; quiz usa la vista estudiante. "
     "El diagnóstico terminal en error no convierte la consulta en error HTTP.",
 )
+# con este endpoint consulto el estado actual de una generacion especifica mediante su identificador
+# verifico que la tarea pertenezca al usuario solicitante y oculto respuestas completas hasta confirmar la persistencia
 def consultar(generation_id: str, sesion=Depends(get_sesion_actual), servicio=Depends(get_generaciones)):
     return _operar(servicio.estado, sesion["token"], generation_id)
 
@@ -137,6 +154,8 @@ def consultar(generation_id: str, sesion=Depends(get_sesion_actual), servicio=De
     description="Cancelación cooperativa; running puede continuar hasta observarla. Repetir cancelled es idempotente; "
     "otro terminal devuelve 409. Desconectar SSE no equivale a cancelar.",
 )
+# aqui recibo la orden para cancelar cooperativamente una generacion que se encuentre en curso o en cola
+# notifico al gestor de trabajos (GestorTrabajos) para interrumpir el procesamiento sin corromper el estado persistido
 def cancelar(generation_id: str, sesion=Depends(get_sesion_actual), servicio=Depends(get_generaciones)):
     return _operar(servicio.cancelar, sesion["token"], generation_id)
 
@@ -150,6 +169,8 @@ def cancelar(generation_id: str, sesion=Depends(get_sesion_actual), servicio=Dep
     description="Reintenta sólo persistencia del aprobado retenido hasta 24 h, mismo objeto y sin llamadas LLM. "
     "Responde 202 incluso si ya estaba completed; un aprobado local perdido no se reconstruye desde OCI.",
 )
+# con esta ruta permito reintentar la persistencia del paquete educativo en oracle cloud infrastructure (oci)
+# este paso es crucial cuando la generacion termino con exito pero el almacenamiento externo sufrio una falla momentanea
 def persistir(
     generation_id: str,
     sesion=Depends(get_sesion_actual),
@@ -167,6 +188,9 @@ def persistir(
     openapi_extra=parametros(),
     description=stream("generation_id")["descripcion"],
 )
+# aqui establezco un canal de comunicacion unidireccional en tiempo real mediante eventos del servidor (server-sent events)
+# utilizo StreamingResponse de fastapi para enviar actualizaciones de estado al frontend a medida que avanzan los agentes
+# controlo la reconexion del cliente usando la cabecera Last-Event-ID para no perder ningun evento previo
 def eventos(
     generation_id: str,
     request: Request,
