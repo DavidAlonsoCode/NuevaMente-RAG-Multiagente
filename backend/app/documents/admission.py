@@ -33,6 +33,9 @@ from app.storage.provider import StorageConflict, StorageError, StorageProvider,
 logger = logging.getLogger("nuevamente.documents.admission")
 
 
+# con esta excepcion personalizada manejo los casos donde se agota el tiempo de espera para confirmar la admision
+# extiendo TimeoutError de python para diferenciar un retraso de sincronizacion de una falla definitiva en el sistema
+# esto se relaciona con la politica de persistencia robusta del issue 19 sin emitir confirmaciones falsas
 class AdmisionNoConfirmadaError(TimeoutError):
     """Espera interna agotada: reserva existente, sin recibo de aceptación.
 
@@ -45,6 +48,8 @@ class AdmisionNoConfirmadaError(TimeoutError):
         self.document_id, self.job_id = document_id, job_id
 
 
+# con esta clase centralizo toda la logica de entrada y validacion de documentos antes de enviarlos a la cola
+# coordino la base de datos de sqlite con el almacenamiento de objetos para garantizar transacciones consistentes
 class ServicioAdmisionDocumental:
     def __init__(
         self,
@@ -72,6 +77,8 @@ class ServicioAdmisionDocumental:
         self.espera_admision_segundos = espera_admision_segundos
         self.al_terminar = al_terminar
 
+    # aqui recibo texto plano ingresado directamente por el usuario y lo preparo para el pipeline de admision
+    # convierto la cadena de texto a bytes con codificacion utf-8 para tratarlo de forma identica a un archivo fisico
     def admitir_texto(self, token: str, entrada: UploadRequest, *, clave: str | None = None) -> AdmisionDocumento:
         return self.admitir_archivo(
             token,
@@ -80,6 +87,9 @@ class ServicioAdmisionDocumental:
             clave=clave,
         )
 
+    # con este metodo principal valido y proceso cualquier archivo subido asegurando su integridad antes de aceptarlo
+    # calculo la huella digital criptografica con sha256 para detectar documentos duplicados y aplicar idempotencia
+    # guardo el archivo original en el almacenamiento remoto y encolo la tarea de procesamiento en el gestor de trabajos
     def admitir_archivo(
         self,
         token: str,
@@ -257,6 +267,8 @@ class ServicioAdmisionDocumental:
             document_id=document_id, job_id=job_id, estado=DocumentStatus.PROCESSING, admision="encolada"
         )
 
+    # aqui implemento un bucle de espera activa no bloqueante (polling) para verificar que la admision haya finalizado
+    # consulto periodicamente el estado en la base de datos compartida y valido que los manifiestos coincidan en el storage
     def _esperar_confirmacion(self, token: str, registro: dict) -> AdmisionDocumento:
         """Observa commits breves; nunca mantiene una transacción durante la espera.
 
@@ -355,12 +367,16 @@ class ServicioAdmisionDocumental:
         if self.db.obtener_sesion(token) is None:
             raise ErrorAplicacion(ErrorCode.SESSION_INVALID, "La sesión dejó de estar disponible durante la carga.")
 
+    # con esta funcion auxiliar subo un archivo al proveedor de almacenamiento y verifico de inmediato su lectura
+    # aplico control de concurrencia optimista mediante etag para evitar sobreescrituras accidentales entre hilos
     def _persistir_confirmado(self, clave: str, contenido: bytes, **condiciones):
         objeto = self.storage.upload(clave, contenido, **condiciones)
         if objeto.object_name != clave or self.storage.get(clave, if_match=objeto.etag) != contenido:
             raise StorageUnavailable("No se pudo verificar el objeto persistido")
         return objeto
 
+    # aqui leo el flujo binario del archivo por fragmentos acotados (chunks) para proteger la memoria del servidor
+    # si el contenido supera los limites establecidos para pdf o texto interrumpo la lectura de inmediato
     def _leer_acotado(self, archivo: bytes | BinaryIO, nombre: str) -> bytes:
         extension = Path(nombre.strip().lower()).suffix.lstrip(".")
         if extension not in ("pdf", "md", "markdown", "txt"):

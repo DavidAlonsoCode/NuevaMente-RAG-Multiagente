@@ -79,6 +79,8 @@ _GESTORES_ACTIVOS: dict[str, object] = {}
 _GUARDIA_GESTORES = threading.Lock()
 
 
+# con esta excepcion senialo que la cola de espera alcanzo su capacidad maxima permitida
+# la capa superior traduce este error en un codigo http 422 o 429 para indicar saturacion temporal
 class ColaLlenaError(RuntimeError):
     """La cola alcanzó MAX_QUEUED_JOBS: la API lo traduce a 429 QUEUE_FULL.
 
@@ -96,6 +98,8 @@ class ColaLlenaError(RuntimeError):
         self.maximo = maximo
 
 
+# aqui controlo que cada espacio de trabajo tenga como maximo una sola tarea activa en ejecucion o en cola
+# esta restriccion responde a la politica de cuotas operativas para evitar abusos de un unico usuario
 class EspacioOcupadoError(RuntimeError):
     """El espacio ya tiene un trabajo activo o en cola (§7.5: 1 por espacio)."""
 
@@ -168,6 +172,8 @@ class CuotasModelo:
     rpd: int = 200
 
 
+# con esta clase centralizo el conteo de llamadas y tokens por modelo en ventanas de tiempo deslizantes
+# controlo estrictamente los limites de peticiones por minuto (RPM) tokens por minuto (TPM) y solicitudes diarias (RPD)
 class CuotasProveedor:
     """Contador central de llamadas por modelo: RPM, TPM y RPD.
 
@@ -243,6 +249,8 @@ class CuotasProveedor:
 
 
 @dataclass
+# con este objeto comunico al trabajo en ejecucion con los controles de cancelacion presupuesto y limites de tiempo
+# la tarea consulta este contexto entre pasos para comprobar si debe abortar antes de persistir datos
 class ContextoEjecucion:
     """Lo que el gestor le entrega a la función del trabajo.
 
@@ -269,6 +277,8 @@ class ContextoEjecucion:
     def cancelado(self) -> bool:
         return self._evento_cancelacion.is_set()
 
+    # aqui verifico si el trabajo fue cancelado o si supero su fecha limite de ejecucion (deadline)
+    # invoco este chequeo antes de cada operacion costosa para abortar de inmediato sin gastar recursos adicionales
     def chequear(self) -> None:
         """Helper para usar entre pasos: levanta la excepción que corresponde."""
         if self.cancelado() or not self.espacio_vigente():
@@ -276,6 +286,8 @@ class ContextoEjecucion:
         if time.monotonic() >= self.deadline:
             raise DeadlineExcedidoError()
 
+    # con este metodo ejecuto llamadas al proveedor de inteligencia artificial administrando cuotas y reintentos
+    # aplico un algoritmo de espera exponencial con variacion aleatoria (exponential backoff con jitter) ante fallos transitorios
     def llamar(
         self,
         funcion: Callable[..., Any],
@@ -343,6 +355,8 @@ class ControlesOperativos:
     base_backoff_segundos: float = 0.05  # base de backoff (tests la bajan)
 
 
+# aqui implemento el administrador central de ejecucion de tareas asincronas en segundo plano
+# opero con un worker dedicado en un hilo independiente para no bloquear el bucle de eventos principal
 class GestorTrabajos:
     """Cola FIFO global con un worker dedicado, sobre el registro de #8.
 
@@ -410,6 +424,8 @@ class GestorTrabajos:
         with self._lock:
             yield
 
+    # con este metodo registro un nuevo trabajo intensivo en la base de datos y lo agrego a la cola de ejecucion
+    # valido los cupos del espacio y despierto al worker para que procese la tarea segun el orden de llegada
     def enqueue(
         self,
         workspace_id: str,
@@ -457,6 +473,8 @@ class GestorTrabajos:
         self._despertar.set()
         return identificador
 
+    # aqui consulto el estado operativo y la posicion en cola de un trabajo particular para informar al cliente
+    # limpio las tareas que hayan superado el tiempo maximo de espera antes de devolver la respuesta
     def estado(self, job_id: str) -> dict | None:
         """Consulta del trabajo (GET /api/jobs/{id} de #20): estado, error y
         posición si sigue en cola."""
@@ -470,6 +488,8 @@ class GestorTrabajos:
             trabajo["posicion_cola"] = next((i for i, j in enumerate(cola, 1) if j["job_id"] == job_id), None)
         return trabajo
 
+    # con este metodo ejecuto la cancelacion cooperativa de un trabajo activo o lo retiro directamente si sigue en cola
+    # notifico a la funcion en curso activando un evento de sincronizacion para abortar ordenadamente
     def cancelar(self, job_id: str) -> bool:
         """Cancelación cooperativa (POST /api/jobs/{id}/cancel).
 

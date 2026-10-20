@@ -19,11 +19,13 @@ from app.exports.generation_mode import etiqueta_generacion
 from app.schemas.pedagogical import FlashcardDeck
 
 
+# con esta funcion genero un identificador numerico determinista de 48 bits a partir del hash sha256 compatible con las especificaciones de anki
 def _id(generation_id, tipo):
     # 48 bits: portables a JSON/JS y muy por debajo de int64 de Anki.
     return (1 << 40) + int(hashlib.sha256(f"nm-anki-v1:{tipo}:{generation_id}".encode()).hexdigest()[:12], 16)
 
 
+# aqui genero un identificador unico universal estable para cada tarjeta evitando tarjetas duplicadas al importar el mazo en anki
 def guid(generation_id, card_id):
     return "nm" + genanki.guid_for("nm-anki-v1", generation_id, card_id)
 
@@ -32,6 +34,7 @@ def nombre_mazo(paquete):
     return "NuevaMente::" + paquete.generation_id
 
 
+# con esta funcion escapo el texto y lo convierto a html seguro desactivando comandos especiales de anki como sonidos o formulas latex
 def campo_html(valor):
     limpio = valor.replace("\r\n", "\n").replace("\r", "\n")
     limpio = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", limpio)
@@ -41,6 +44,7 @@ def campo_html(valor):
     return "<span>" + escapado.replace("\n", "<br>").replace("\t", "&#9;") + "</span>"
 
 
+# aqui normalizo las etiquetas del mazo convirtiendo caracteres no alfanumericos en guiones bajos bajo la norma unicode nfc
 def etiquetas(valores):
     resultado = []
     for valor in valores:
@@ -63,6 +67,7 @@ def _frente(paquete, valor):
     return (campo_html(etiqueta) + "<br><br>" if etiqueta else "") + campo_html(valor)
 
 
+# con esta funcion exporto las flashcards en formato delimitado por comas (csv) o tabulaciones (tsv) compatible con importaciones directas
 def exportar_texto(paquete, formato):
     mazo = _mazo(paquete)
     if formato not in ("csv", "tsv"):
@@ -86,6 +91,7 @@ def exportar_texto(paquete, formato):
     return salida.getvalue().encode("utf-8")
 
 
+# aqui construyo el paquete binario de anki (archivo apkg) empaquetando la base de datos sqlite interna dentro de un archivo zip comprimido segun el issue 45
 def exportar_apkg(paquete):
     mazo = _mazo(paquete)
     modelo = genanki.Model(

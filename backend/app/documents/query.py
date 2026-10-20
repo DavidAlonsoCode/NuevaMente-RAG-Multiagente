@@ -23,6 +23,8 @@ from app.storage.provider import StorageNotFound, StorageProvider, StorageUnavai
 
 
 @dataclass(frozen=True)
+# con esta clase de datos inmutable (dataclass frozen) encapsulo el resultado de paginacion de documentos
+# utilizo estructuras nativas para mantener aislada la logica interna antes de exponer esquemas hacia la api
 class PaginaDocumental:
     """Resultado interno, sin serialización ni esquema HTTP comprometidos."""
 
@@ -30,6 +32,8 @@ class PaginaDocumental:
     siguiente_id: str | None
 
 
+# aqui concentro todas las consultas y lecturas autorizadas sobre los documentos y sus fragmentos (chunks)
+# este servicio asegura que ningun usuario pueda leer datos o imagenes de un espacio de trabajo ajeno
 class ServicioConsultaDocumental:
     def __init__(
         self, db: RegistroOperativo, storage: StorageProvider, indice: VectorStoreChroma | None, *, plazo_lectura: float
@@ -41,6 +45,8 @@ class ServicioConsultaDocumental:
         self.cursor = CursorDocumental(db.ruta_db.parent / "document-cursor.key")
         self.visuales = FuentesVisuales(db, storage, indice)
 
+    # con esta funcion auxiliar verifico que el token de sesion provisto siga existiendo y este vigente en la base de datos
+    # si la sesion expiro o fue revocada detengo la ejecucion lanzando un error estandar de autenticacion
     def _sesion(self, token: str) -> dict:
         sesion = self.db.obtener_sesion(token)
         if sesion is None:
@@ -59,6 +65,8 @@ class ServicioConsultaDocumental:
             ),
         )
 
+    # aqui valido la pertenencia del documento asegurando que coincida exactamente con el espacio de trabajo activo
+    # esto cumple la regla estricta de aislamiento de inquilinos (tenant isolation) requerida en la arquitectura
     def _propio(self, token: str, document_id: str) -> dict:
         sesion = self._sesion(token)
         doc = self.db.obtener_documento(document_id)
@@ -70,6 +78,8 @@ class ServicioConsultaDocumental:
             raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Documento no encontrado.")
         return doc
 
+    # con este metodo revalido el manifiesto persistido en el almacenamiento de objetos contra la base de datos local
+    # compruebo que la huella digital (hash sha256) coincida para asegurar que el archivo no haya sido alterado
     def _autorizar_storage(self, token: str, doc: dict) -> ManifiestoDocumento:
         contexto = self._contexto(token, doc["workspace_id"])
         try:
@@ -118,6 +128,8 @@ class ServicioConsultaDocumental:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente cambió durante la autorización.")
         return manifest
 
+    # aqui devuelvo la informacion detallada y el estado actual de un documento particular
+    # verifico la autorizacion tanto en la base operativa como en el almacenamiento remoto antes de responder
     def detalle(self, token: str, document_id: str) -> dict:
         doc = self._propio(token, document_id)
         self._autorizar_storage(token, doc)
@@ -148,6 +160,8 @@ class ServicioConsultaDocumental:
         siguiente = filas[limit - 1]["document_id"] if len(filas) > limit else None
         return PaginaDocumental(actuales, siguiente)
 
+    # con este metodo genero la lista paginada de documentos utilizando un cursor firmado y opaco
+    # esta tecnica de paginacion por claves (keyset pagination) evita el costo y la inconsistencia del desplazamiento tradicional
     def pagina(self, token: str, *, limit: int = 20, cursor: str | None = None) -> PaginaDocumental:
         """Página pública con keyset firmado y filtrado antes de contar elementos.
 
@@ -247,6 +261,8 @@ class ServicioConsultaDocumental:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La publicación documental no está confirmada.")
         return (doc, manifest) if con_manifiesto else doc
 
+    # aqui obtengo la lista completa de fragmentos de texto (chunks) indexados en la base de datos vectorial chromadb
+    # valido que el documento este en estado listo (ready) y que su cobertura coincida antes de entregar el contenido
     def chunks(self, token: str, document_id: str) -> list[Chunk]:
         doc = self._listo(token, document_id)
         if self.indice is None:
@@ -280,6 +296,8 @@ class ServicioConsultaDocumental:
             )
         return chunks
 
+    # con este punto de consulta busco y recupero un fragmento especifico mediante su identificador unico (chunk_id)
+    # este mecanismo permite al usuario consultar las evidencias exactas citadas en las respuestas pedagogicas
     def fuente(self, token: str, document_id: str, chunk_id: str) -> Chunk:
         chunks = self.chunks(token, document_id)
         for chunk in chunks:
@@ -296,6 +314,8 @@ class ServicioConsultaDocumental:
                 resultado.setdefault(chunk.seccion_id, {"seccion_id": chunk.seccion_id, "titulo": chunk.seccion})
         return list(resultado.values())
 
+    # aqui recupero la representacion visual rasterizada de la pagina vinculada a un fragmento de tipo diagrama
+    # delego la obtencion al modulo de fuentes visuales asegurando que la imagen corresponda a la version autorizada
     def imagen(self, token: str, document_id: str, chunk_id: str):
         doc = self._listo(token, document_id)
         try:
@@ -321,6 +341,8 @@ class ServicioConsultaDocumental:
             document_id=document_id, titulo=doc["titulo"], hash=doc["hash"], version=f"v{manifest.version}"
         )
 
+    # con esta funcion construyo la vista interna del documento que consume el grafo multiagente de langgraph
+    # extraigo el idioma de origen las secciones detectadas y determino si contiene material visual para los agentes
     def documento_grafo(self, contexto: ContextoEjecucion, document_id: str):
         """Vista interna ligada al trabajo: no retiene ni recupera tokens de sesión."""
         from app.core.agents.graph_state import DocumentoGeneracion

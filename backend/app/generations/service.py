@@ -26,6 +26,8 @@ from app.storage.object_keys import clave_output
 from app.storage.provider import StorageConflict, StorageUnavailable
 
 
+# con esta clase orquesto la creacion consulta cancelacion y persistencia de adaptaciones educativas
+# conecto la base de datos operativa con el almacenamiento en la nube y el gestor de tareas asincronas
 class ServicioGeneraciones:
     def __init__(self, db, storage, consulta, gestor, configuracion, generador=None, verificador=None):
         self.db, self.storage, self.consulta, self.gestor = db, storage, consulta, gestor
@@ -38,6 +40,8 @@ class ServicioGeneraciones:
         self.exports = ServicioExportaciones(self.catalogo)
         self.db.purgar_aprobados_expirados()
 
+    # con esta funcion auxiliar valido que el token pertenezca a una sesion activa y vigente
+    # si la credencial no es valida detengo la operacion emitiendo un error estandar de sesion
     def _sesion(self, token):
         sesion = self.db.obtener_sesion(token)
         if sesion is None:
@@ -78,6 +82,8 @@ class ServicioGeneraciones:
     def canonico(self, token, generation_id):
         return self.catalogo.canonico(token, generation_id)
 
+    # aqui consulto el estado actualizado de una generacion comprobando los permisos de acceso del usuario
+    # si el proceso culmino con exito incluyo los datos del material aprobado y la confirmacion de persistencia en oci
     def estado(self, token, generation_id):
         fila = self._propia(token, generation_id)
         job = self.db.job_generacion(generation_id)
@@ -109,6 +115,8 @@ class ServicioGeneraciones:
             else None,
         )
 
+    # con este metodo solicito la interrupcion cooperativa de una generacion que este en cola o en ejecucion
+    # delego la cancelacion al gestor de trabajos asegurando que los recursos ocupados se liberen correctamente
     def cancelar(self, token, generation_id):
         fila = self._propia(token, generation_id)
         if fila["status"] == "cancelled":
@@ -118,6 +126,8 @@ class ServicioGeneraciones:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "El trabajo ya terminó.")
         return self.estado(token, generation_id)
 
+    # aqui construyo la lista paginada del historial de generaciones aplicando filtros por perfil formato o fechas
+    # utilizo cursores opacos firmados criptograficamente para garantizar una navegacion segura y eficiente
     def pagina(self, token, *, cursor=None, limite=20, **filtros):
         ws = self._sesion(token)["workspace_id"]
         filtros = {k: v for k, v in filtros.items() if v is not None}
@@ -175,6 +185,8 @@ class ServicioGeneraciones:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente del material cambió.")
         return documento
 
+    # con esta funcion guardo el artefacto educativo definitivo en el almacenamiento de oracle cloud infrastructure (oci)
+    # retengo una copia local durante veinticuatro horas para permitir descargas o reintentos ante fallas de red
     def _persistir(self, paquete, contexto, *, retener=True):
         self._vigente(contexto, paquete.generation_id, paquete.documento_fuente.document_id, paquete)
         texto = paquete.model_dump_json()
@@ -199,6 +211,8 @@ class ServicioGeneraciones:
         self._vigente(contexto, paquete.generation_id, paquete.documento_fuente.document_id, paquete)
         return PersistenciaInfo(status_upload="completado", provider="mock" if self.cfg.mock_oci else "oci")
 
+    # aqui configuro la funcion ejecutable que correra dentro del hilo dedicado del gestor de trabajos
+    # selecciono entre el modo de generacion basico de un solo agente o el flujo multiagente completo segun la peticion
     def _trabajo(self, solicitud, generation_id, creado_en):
         def ejecutar(contexto):
             grafo = DependenciasGrafo(
@@ -257,6 +271,8 @@ class ServicioGeneraciones:
             raise ErrorAplicacion(ErrorCode.INVALID_REQUEST, "Idempotency-Key inválida.")
         return clave.strip() if clave is not None else None
 
+    # en este metodo principal inicio una nueva generacion pedagogica validando limites y garantizando idempotencia
+    # registro la intencion en la base de datos y encolo la tarea para su procesamiento en segundo plano
     def generar(self, token, solicitud: GenerateRequest, clave=None):
         clave = self._clave(clave)
         self.consulta._listo(token, solicitud.document_id)
@@ -315,6 +331,8 @@ class ServicioGeneraciones:
                 raise
         return self._propia_db(token, generation_id)
 
+    # con esta ruta permito reintentar la persistencia de un material aprobado que no llego a guardarse en la nube
+    # recupero el paquete retenido localmente y reintento la subida a oci sin incurrir en nuevas llamadas a los modelos
     def persistir(self, token, generation_id, clave=None):
         self._propia(token, generation_id)
         clave = self._clave(clave)

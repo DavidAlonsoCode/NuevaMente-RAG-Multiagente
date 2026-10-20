@@ -37,6 +37,9 @@ router = APIRouter(prefix="/api/documents", tags=["Documentos"])
 MARGEN_TRANSPORTE = 64 * 1024
 
 
+# con esta clase extiendo el analizador de formularios de starlette (MultiPartParser)
+# sobreescribo el metodo on_end para verificar que el cuerpo de la peticion llego completo y no truncado
+# en caso de error me aseguro de cerrar y limpiar todos los archivos temporales creados en disco
 class _MultipartDocumental(MultiPartParser):
     """Exige el cierre del cuerpo y libera incluso partes no entregadas al form."""
 
@@ -62,6 +65,8 @@ class _MultipartDocumental(MultiPartParser):
             raise
 
 
+# con esta funcion de inyeccion de dependencias (Depends) obtengo el servicio de consulta documental
+# valido que el servicio este cargado en la aplicacion para garantizar que el indice de busqueda vectorial este disponible
 def get_consulta(request: Request) -> ServicioConsultaDocumental:
     consulta = request.app.state.documents_query
     if consulta is None:
@@ -69,6 +74,8 @@ def get_consulta(request: Request) -> ServicioConsultaDocumental:
     return consulta
 
 
+# aqui transformo el registro crudo de la base de datos en el modelo de respuesta formal (DocumentoResponse)
+# valido la estructura de los metadatos y la cobertura en formato json para no exponer datos internos sensibles
 def _documento(fila: dict) -> DocumentoResponse:
     # Proyección explícita; ninguna fila operativa se serializa al cliente.
     try:
@@ -100,6 +107,8 @@ def _documento(fila: dict) -> DocumentoResponse:
     )
 
 
+# con esta funcion asincrona (generator) leo el flujo de datos de la peticion byte por byte
+# controlo el tamanio acumulado para interrumpir la transferencia si excede el limite maximo permitido en la configuracion
 async def _stream_acotado(request: Request, maximo: int):
     total = 0
     async for parte in request.stream():
@@ -113,6 +122,8 @@ def _validacion(error: ValidationError):
     raise RequestValidationError(error.errors()) from None
 
 
+# aqui gestiono la admision del documento coordinando la transaccion entre la base de datos y el gestor de trabajos
+# traduzco las excepciones de concurrencia o limite de almacenamiento en respuestas http estructuradas
 def _admitir(servicio, funcion, token, entrada, clave, *archivo):
     try:
         recibo = funcion(token, *archivo, entrada, clave=clave)
@@ -180,6 +191,9 @@ def _admitir(servicio, funcion, token, entrada, clave, *archivo):
         },
     },
 )
+# en esta ruta asincrona recibo la carga de documentos tecnicos en formato json o como archivo adjunto (multipart)
+# uso la funcion run_in_threadpool de starlette para delegar el procesamiento intensivo a un hilo secundario sin bloquear el bucle principal
+# esto cumple con el requisito de ingestion documental para alimentar el sistema de recuperacion aumentada (rag)
 async def upload(
     request: Request,
     sesion: dict = Depends(get_sesion_actual),
@@ -238,6 +252,8 @@ async def upload(
     description="Documentos propios, orden ascendente por creación UTC e ID. limit=20 (1..100); cursor opaco firmado "
     "ligado al espacio, no un offset ni snapshot. Metadata/cobertura desconocida se representa con null.",
 )
+# aqui devuelvo la lista paginada de todos los documentos subidos por el espacio de trabajo actual
+# aplico un cursor de navegacion para recorrer los registros ordenados cronologicamente segun su tiempo de creacion en utc
 def listar(
     sesion: dict = Depends(get_sesion_actual),
     consulta: ServicioConsultaDocumental = Depends(get_consulta),
@@ -260,6 +276,8 @@ def listar(
     description="Estado y metadata propios. processing/failed no habilitan fuentes. "
     "document_id es un identificador opaco; no acepta workspace_id para cambiar la autorización.",
 )
+# con este punto de entrada obtengo el detalle completo y el estado de procesamiento de un documento particular
+# compruebo que el documento pertenezca a la sesion que realiza la consulta para garantizar el aislamiento entre usuarios
 def detalle(
     document_id: str,
     sesion: dict = Depends(get_sesion_actual),
@@ -280,6 +298,8 @@ def detalle(
     "source_type=image_description identifica interpretación del modelo; imagen_url es una ruta autenticada "
     "a la página original. En texto, imagen_url es null; ubicación desconocida también usa null.",
 )
+# aqui consulto un fragmento textual especifico (chunk) que fue utilizado como fuente para responder o generar material
+# diferencio si el texto proviene de una extraccion directa del documento o de una interpretacion de imagen realizada por el modelo
 def fuente(
     document_id: str,
     chunk_id: str,
@@ -331,6 +351,8 @@ def fuente(
     description="PNG binario de la página original rasterizada y verificada, no la descripción generada por IA. "
     "Revalida sesión, pertenencia de documento/chunk, publicación y hash; fuente visual no disponible: 404/409.",
 )
+# con esta funcion retorno la imagen binaria en formato png de la pagina original del documento tecnico
+# configuro cabeceras de respuesta estrictas para evitar almacenamiento en cache y proteger la privacidad del usuario
 def imagen_original(
     document_id: str,
     chunk_id: str,
@@ -371,6 +393,8 @@ def imagen_original(
     "La precisión de retirada conserva su estado de revisión contractual.",
     summary="Retirar documento y limpiar sus recursos vinculados",
 )
+# aqui gestiono la eliminacion o retirada de un documento y de todos sus vectores asociados en chromadb
+# si la limpieza fisica de archivos en almacenamiento remoto queda pendiente respondo con codigo 202 accepted
 def retirar(document_id: str, request: Request, sesion: dict = Depends(get_sesion_actual)) -> Response:
     efectos = request.app.state.documents_effects
     if efectos is None:

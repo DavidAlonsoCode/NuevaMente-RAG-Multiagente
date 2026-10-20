@@ -51,6 +51,7 @@ _PERFILES = {
 }
 
 
+# aqui defino las dependencias inmutables del nodo investigador asegurando que los metodos de recuperacion sean sincronos
 @dataclass(frozen=True)
 class DependenciasResearcher:
     grafo: DependenciasGrafo = field(repr=False)
@@ -73,6 +74,7 @@ class _Bloqueo(Exception):
         self.code, self.message, self.status = code, message, status
 
 
+# con esta funcion construyo una consulta de busqueda vectorial contextualizada segun el perfil y formato pedagogico sin generar instrucciones directas
 def _consulta(estado: EstadoGrafo, seccion: str, *, ampliada: bool = False, titulo_seccion: str = "") -> str:
     idioma = {"es": 0, "en": 1, "pt": 2}.get(estado.idioma_origen, 0)
     solicitud = estado.parametros
@@ -89,6 +91,7 @@ def _consulta(estado: EstadoGrafo, seccion: str, *, ampliada: bool = False, titu
     return f"{seccion} {titulo_seccion} | {titulo} | {formato} | {perfil}"[:2000]
 
 
+# aqui implemento el nodo researcher del grafo que recupera evidencia relevante respetando las cuotas de tokens segun el issue 15
 def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dict:
     """Update del estado, sin modificarlo ni redactar/aprobar material pedagógico.
 
@@ -117,6 +120,7 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
             **campos,
         }
 
+    # con esta funcion interna confirmo que el estado del documento y los permisos sigan vigentes antes de cada recuperacion
     def revalidar():
         actual = supervisor(estado, dependencias.grafo)
         if "error" in actual:
@@ -140,6 +144,7 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
             raise _Bloqueo("INVALID_STATE", "Researcher requiere el estado preparado por Supervisor.")
         if estado.intento >= 3:
             raise _Bloqueo("MAX_ATTEMPTS", "Se agotaron las tres redacciones disponibles.", JobStatus.REJECTED_QUALITY)
+        # obtengo el inventario completo de fragmentos disponibles en la base vectorial para verificar la cobertura total del documento
         chunks = recuperador.indice.listar_chunks(
             ctx.workspace_id,
             estado.document_id,
@@ -204,6 +209,7 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
             base = _consulta(estado, seccion, ampliada=ampliada, titulo_seccion=titulos[seccion])
             return ((dependencias.pregunta or "") + " | " + base)[:2000] if dependencias.pregunta else base
 
+        # aqui recorro cada seccion requerida e intento recuperar al menos un fragmento para garantizar cobertura completa
         for seccion in objetivo:
             if not pools[seccion]:
                 restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
@@ -230,6 +236,7 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
                 JobStatus.REJECTED_QUALITY,
             )
         # Las solicitudes previas de Critic tienen prioridad sobre extras opcionales.
+        # proceso las solicitudes de evidencia adicionales enviadas previamente por el agente critico respetando el presupuesto de tokens
         for consulta in dict.fromkeys(estado.solicitudes_evidencia):
             restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
             if restante <= 0:
@@ -254,6 +261,7 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
                     agregar(pool[ronda])
         revalidar()
         cfg = recuperador.configuracion
+        # registro los metadatos completos de trazabilidad incluyendo modelos utilizados versiones de prompts y configuracion de busqueda
         trazabilidad = Trazabilidad(
             modelo_generacion=cfg.gemini_generation_model,
             modelo_verificacion=cfg.gemini_verification_model,

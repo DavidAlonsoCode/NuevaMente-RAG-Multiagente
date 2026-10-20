@@ -44,6 +44,7 @@ _FORMATOS = {
 }
 
 
+# con esta funcion normalizo la cadena del idioma de origen a un codigo estandar de dos letras o la etiqueta especial mixto
 def normalizar_idioma_origen(idioma: str) -> IdiomaOrigen:
     normalizado = idioma.strip().lower().replace("_", "-")
     if normalizado == "mixto":
@@ -54,6 +55,7 @@ def normalizar_idioma_origen(idioma: str) -> IdiomaOrigen:
     return base
 
 
+# aqui construyo la estructura de fallo con el codigo de diagnostico para detener la ejecucion del grafo si una validacion no se cumple
 def _fallo(code: str, message: str, *, status: JobStatus = JobStatus.FAILED) -> dict:
     return {
         "status": status,
@@ -64,6 +66,7 @@ def _fallo(code: str, message: str, *, status: JobStatus = JobStatus.FAILED) -> 
     }
 
 
+# con esta funcion actuo como el nodo supervisor en langgraph verificando autorizacion de acceso y politicas de alcance segun el issue 14
 def supervisor(estado: EstadoGrafo, dependencias: DependenciasGrafo) -> dict:
     """Devuelve un update de EstadoGrafo. El grafo #29 debe terminar ante failed/cancelled.
 
@@ -71,6 +74,7 @@ def supervisor(estado: EstadoGrafo, dependencias: DependenciasGrafo) -> dict:
     devuelve texto ni se llama a Gemini, storage, un reloj nuevo o un generador de IDs.
     """
     if estado.status != JobStatus.RUNNING:
+        # preparo la configuracion de politicas restricciones y rubrica de salida que guiaran al resto de agentes en el grafo
         return {}
     ctx = dependencias.ejecucion
     try:
@@ -80,6 +84,7 @@ def supervisor(estado: EstadoGrafo, dependencias: DependenciasGrafo) -> dict:
         solicitud = estado.parametros
         if solicitud is None or estado.document_id != solicitud.document_id:
             return _fallo("VALIDATION_ERROR", "Parámetros de generación inválidos.")
+        # consulto el documento en el almacenamiento y compruebo que pertenezca al espacio de trabajo autorizado
         documento = dependencias.obtener_documento(ctx.workspace_id, solicitud.document_id)
         ctx.chequear()
         if (
@@ -124,6 +129,7 @@ def supervisor(estado: EstadoGrafo, dependencias: DependenciasGrafo) -> dict:
         return _fallo("DEADLINE", "El trabajo excedió su deadline de ejecución.")
 
 
+# con esta funcion construyo el estado inicial del grafo validando los parametros recibidos mediante el esquema de pydantic
 def crear_estado_inicial(
     solicitud: GenerateRequest | dict, *, generation_id: str, dependencias: DependenciasGrafo
 ) -> EstadoGrafo:

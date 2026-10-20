@@ -17,13 +17,18 @@ from app.jobs.manager import CuotaAgotadaError, ReintentableError
 logger = logging.getLogger(__name__)
 
 
+# con esta excepcion represento los fallos permanentes en las llamadas a los modelos de google gemini
+# oculto deliberadamente los mensajes crudos y las credenciales en los registros para proteger la seguridad del servicio
 class GeneracionGeminiError(RuntimeError):
     """Fallo permanente o respuesta vacía; mensajes sin payloads ni credenciales."""
 
 
+# defino el protocolo estructural (Protocol) que deben cumplir los adaptadores de generacion de texto
+# el uso de protocolos en python permite tipado estatico sin acoplar fuertemente las implementaciones concretas
 class GeneradorSync(Protocol):
     es_mock: bool
 
+    # con este metodo defino la firma de generacion estructurada que cualquier proveedor de texto debe implementar
     def generar_sync(
         self,
         prompt: str,
@@ -36,6 +41,8 @@ class GeneradorSync(Protocol):
     ) -> str: ...
 
 
+# con esta funcion auxiliar analizo las cabeceras http de gemini en busca de la directiva de espera (Retry-After)
+# si el error incluye informacion de reintento calculo los segundos exactos de pausa que exige el proveedor
 def _retry_after(error: errors.APIError) -> float | None:
     valor = error.response.headers.get("Retry-After") if error.response is not None else None
     if valor is None:
@@ -64,6 +71,8 @@ def _retry_after(error: errors.APIError) -> float | None:
             return None
 
 
+# aqui examino los detalles del error 429 para distinguir si se agoto la cuota diaria (RPD) o solo el ritmo por minuto (RPM)
+# identificar el agotamiento diario evita reintentos inutiles cuando la cuota no se renovara hasta el dia siguiente
 def _cuota_diaria(error: errors.APIError) -> bool:
     # Se identifica la ventana a partir de QuotaFailure, no de un 429 genérico.
     detalles = error.details.get("error", {}).get("details", []) if isinstance(error.details, dict) else []
@@ -77,6 +86,8 @@ def _cuota_diaria(error: errors.APIError) -> bool:
     return False
 
 
+# con esta clase implemento el cliente de conexion directa con la api de google genai sdk
+# configuro el cliente para operar de forma sincrona desacoplando los reintentos al gestor de trabajos
 class ClienteGeminiGeneracion:
     es_mock = False
 
@@ -96,6 +107,8 @@ class ClienteGeminiGeneracion:
     def cerrar(self) -> None:
         self._cliente.close()
 
+    # con este metodo genero contenido estructurado solicitando respuestas estrictamente en formato json
+    # paso el esquema pydantic al modelo para que la biblioteca valide la estructura antes de procesar el texto
     def generar_sync(
         self,
         prompt: str,
@@ -118,6 +131,8 @@ class ClienteGeminiGeneracion:
     # Mismo transporte, cuotas/retries externos y modelo propio del consumidor.
     verificar_sync = generar_sync
 
+    # aqui envio una peticion multimodal combinando el prompt de verificacion con la imagen binaria original
+    # valido que el tipo mime corresponda a formatos graficos soportados como png jpeg o webp antes de la llamada
     def verificar_visual_sync(
         self,
         prompt: str,
@@ -141,6 +156,8 @@ class ClienteGeminiGeneracion:
             max_output_tokens=max_output_tokens,
         )
 
+    # en esta funcion central ejecuto la llamada a generate_content aplicando limites de tokens y tiempo de espera (timeout)
+    # traduzco codigos de error http de la api en excepciones reintentables o de cuota agotada segun corresponda
     def _solicitar_sync(
         self,
         contents: str | list[types.Part],

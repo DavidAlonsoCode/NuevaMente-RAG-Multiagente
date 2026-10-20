@@ -8,6 +8,8 @@ from app.api.openapi_metadata import parametros, respuestas
 from app.api.routes.generations import _operar
 from app.schemas.responses import PaqueteExportado
 
+# aqui configuro el enrutador de fastapi dedicado exclusivamente a la exportacion de materiales educativos
+# este modulo responde al requisito del issue 43 que centraliza las descargas autorizadas y seguras
 router = APIRouter(prefix="/api/exports", tags=["Exportaciones"])
 
 
@@ -45,6 +47,10 @@ router = APIRouter(prefix="/api/exports", tags=["Exportaciones"])
     "Validar sesión, pertenencia y estado precede a validar format: ajeno 404, no completado 409. "
     "No redirige a URLs públicas, ni llama al LLM. Revalida autorización y contenido después del I/O.",
 )
+# en este punto de entrada proceso la descarga de adaptaciones pedagogicas completadas en diversos formatos
+# valido que la sesion sea duenia de la generacion y selecciono el tipo de archivo solicitado como json markdown o pdf
+# para el formato flashcards habilito adicionalmente formatos compatibles con anki como csv tsv o apkg
+# configuro cabeceras http estrictas (Content-Disposition y Cache-Control) para asegurar la descarga directa sin intermediarios
 def descargar(
     generation_id: str,
     request: Request,

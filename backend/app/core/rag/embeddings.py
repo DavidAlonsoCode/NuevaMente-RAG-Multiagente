@@ -17,12 +17,15 @@ from app.core.rag.tokenizer import TokenizadorBPE
 from app.jobs.manager import ContextoEjecucion, CuotaAgotadaError, ReintentableError
 
 
+# con este protocolo (interface formal de python) defino el contrato minimo que debe cumplir cualquier proveedor de vectores para desacoplar gemini de los tests
 class EmbeddingProvider(Protocol):
     """Contrato minimo que necesita GeminiEmbeddings."""
 
+    # aqui envio los textos al modelo de gemini configurando la cantidad de dimensiones y el tiempo limite de espera (timeout)
     def embed_sync(self, textos: list[str], *, timeout: float) -> list[list[float]]: ...
 
 
+# con esta clase implemento el adaptador oficial que se comunica con el sdk de google genai para generar vectores de texto segun el issue 13
 class GoogleGenAIEmbeddingProvider:
     """Adaptador minimo entre el pipeline RAG y el SDK google-genai."""
 
@@ -31,6 +34,7 @@ class GoogleGenAIEmbeddingProvider:
         self.modelo = modelo
         self.dimensiones = dimensiones
 
+    # con este metodo estatico analizo la estructura del error retornado por la api de google para saber si se agoto la cuota diaria (quota failure)
     @staticmethod
     def _es_cuota_diaria(error: ClientError) -> bool:
         if not isinstance(error.details, dict):
@@ -65,6 +69,7 @@ class GoogleGenAIEmbeddingProvider:
 
         return False
 
+    # con esta funcion extraigo el tiempo de espera (retry after) desde los encabezados http para respetar los limites de peticiones
     @staticmethod
     def _obtener_retry_after(error: APIError) -> float | None:
         respuesta = error.response
@@ -135,6 +140,7 @@ class GoogleGenAIEmbeddingProvider:
         return [embedding.values for embedding in respuesta.embeddings]
 
 
+# con esta clase adapto las llamadas de embeddings al pipeline de rag anadiendo los prefijos semanticos asimetricos exigidos por el modelo
 class GeminiEmbeddings:
     """Adaptador de embeddings usado por el pipeline RAG"""
 
@@ -143,10 +149,12 @@ class GeminiEmbeddings:
         self.modelo = modelo
         self.dimensiones = dimensiones
 
+    # aqui antepongo el prefijo requerido para documentos de modo que el modelo entienda que este texto sera almacenado e indexado
     @staticmethod
     def _preparar_documento(texto: str) -> str:
         return f"title: none | text: {texto}"
 
+    # aqui antepongo el prefijo requerido para consultas de busqueda optimizando la comparacion asimetrica contra los documentos
     @staticmethod
     def _preparar_query(texto: str) -> str:
         return f"task: search result | query: {texto}"
@@ -159,6 +167,7 @@ class GeminiEmbeddings:
     def preparation_version(self) -> str:
         return "asymmetric-retrieval-v1"
 
+    # con este metodo transformo una lista de documentos en vectores numericos delegando en el contexto de ejecucion para controlar tiempo y presupuesto
     def embed_documents(self, textos: list[str], *, contexto: ContextoEjecucion) -> list[list[float]]:
         vectores: list[list[float]] = []
 
@@ -175,6 +184,7 @@ class GeminiEmbeddings:
 
         return vectores
 
+    # con este metodo transformo una consulta del usuario en un vector numerico individual para realizar la busqueda vectorial
     def embed_query(self, texto: str, *, contexto: ContextoEjecucion) -> list[float]:
         preparado = self._preparar_query(texto)
         resultado = contexto.llamar(
@@ -185,6 +195,7 @@ class GeminiEmbeddings:
 
         return self._extraer_vector(resultado)
 
+    # con esta funcion auxiliar valido que el vector devuelto por la api tenga la dimension esperada y contenga exclusivamente numeros reales finitos
     def _extraer_vector(self, resultado: list[list[float]]) -> list[float]:
         if len(resultado) != 1:
             raise ValueError(f"Gemini debe devolver exactamente un embedding por entrada; devolvio {len(resultado)}.")
@@ -205,6 +216,7 @@ class GeminiEmbeddings:
         return vector
 
 
+# con esta funcion de fabrica (factory function) instancio el cliente de embeddings configurado leyendo las credenciales y el modelo desde la configuracion
 def crear_cliente_embeddings(
     *, configuracion: Configuracion, proveedor: EmbeddingProvider | None = None
 ) -> GeminiEmbeddings:

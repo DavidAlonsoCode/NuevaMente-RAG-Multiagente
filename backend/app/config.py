@@ -39,6 +39,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# con esta clase centralizo y tipifico todas las variables de entorno del backend utilizando pydantic settings segun el issue 7
 class Configuracion(BaseSettings):
     """Configuración viva del backend. Una instancia = toda la configuración.
 
@@ -143,6 +144,7 @@ class Configuracion(BaseSettings):
     cors_origins: str = ""
     trusted_origin_secret: str = Field(default="", repr=False)
 
+    # con esta propiedad separo la lista de origenes permitidos para cors a partir de la cadena de texto configurada
     @property
     def origenes_cors(self) -> list[str]:
         """Orígenes CORS parseados y sin espacios; [] mientras no se configure."""
@@ -152,6 +154,7 @@ class Configuracion(BaseSettings):
     # Validaciones cruzadas (reglas que miran varios campos a la vez).
     # ------------------------------------------------------------------
 
+    # con este validador cruzado de pydantic compruebo que no se activen dobles de prueba (mocks) en produccion y que las cuotas esten bien definidas
     @model_validator(mode="after")
     def _reglas_de_entorno(self) -> "Configuracion":
         """Regla 1: los mocks son de desarrollo/CI/test, jamás de producción.
@@ -181,6 +184,7 @@ class Configuracion(BaseSettings):
                 )
         return self
 
+    # aqui valido al arranque que todas las credenciales de oci y llaves de api esten completas antes de recibir peticiones de usuarios
     def validar_critico(self) -> None:
         """Regla 2: producción exige configuración COMPLETA y REAL.
 
@@ -231,6 +235,7 @@ class Configuracion(BaseSettings):
             raise ConfiguracionIncompleta(problemas)
 
 
+# con esta excepcion detengo el arranque si faltan variables obligatorias mostrando un mensaje claro y detallado de lo que falta
 class ConfiguracionIncompleta(RuntimeError):
     """Arranque de producción con config incompleta: falla visible y accionable.
 

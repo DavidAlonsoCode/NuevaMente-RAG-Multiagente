@@ -52,6 +52,8 @@ Corregir todos los hallazgos del Critic, incluidas traducciones y citas.
 """
 
 
+# con esta clase adapto los terminos candidatos del glosario a la estructura interna evaluable por el revisor
+# compruebo que no se traduzcan identificadores tecnicos y valido que cada termino tenga respaldo en la fuente
 class _AdaptadorGlosario:
     def __init__(self, proveedor, solicitud, candidatos):
         self.proveedor, self.solicitud, self.candidatos = proveedor, solicitud, candidatos
@@ -124,12 +126,16 @@ class _AdaptadorGlosario:
         )
 
 
+# aqui orquesto la extraccion y explicacion adaptada de terminos tecnicos clave presentes en el documento
+# coordino la deteccion automatica de candidatos con el flujo de redaccion y control de calidad
 class ServicioGlosario:
     def __init__(self, db, consulta, gestor, cfg, generador=None, verificador=None):
         self.db, self.consulta, self.gestor, self.cfg = db, consulta, gestor, cfg
         self.generador, self.verificador = generador, verificador
         self.retriever = RetrieverMMR(consulta.indice, configuracion=cfg) if consulta.indice is not None else None
 
+    # con este metodo genero una clave criptografica unica (hash sha256) a partir de los parametros del glosario
+    # esta huella permite reutilizar definiciones ya aprobadas cuando se solicitan los mismos terminos y modelos
     def clave_cache(self, workspace_id, fuente, solicitud):
         datos = dict(
             workspace_id=workspace_id,
@@ -148,6 +154,8 @@ class ServicioGlosario:
         )
         return hashlib.sha256(json.dumps(datos, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
+    # en este punto de entrada admito la solicitud de glosario verificando la vigencia del documento en la base de datos
+    # si existe un resultado identico en cache lo reutilizo evitando invocar nuevamente a los modelos de lenguaje
     def encolar(self, token, solicitud, clave=None):
         fuente = self.consulta.fuente_aprobada(token, solicitud.document_id)
         ws = self.consulta._sesion(token)["workspace_id"]
@@ -175,6 +183,8 @@ class ServicioGlosario:
             preparar=preparar,
         )
 
+    # con esta funcion confirmo que el glosario almacenado pertenezca a la sesion activa y al documento vigente
+    # revalido la huella digital de la fuente antes de exponer los terminos aprobados al usuario
     def autorizar_resultado(self, workspace_id, resultado, token=None):
         try:
             glosario = GlossaryOutput.model_validate(resultado)
