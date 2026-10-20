@@ -22,6 +22,8 @@ from app.storage.provider import StorageConflict, StorageNotFound, StorageUnavai
 MAX_EVENTOS = 10_000
 
 
+# con este modelo de pydantic estructuro cada evento de progreso del usuario de forma inmutable
+# valido estrictamente que las respuestas de cuestionarios y las tarjetas vistas incluyan sus identificadores
 class EventoGuardado(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     event_id: str = Field(min_length=1, max_length=128)
@@ -57,6 +59,8 @@ class ClaveGuardada(BaseModel):
     generation_id: str | None = None
 
 
+# aqui represento el estado acumulado de progreso de estudio de un espacio de trabajo
+# compruebo que la lista de eventos mantenga un orden cronologico secuencial y sin identificadores repetidos
 class EstadoProgreso(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     schema_version: Literal["1.0"] = "1.0"
@@ -79,11 +83,15 @@ class EstadoProgreso(BaseModel):
         return self
 
 
+# con esta clase centralizo el registro de avance pedagogico incluyendo tarjetas repasadas y cuestionarios respondidos
+# sincronizo el estado hacia el almacenamiento de objetos de oracle cloud infrastructure (oci) mediante control de concurrencia
 class ServicioProgreso:
     def __init__(self, db, storage, catalogo, *, guardia=None):
         self.db, self.storage, self.catalogo = db, storage, catalogo
         self._lock = guardia if guardia is not None else threading.RLock()
 
+    # aqui recupero el estado actual del progreso desde el almacenamiento remoto verificando su integridad
+    # utilizo validacion optimista mediante etag para asegurar que ningun cambio concurrente pase desapercibido
     def _leer(self, ws):
         clave = clave_progress(ws)
         pagina = self.storage.list(clave, limit=1)

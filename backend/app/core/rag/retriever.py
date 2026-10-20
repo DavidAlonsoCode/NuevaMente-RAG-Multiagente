@@ -21,6 +21,7 @@ from app.jobs.manager import ContextoEjecucion
 from app.schemas.internal import EvidenciaRecuperada
 
 
+# con este modelo de pydantic encapsulo los fragmentos recuperados el conteo de tokens utilizados y los avisos de presupuesto segun el issue 18
 class ResultadoRecuperacion(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -34,6 +35,7 @@ class ResultadoRecuperacion(BaseModel):
         return bool(self.chunks_omitidos)
 
 
+# con esta funcion mido con precision la cantidad real de tokens bpe que ocupan los fragmentos y sus metadatos antes de enviarlos al modelo
 def tokens_evidencia(evidencia: list[EvidenciaRecuperada], tokenizador: Tokenizador) -> int:
     """Cuenta texto y metadatos reales; nunca confía en cantidad_tokens del índice."""
     if not evidencia:
@@ -46,11 +48,13 @@ def identidad_texto(texto: str) -> str:
     return " ".join(texto.split())
 
 
+# aqui calculo la similitud coseno entre dos vectores normalizados utilizando la funcion math hypot de python para calcular la longitud vectorial
 def _coseno(a: tuple[float, ...], b: tuple[float, ...]) -> float:
     na, nb = math.hypot(*a), math.hypot(*b)
     return max(-1.0, min(1.0, sum((x / na) * (y / nb) for x, y in zip(a, b, strict=True))))
 
 
+# aqui implemento el recuperador con diversificacion mmr (maximal marginal relevance) para seleccionar fragmentos relevantes y diversos segun el issue 18
 class RetrieverMMR:
     """Mismos filtros/contexto de Chroma; sin traducción generativa ni retries propios.
 
@@ -59,6 +63,7 @@ class RetrieverMMR:
     Los chunks que no caben se omiten completos y se identifican en el resultado.
     """
 
+    # en el constructor guardo la referencia al indice vectorial de chromadb la configuracion general y el tokenizador bpe
     def __init__(
         self,
         indice: VectorStoreChroma,
@@ -74,6 +79,7 @@ class RetrieverMMR:
     def max_tokens(self) -> int:
         return self.configuracion.retrieval_max_tokens
 
+    # con este metodo inicio la recuperacion para espacios de trabajo privados delegando la consulta al indice vectorial autorizado
     def recuperar(
         self,
         workspace_id: str,
@@ -103,6 +109,7 @@ class RetrieverMMR:
             source_hash,
         )
 
+    # con este metodo realizo la busqueda en la biblioteca demo publica sin requerir permisos de un espacio privado
     def recuperar_demo(
         self,
         document_id: str,
@@ -130,6 +137,7 @@ class RetrieverMMR:
             source_hash,
         )
 
+    # aqui implemento el algoritmo central de recuperacion validando parametros presupuestos y descartando evidencia inconsistente o ajena
     def _recuperar(
         self,
         buscar: Callable[[], list[CoincidenciaVectorial]],
@@ -149,6 +157,7 @@ class RetrieverMMR:
         presupuesto = self.max_tokens if presupuesto_tokens is None else presupuesto_tokens
         if type(presupuesto) is not int or not 0 <= presupuesto <= self.max_tokens:
             raise ValueError("El presupuesto debe estar entre cero y RETRIEVAL_MAX_TOKENS")
+        # descarto inmediatamente si el presupuesto de tokens recibido es cero para evitar consumo innecesario de recursos
         if presupuesto == 0:
             return ResultadoRecuperacion(avisos=["Presupuesto de evidencia agotado; no se ejecutó una consulta."])
         candidatos = buscar()
@@ -156,6 +165,7 @@ class RetrieverMMR:
         ids, textos, pendientes = {}, set(), []
         dimensiones = None
         version = source_hash
+        # ordeno los candidatos preliminares por su similitud y verifico que pertenezcan exactamente al documento y espacio autorizados
         for hit in sorted(candidatos, key=lambda h: (-h.similitud, h.chunk.indice, h.chunk.chunk_id)):
             chunk = hit.chunk
             if (chunk.workspace_id, chunk.document_id) != (workspace_id, document_id):
@@ -189,6 +199,7 @@ class RetrieverMMR:
             textos.add(clave)
         elegidos, evidencia, omitidos = [], [], []
         lam = self.configuracion.retrieval_lambda_mult
+        # con este bucle implemento la seleccion por relevancia marginal maxima (mmr) equilibrando relevancia frente a la consulta con novedad frente a lo ya elegido
         while pendientes and len(evidencia) < self.configuracion.retrieval_k:
             contexto.chequear()
             hit = max(
@@ -204,6 +215,7 @@ class RetrieverMMR:
             )
             pendientes.remove(hit)
             item = EvidenciaRecuperada(chunk=hit.chunk, score=hit.similitud, consulta=consulta.strip())
+            # si un fragmento seleccionado sobrepasa el presupuesto maximo de tokens permitido lo omito por completo y registro su aviso
             if tokens_evidencia([*evidencia, item], self.tokenizador) > presupuesto:
                 omitidos.append(hit.chunk.chunk_id)
                 continue

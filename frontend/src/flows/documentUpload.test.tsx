@@ -25,10 +25,12 @@ it.each(['es', 'en', 'pt'] as const)('ofrece carga accesible en el área princip
   expect(input.closest('main')).not.toBeNull();
   expect(document.querySelector('aside input[type="file"]')).toBeNull();
   expect(input.getAttribute('accept')).toBe('.pdf,.md,.txt');
+  expect(screen.getByText(t('upload.aviso_privacidad', idioma))).toBeTruthy();
   expect(screen.getByRole('button', { name: t('upload.procesar', idioma) }).hasAttribute('disabled')).toBe(true);
   const main = within(screen.getByRole('main'));
   fireEvent.click(main.getByRole('button', { name: t('upload.enviar_texto', idioma) }));
   expect(main.getByLabelText(t('upload.texto_titulo', idioma))).toBeTruthy();
+  expect(main.getByText(t('upload.aviso_privacidad', idioma))).toBeTruthy();
   fireEvent.click(main.getByRole('button', { name: t('upload.titulo', idioma) }));
   expect(main.getByLabelText(t('upload.titulo', idioma), { selector: 'input' })).toBeTruthy();
 });

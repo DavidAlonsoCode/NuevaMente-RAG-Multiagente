@@ -235,7 +235,7 @@ la entrega; el plazo reservado para revisión no sustituye esa corrección.
 - [ ] Escaneo de secretos del historial de Git limpio.
 - [ ] Pruebas de seguridad de este issue: accesos cruzados entre espacios a documento, SSE, export y progreso devuelven 404. Issue 53 reutiliza estas pruebas; cerrar Issue 51 no depende de completar Issue 53.
 
-**Verificación**: documento de revisión + rerun de tests de aislamiento.
+**Verificación**: documento de revisión + rerun de tests de aislamiento. Evidencia: [revisión de seguridad](../revision_seguridad.md) y [metadatos del escaneo](../evidencia-seguridad-51.json).
 
 ---
 
@@ -286,11 +286,13 @@ proveedores dobles con integración real ni retirar pruebas para obtener CI verd
 **Criterios de aceptación**:
 - [ ] Los 14 criterios tienen cobertura trazada (test o protocolo); pasan las comprobaciones locales y las externas pendientes están identificadas en #133.
 - [ ] La suite automatizada corre en CI con dobles.
-- [ ] El protocolo manual tiene evidencia local archivada (capturas/video), con proveedores declarados y firma de dos personas; su repetición pública y con proveedores reales queda trazada en #133.
+- [ ] El protocolo manual está preparado y enlazado al #56, donde se aceptan su evidencia local (capturas/video), proveedores declarados y firma de dos personas; su repetición pública y con proveedores reales queda en #133.
 
-**Verificación**: `pytest -m "e2e and not integration_real"` + protocolo manual firmado por 2 personas.
+**Verificación**: `pytest -m "e2e and not integration_real"` + [matriz y protocolo](../verificacion-issue-53.md). La ejecución/firma humana se acepta en #56.
 
 **Aceptación externa trasladada — 16/10/2026**: #53 mantiene sus 14 criterios, cobertura, ejecución local y revisión manual. #133 conserva su aceptación en la URL pública y registra commit, configuración, evidencias y revisores; ni la CI con dobles ni el cierre de #53 sustituyen esa ejecución.
+
+**Ajuste autorizado — 18/10/2026**: la ejecución manual local, sus capturas/video y la firma de dos personas se trasladan de #53 a #56 para integrarlas al ensayo y las evidencias. #53 conserva los 14 criterios trazados, automatización y protocolo preparado. No se declara realizada la revisión ni se modifica la evaluación pedagógica de #60; la aceptación pública/real permanece en #133.
 
 ---
 

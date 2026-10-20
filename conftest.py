@@ -58,6 +58,16 @@ def pytest_configure(config):
     os.environ["APP_ENV"] = "ci" if os.environ.get("APP_ENV") == "ci" else "test"
 
 
+def pytest_collection_modifyitems(items):
+    """Un E2E debe declarar sus proveedores para no salir de la selección ordinaria."""
+    for item in items:
+        if item.get_closest_marker("e2e") is not None:
+            mock = item.get_closest_marker("integration_mock") is not None
+            real = item.get_closest_marker("integration_real") is not None
+            if mock == real:
+                raise pytest.UsageError(f"{item.nodeid}: e2e exige exactamente integration_mock o integration_real")
+
+
 @pytest.fixture
 async def api_cliente(request):
     """Sesión HTTP contra la API en memoria (httpx + transporte ASGI).

@@ -53,17 +53,20 @@ _FORMATOS = {
 _TIPOS = ("flashcards", "quiz", "tutorial", "resumen_ejecutivo", "guion_clase")
 
 
+# con esta funcion normalizo el texto eliminando caracteres de control no imprimibles para evitar fallos de renderizado en el pdf
 def _limpiar(valor):
     valor = unicodedata.normalize("NFC", str(valor).replace("\r\n", "\n").replace("\r", "\n"))
     return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", valor)
 
 
+# aqui escapo el texto para que pueda ser interpretado de forma segura por el motor de parrafos (paragraph) de reportlab
 def _texto(valor):
     # El XML de Paragraph lo genera exclusivamente la plantilla. Ni imágenes,
     # links ni instrucciones de ReportLab procedentes del documento se interpretan.
     return html.escape(_limpiar(valor), quote=True).replace("\n", "<br/>")
 
 
+# con esta funcion registro las fuentes truetype locales en reportlab para soportar caracteres internacionales de forma determinista y sin dependencias externas
 def _registrar_fuentes():
     for nombre, archivo in (
         ("NM", "Vera.ttf"),
@@ -77,6 +80,7 @@ def _registrar_fuentes():
     pdfmetrics.registerFontFamily("NM", normal="NM", bold="NM-Bold", italic="NM-Italic", boldItalic="NM-BoldItalic")
 
 
+# con este componente visual personalizado de reportlab dibujo bloques de codigo con numeracion de lineas fondo coloreado y soporte de division entre paginas
 class _Codigo(Flowable):
     """Conserva líneas e indentación; divide sólo por líneas, con numeración y continuación."""
 
@@ -115,6 +119,7 @@ class _Codigo(Flowable):
             c.drawString(45, y, linea)
 
 
+# aqui divido las lineas de codigo respetando el ancho de la columna e insertando indicadores de continuacion visual sin modificar el codigo fuente
 def _filas_codigo(codigo):
     ancho_caracter = pdfmetrics.stringWidth("M", "NM-Code", 8.5)
     longitud = int((_ANCHO - 57) / ancho_caracter)
@@ -126,6 +131,7 @@ def _filas_codigo(codigo):
     return filas
 
 
+# con esta clase armo la estructura documental del pdf integrando portada objetivos tarjetas cuestionarios con soluciones y citas bibliograficas
 class _PlantillaPDF:
     def __init__(self, paquete):
         self.paquete = paquete
@@ -360,6 +366,7 @@ class _PlantillaPDF:
         canvas.restoreState()
 
 
+# aqui compilo el documento pdf utilizando un cerrojo de concurrencia y opciones de reporte estables para generar bytes reproducibles segun el issue 44
 def renderizar_pdf(paquete: PedagogicalOutput) -> bytes:
     # Las fuentes dinámicas de ReportLab comparten registro global. Serializar
     # registro/build evita estados cruzados entre descargas de distintos espacios.

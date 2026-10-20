@@ -46,6 +46,7 @@ def frames(respuesta):
 
 
 @pytest.mark.parametrize("formato", ["flashcards", "quiz", "tutorial", "resumen_ejecutivo", "guion_clase"])
+@pytest.mark.e2e
 def test_upload_ready_generacion_exportacion_y_sse(entorno, formato):
     e = entorno
     assert e.cliente.get("/api/documents/" + e.doc, headers=e.headers).json()["status"] == "ready"
@@ -69,6 +70,7 @@ def test_upload_ready_generacion_exportacion_y_sse(entorno, formato):
 
 
 @pytest.mark.parametrize("terminal", ["rejected_quality", "failed"])
+@pytest.mark.e2e
 def test_terminales_no_aprobados_no_publican(entorno, monkeypatch, terminal):
     e = entorno
     if terminal == "rejected_quality":
@@ -90,6 +92,7 @@ def test_terminales_no_aprobados_no_publican(entorno, monkeypatch, terminal):
 
 
 @pytest.mark.parametrize("en_cola", [False, True])
+@pytest.mark.e2e
 def test_cancelacion_no_publica_ni_repite_proveedor(entorno, en_cola):
     e = entorno
     liberar = threading.Event()
@@ -114,6 +117,7 @@ def test_cancelacion_no_publica_ni_repite_proveedor(entorno, en_cola):
         liberar.set()
 
 
+@pytest.mark.e2e
 def test_idempotencia_concurrente_en_curso_y_conflicto(entorno):
     e = entorno
     e.doble.bloquear = threading.Event()
@@ -130,6 +134,7 @@ def test_idempotencia_concurrente_en_curso_y_conflicto(entorno):
         e.doble.bloquear.set()
 
 
+@pytest.mark.e2e
 def test_quiz_y_progreso_repetidos_sin_cuota_ni_duplicados(entorno):
     e = entorno
     recibo = generar(e, formato_salida="quiz").json()
@@ -149,6 +154,7 @@ def test_quiz_y_progreso_repetidos_sin_cuota_ni_duplicados(entorno):
     assert e.doble.llamadas_generacion + e.doble.llamadas_verificacion == llamadas
 
 
+@pytest.mark.e2e
 def test_persist_503_concurrente_recupera_aprobado_sin_llm(entorno, monkeypatch):
     e = entorno
     upload = e.storage.upload
@@ -231,10 +237,12 @@ def test_envoltorios_http_con_request_id(entorno, monkeypatch, http, codigo):
     assert "privado" not in json.dumps(datos)
 
 
-@pytest.mark.parametrize("ruta", ["estado", "sse", "export", "quiz", "documento"])
-def test_dos_espacios_recursos_ajenos_404(entorno, ruta):
+@pytest.mark.parametrize("modo", ["multiagente", "basico"])
+@pytest.mark.parametrize("ruta", ["estado", "sse", "export", "quiz", "documento", "progreso"])
+@pytest.mark.e2e
+def test_dos_espacios_recursos_ajenos_404(entorno, ruta, modo):
     e = entorno
-    recibo = generar(e, formato_salida="quiz").json()
+    recibo = generar(e, formato_salida="quiz", modo_generacion=modo).json()
     esperar(e, recibo)
     otro = e.cliente.post("/api/workspaces").json()
     headers = {"Authorization": "Bearer " + otro["token"]}
@@ -244,7 +252,15 @@ def test_dos_espacios_recursos_ajenos_404(entorno, ruta):
         "export": "/api/exports/" + recibo["generation_id"],
         "documento": "/api/documents/" + e.doc,
     }
-    if ruta == "quiz":
+    llamadas = (e.doble.llamadas_generacion, e.doble.llamadas_verificacion)
+    if ruta == "progreso":
+        res = e.cliente.post(
+            "/api/progress/events",
+            headers=headers,
+            json={"event_id": "ajeno", "tipo": "concepto_revisado", "document_id": e.doc, "concepto": "VCN"},
+        )
+        assert e.cliente.get("/api/progress", headers=headers).json()["conceptos_revisados"] == 0
+    elif ruta == "quiz":
         res = e.cliente.post(
             "/api/quizzes/" + recibo["generation_id"] + "/answers",
             headers=headers,
@@ -253,6 +269,7 @@ def test_dos_espacios_recursos_ajenos_404(entorno, ruta):
     else:
         res = e.cliente.get(urls[ruta], headers=headers)
     envoltorio(res, 404, "NOT_FOUND")
+    assert llamadas == (e.doble.llamadas_generacion, e.doble.llamadas_verificacion)
 
 
 @pytest.mark.parametrize("fallos,terminal", [(2, "completed"), (99, "failed")])
@@ -354,6 +371,7 @@ async def test_heartbeat_desconexion_consulta_estado_y_no_nueva_ejecucion(entorn
 
 
 @pytest.mark.parametrize("tipo", ["chat", "glosario"])
+@pytest.mark.e2e
 def test_endpoints_comunes_consultan_sse_citas_y_aislamiento(request, tipo):
     e = request.getfixturevalue("entorno_chat" if tipo == "chat" else "entorno_glosario")
     res = chat(e) if tipo == "chat" else glosario(e)

@@ -56,6 +56,8 @@ El feedback del Critic requiere corregir el respaldo, sin añadir hechos.
 """
 
 
+# con esta funcion acoto la cantidad de turnos previos del dialogo para no sobrepasar el presupuesto de tokens
+# recorro el historial desde el mensaje mas reciente y calculo el peso con el tokenizador local
 def acotar_historial(turnos, limite_tokens, tokenizador=None):
     tokenizador = tokenizador or TokenizadorBPE()
     seleccion = []
@@ -68,6 +70,8 @@ def acotar_historial(turnos, limite_tokens, tokenizador=None):
     return seleccion
 
 
+# con este adaptador interno convierto la consulta conversacional en un formato compatible con el revisor
+# vinculo la pregunta en el frente y la respuesta en el dorso para reutilizar la evaluacion pedagogica y de fidelidad
 class _AdaptadorPreguntaRespuesta:
     """El único texto sustantivo es el dorso; Writer/Critic revisan ese texto exacto.
 
@@ -133,12 +137,16 @@ class _AdaptadorPreguntaRespuesta:
         )
 
 
+# aqui gestiono el servicio del tutor interactivo para responder dudas del usuario sobre el documento tecnico
+# este modulo utiliza recuperacion aumentada (RAG) y somete cada respuesta a verificacion antes de entregarla
 class ServicioChat:
     def __init__(self, db, consulta, gestor, cfg, generador=None, verificador=None):
         self.db, self.consulta, self.gestor, self.cfg = db, consulta, gestor, cfg
         self.generador, self.verificador = generador, verificador
         self.retriever = RetrieverMMR(consulta.indice, configuracion=cfg) if consulta.indice is not None else None
 
+    # con este metodo verifico que la respuesta guardada corresponda a la misma fuente documental y espacio de trabajo
+    # si el documento original cambio o fue retirado bloqueo la entrega de la respuesta para evitar inconsistencias
     def autorizar_resultado(self, workspace_id, resultado, token=None):
         respuesta = ChatAnswer.model_validate(resultado)
         if token is not None:
@@ -153,6 +161,8 @@ class ServicioChat:
             raise ErrorAplicacion(ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible.")
         return respuesta
 
+    # aqui recibo la consulta del usuario y registro la intencion en la cola de tareas en segundo plano
+    # valido que los modelos y cuotas de recuperacion esten listos y devuelvo el identificador del trabajo (job_id)
     def encolar(self, token, solicitud, clave=None):
         doc = self.consulta._listo(token, solicitud.document_id)
 
@@ -175,6 +185,8 @@ class ServicioChat:
         )
         return job["job_id"]
 
+    # en esta funcion ejecuto el ciclo conversacional recuperando fragmentos relevantes y redactando la respuesta
+    # si la evidencia recuperada no cubre la pregunta emito una abstencion controlada sin inventar hechos
     def ejecutar(self, solicitud, ctx):
         doc = self.consulta.documento_grafo(ctx, solicitud.document_id)
         if doc is None:

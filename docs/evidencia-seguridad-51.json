@@ -1,0 +1,46 @@
+{
+  "fecha": "2026-10-18",
+  "issue": 51,
+  "base_develop": "5988244a40fb1f3061c0bafc1fc106eb6e592a0a",
+  "rama_revisada": "feature/issue-51-hardening",
+  "commit_inicial": "629795b53845a10a02ba8ef91de6f0be505c4a28",
+  "herramienta": {
+    "nombre": "Gitleaks",
+    "version": "8.30.1",
+    "release": "https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1",
+    "artefacto": "gitleaks_8.30.1_windows_x64.zip",
+    "sha256": "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e",
+    "checksum_oficial_verificado": true
+  },
+  "alcance": {
+    "fuente": "objetos Git alcanzables por todas las refs locales y remotas descargadas",
+    "opciones_git": "--all --full-history",
+    "commits_alcanzables_iniciales": 344,
+    "trabajo_sin_seguimiento_incluido": false,
+    "comentarios_inline_de_exclusion_permitidos": false
+  },
+  "coincidencias_iniciales": 4,
+  "detecciones_pendientes_tras_triaje": 0,
+  "codigo_salida_tras_triaje": 0,
+  "excepciones": [
+    {
+      "fingerprint": "e7a4d52787cad5cc518e6917a9c7368ba4209283:frontend/components/result.py:generic-api-key:73",
+      "motivo": "Prefijo de identidad de widgets de la interfaz antigua; no es una credencial."
+    },
+    {
+      "fingerprint": "e1082fc8e850ceb59709d47b9549953cb3f5d1a5:backend/tests/integration/caddy_fixture.py:generic-api-key:23",
+      "motivo": "Patrón hexadecimal repetido de 16 caracteres en fixture de Caddy; sin acceso a proveedores."
+    },
+    {
+      "fingerprint": "e1082fc8e850ceb59709d47b9549953cb3f5d1a5:backend/tests/test_caddy_config.py:generic-api-key:21",
+      "motivo": "Patrón hexadecimal repetido de 16 caracteres en fixture de Caddy; sin acceso a proveedores."
+    },
+    {
+      "fingerprint": "ba8887206f328d24ab67ef4f55c4fd9594ced423:frontend/api_client.py:generic-api-key:203",
+      "motivo": "Nombres de parámetros token/idempotency_key; no hay valor de credencial en la coincidencia."
+    }
+  ],
+  "sensibilidad_credencial_sintetica_detectada": true,
+  "proveedores_reales_consultados": false,
+  "repeticion": "Repetir sobre HEAD después de los commits; la evidencia final se vincula desde el PR."
+}

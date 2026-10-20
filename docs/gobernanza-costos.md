@@ -32,6 +32,14 @@ obtiene ese privilegio.
 
 ## Información al usuario
 
+Contraste documental del **17/10/2026**, base integrada `5988244`: básico y
+multiagente comparten admisiones, presupuestos y controles de persistencia.
+El básico no garantiza ahorro fijo ni aprobación independiente; recuperación
+y descargas conservan el modo del paquete 1.0/1.1. Descargar no llama al LLM,
+pero las lecturas y el almacenamiento de derivados consumen presupuesto OCI.
+No se reinician contadores al cambiar modo, versión o lector. Este contraste no
+repite la inspección real histórica ni acredita el consumo actual.
+
 `GET /api/workspaces/current` requiere Bearer y devuelve `workspace_id`,
 `expira_en`, `ultima_actividad_en`, `uso` y `almacenamiento` (agregados, proveedor,
 límites, margen, alerta y bloqueo). No expone claves de objetos, credenciales ni
@@ -80,6 +88,23 @@ La alerta cubre facturación agregada; no sustituye estos límites ni garantiza
 Always Free. Si faltan permisos, registrar esa limitación en evidencia del despliegue.
 La ejecución real autorizada del #50 y sus resultados están en
 [Evidencia OCI](evidencia-oci-gobernanza.md).
+Ese registro del **12/10/2026** conserva el límite anterior de 5.000 solicitudes
+y su margen de 500; no describe los límites actuales de 20.000/2.000 ni acredita
+el estado actual de la tenancy. Esta actualización documental no repite la inspección.
 
-Verificación: `pytest backend/tests/test_budgets.py backend/tests/test_budgets_api.py
-frontend/tests/test_budgets_ui.py` y la inspección real anterior.
+El ledger `oci_budget.sqlite3` y las obligaciones locales de limpieza/revocación
+forman parte del estado durable del volumen. Recuperar originales y manifiestos
+desde OCI no reconstruye el contador mensual perdido ni las marcas que nunca
+se sincronizaron. No interpretar un ledger nuevo como consumo cero. El
+[mapa de #58](verificacion-issue-58.md#recuperación-y-estado-durable) registra estos
+límites; el [procedimiento de backup/restauración](despliegue-oci.md#16-backup-físico-consistente-del-volumen-completo)
+está redactado, con ensayo sintético limitado. Su reproducción operativa real sigue
+pendiente en #133; frecuencia, retención y custodia requieren decisión del equipo.
+
+Referencias de verificación backend existentes: `backend/tests/test_budgets.py`
+y `backend/tests/test_budgets_api.py`, además de la inspección real anterior.
+El [módulo UI histórico, base f292415](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/blob/f2924151302001141bec65aadd081d3247e485c4/frontend_streamlit_viejo/tests/test_budgets_ui.py)
+fue retirado con Streamlit en #139 y no acredita React ni es ejecutable en esta base.
+Son referencias de verificación existentes, no pruebas ejecutadas por esta
+corrección documental. La aceptación externa del despliegue permanece en
+[#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).

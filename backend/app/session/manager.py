@@ -12,6 +12,8 @@ from app.storage.provider import StorageConflict, StorageError, StorageProvider
 logger = logging.getLogger("nuevamente.session")
 
 
+# con esta clase administro el ciclo de vida completo de las sesiones y espacios anonimos de trabajo
+# coordino la generacion de identificadores unicos tokens seguros y codigos de recuperacion de alta entropia
 class SessionManager:
     def __init__(
         self,
@@ -25,6 +27,8 @@ class SessionManager:
         self.workspace_retention_days = workspace_retention_days
         self.session_max_hours = session_max_hours
 
+    # en este metodo creo un nuevo espacio anonimo dentro de una transaccion atomica de sqlite
+    # genero un codigo de recuperacion seguro de al menos 128 bits y sincronizo el manifiesto inicial en oci
     def crear_espacio(self) -> WorkspaceCreatedResponse:
         workspace_id = str(uuid.uuid4())
         # Generación del código de recuperación
@@ -44,6 +48,8 @@ class SessionManager:
                 workspace_id=workspace_id, recovery_code=codigo_recuperacion, token=token_sesion
             )
 
+    # aqui permito que un usuario recupere el acceso a su espacio de trabajo utilizando su codigo secreto
+    # valido el codigo en la base de datos renuevo la fecha de expiracion y emito un nuevo token de sesion
     def recuperar_sesion(self, codigo_recuperacion: str) -> SessionResponse:
         workspace = self.db.resolver_workspace(codigo_recuperacion)
         if workspace is None:
@@ -70,15 +76,21 @@ class SessionManager:
                 message="El espacio cambió durante la recuperación; volver a intentarlo.",
             ) from None
 
+    # con esta funcion busco y valido la sesion vinculada a un token actualizando la marca de actividad reciente
+    # si la sesion existe extiendo el plazo de retencion del espacio segun las politicas del sistema
     def obtener_sesion(self, token: str) -> dict | None:
         sesion = self.db.obtener_sesion(token)
         if sesion is not None:
             self.db.registrar_actividad(sesion["workspace_id"], self.workspace_retention_days)
         return sesion
 
+    # aqui invalido de forma inmediata el token de sesion indicado para cerrar el acceso del cliente
+    # esta operacion elimina la sesion activa en la base de datos sin borrar los documentos del espacio
     def revocar_sesion(self, token: str) -> None:
         self.db.revocar_sesion(token)
 
+    # con este metodo renuevo el codigo de recuperacion del espacio revocando todas las sesiones previas activas
+    # registro la rotacion en la base operativa y actualizo la version del manifiesto en el almacenamiento en la nube
     def rotar_credenciales(self, workspace_id: str) -> tuple[str, str]:
         # Obtener el workspace actual antes de rotar las credenciales
         workspace = self.db.obtener_workspace(workspace_id)

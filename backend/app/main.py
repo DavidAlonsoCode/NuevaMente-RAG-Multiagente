@@ -22,7 +22,7 @@ fábrica permite construir la aplicación con configuración inyectada (los
 tests crean instancias aisladas sin tocar el entorno). ``app`` queda
 disponible al final del módulo para que uvicorn la encuentre:
 
-    uvicorn app.main:app --host 0.0.0.0 --port 8000
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
 
 Los "middleware" y "handlers" en lenguaje llano: FastAPI procesa cada
 petición como una cadena — el middleware corre ANTES y DESPUÉS de la ruta
@@ -80,9 +80,27 @@ if TYPE_CHECKING:
 # ContextVar: una variable que vale "para la petición actual". Los módulos
 # de negocio podrán leer el request_id para logging sin pasarlo a mano por
 # todas las funciones (§11.5).
+# aqui defino una variable de contexto (ContextVar) para aislar el identificador unico de cada peticion (request_id)
+# esta herramienta de python permite guardar valores propios de cada flujo asincrono sin mezclar datos entre usuarios
+# con esto cumplo el requisito de trazabilidad transversal establecido en la seccion 11.5 de la arquitectura
 request_id_actual: ContextVar[str] = ContextVar("request_id", default="sin-request")
 
 logger = logging.getLogger("nuevamente.api")
+
+
+# con esta clase filtro los registros de error del servidor para no exponer trazas internas (stacktraces)
+# en python personalizo la clase Filter del modulo logging para limpiar los mensajes antes de que salgan a consola
+# esto responde al requisito de seguridad que prohibe filtrar secretos o rutas del sistema en caso de fallo
+class _FiltroErrorServidor(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info:
+            record.msg = "Excepcion ASGI tipo=%s"
+            record.args = (getattr(record.exc_info[0], "__name__", "desconocido"),)
+            record.exc_info = None
+            record.exc_text = None
+            record.stack_info = None
+        return True
+
 
 # Cabecera estándar de trazabilidad del proyecto (contratos-api.md:
 # "toda respuesta incluye cabecera X-Request-ID").
@@ -102,6 +120,9 @@ _MAPEO_HTTP_A_CODIGO: dict[int, ErrorCode] = {
 }
 
 
+# con esta funcion auxiliar armo la estructura estandar de error que exige el contrato de la api
+# utilizo el modelo de pydantic para validar los campos y luego lo transformo en un diccionario serializable
+# esto asegura que el frontend reciba siempre un formato uniforme con codigo, mensaje y detalles
 def _envoltorio(
     codigo: ErrorCode, mensaje: str, request_id: str, detalles: dict | None = None, *, request: Request | None = None
 ) -> dict:
@@ -116,6 +137,9 @@ def _envoltorio(
     ).model_dump()
 
 
+# aqui busco y recupero el identificador de la peticion actual consultando dos origenes distintos
+# primero reviso el estado compartido de starlette (request.state) y si no existe consulto la variable de contexto
+# de esta manera garantizo que cualquier manejador de errores pueda incluir el id de seguimiento sin fallar
 def _request_id_de(request: Request) -> str:
     """Recupera el request_id de la petición actual para los handlers.
 
@@ -131,6 +155,9 @@ def _request_id_de(request: Request) -> str:
     return getattr(request.state, "request_id", None) or request_id_actual.get()
 
 
+# con esta funcion creadora (factory pattern) construyo e inicializo la aplicacion de fastapi
+# aplicar este patron me permite inyectar configuraciones alternativas para pruebas automatizadas sin tocar variables globales
+# aqui valido al inicio las credenciales y limites operativos para evitar que el sistema falle a mitad de una ejecucion
 def crear_app(
     configuracion: Configuracion | None = None,
     *,
@@ -149,6 +176,9 @@ def crear_app(
     mensaje accionable, no a mitad de una generación).
     """
     ajustes = configuracion or config
+    log_servidor = logging.getLogger("uvicorn.error")
+    if not any(isinstance(filtro, _FiltroErrorServidor) for filtro in log_servidor.filters):
+        log_servidor.addFilter(_FiltroErrorServidor())
     ajustes.validar_critico()
     if cuotas_proveedor is None:
         cuotas = cuotas_configuradas(ajustes)
@@ -158,6 +188,10 @@ def crear_app(
     if (proveedor_generacion is None) != (proveedor_verificacion is None):
         raise ValueError("Inyectar juntos generación y verificación")
 
+    # defino el administrador de ciclo de vida (lifespan) usando un manejador de contexto asincrono (asynccontextmanager)
+    # este mecanismo moderno de fastapi reemplaza a los antiguos eventos de inicio y apagado (startup y shutdown)
+    # aqui dentro inicio la base de datos de sqlite, los clientes de almacenamiento en la nube y el gestor de trabajos en cola
+    # al finalizar la ejecucion el bloque finally garantiza que todos los recursos y conexiones se liberen ordenadamente
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         gestor = None
@@ -332,6 +366,9 @@ def crear_app(
 
     # ------------------------- Middleware request_id -------------------------
 
+    # este intermediario (middleware) intercepta absolutamente todas las peticiones entrantes y salientes
+    # con la llamada await call_next cedo el control para que se ejecute la ruta correspondiente y luego retomo la respuesta
+    # aqui asigno o genero un identificador unico (uuid4) para asegurar la trazabilidad de cada peticion en los registros del sistema
     @app.middleware("http")
     async def asignar_request_id(request: Request, call_next):
         """Corre envolviendo TODA petición: asigna/acepta el request_id.
@@ -359,7 +396,13 @@ def crear_app(
             # Siempre restaurar el contexto, aun si la ruta explotó.
             request_id_actual.reset(token)
         respuesta.headers[CABECERA_REQUEST_ID] = request_id
-        logger.info("%s %s request_id=%s", request.method, request.url.path, request_id)
+        ruta_log = getattr(request.scope.get("route"), "path", "ruta_no_encontrada")
+        metodo_log = (
+            request.method
+            if request.method in {"GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"}
+            else "OTRO"
+        )
+        logger.info("%s %s request_id=%s", metodo_log, ruta_log, request_id)
         return respuesta
 
     # ------------------------- CORS opcional (§11.2) -------------------------
@@ -380,6 +423,8 @@ def crear_app(
 
     # ------------------------- Handlers de excepción -------------------------
 
+    # con este decorador capturo las excepciones de almacenamiento cuando el servicio de oracle cloud (oci) no responde
+    # transformo el error interno en una respuesta http 503 controlada para que el cliente comprenda la indisponibilidad temporal
     @app.exception_handler(StorageUnavailable)
     async def manejar_storage(request: Request, exc: StorageUnavailable):
         request_id = _request_id_de(request)
@@ -395,6 +440,8 @@ def crear_app(
             headers={CABECERA_REQUEST_ID: request_id},
         )
 
+    # aqui capturo las excepciones de logica de negocio (ErrorAplicacion) definidas en nuestros esquemas
+    # devuelvo el codigo de estado http correspondiente junto con la estructura estandar de error del contrato
     @app.exception_handler(ErrorAplicacion)
     async def manejar_dominio(request: Request, exc: ErrorAplicacion):
         request_id = _request_id_de(request)
@@ -404,6 +451,8 @@ def crear_app(
             headers={**exc.headers, CABECERA_REQUEST_ID: request_id},
         )
 
+    # aqui capturo los errores de validacion que lanza pydantic cuando el cuerpo de una peticion no coincide con el esquema
+    # devuelvo un codigo http 422 y extraigo unicamente la ubicacion y descripcion del fallo sin divulgar datos confidenciales
     @app.exception_handler(RequestValidationError)
     async def manejar_validacion(request: Request, exc: RequestValidationError):
         """Body que no respeta el contrato -> 422 VALIDATION_ERROR.
@@ -437,6 +486,8 @@ def crear_app(
             headers={**(exc.headers or {}), CABECERA_REQUEST_ID: request_id},
         )
 
+    # con este manejador final atrapo cualquier excepcion no controlada para prevenir caidas abruptas del servidor
+    # respondo con un estado 500 generico y oculto la traza de ejecucion para proteger la seguridad de la infraestructura
     @app.exception_handler(Exception)
     async def manejar_no_manejada(request: Request, exc: Exception):
         """Cualquier excepción no manejada -> 500 INTERNAL, sin interior.
@@ -464,6 +515,8 @@ def crear_app(
 
     # ------------------------------ Rutas -----------------------------------
 
+    # con esta ruta expongo una verificacion basica de salud (health check) requerida para monitoreo
+    # respondo de forma rapida y ligera sin consultar servicios externos para evitar falsos negativos en el orquestador
     @app.get("/api/health", responses=respuestas(), openapi_extra=parametros())
     async def health() -> dict:
         """Disponibilidad básica (§7.1): sin secretos, sin llamadas LLM.
@@ -491,6 +544,8 @@ def crear_app(
     app.state.progress = None
     app.state.glossary = None
 
+    # aqui registro en la aplicacion principal los diferentes enrutadores (routers) divididos por dominio
+    # esta modularizacion desacopla los modulos de documentos, generaciones, espacios de trabajo y exportaciones
     app.include_router(workspaces.router)
     app.include_router(jobs.router)
     app.include_router(documents.router)

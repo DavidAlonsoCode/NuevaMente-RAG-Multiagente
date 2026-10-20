@@ -162,6 +162,7 @@ _ETIQUETAS = {
 _IDIOMAS = {"es": "Español", "en": "English", "pt": "Português"}
 
 
+# con esta funcion sanitizo y escapo caracteres especiales para generar texto markdown seguro sin inyecciones accidentales de etiquetas o formato
 def texto(valor: str, *, una_linea=False) -> str:
     """Texto del documento como texto: sin HTML activo, enlaces o títulos inyectados."""
     limpio = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", valor.replace("\r\n", "\n").replace("\r", "\n"))
@@ -170,6 +171,7 @@ def texto(valor: str, *, una_linea=False) -> str:
     return re.sub(r"([\\`*_{}\[\]()#+.!|>~-])", r"\\\1", html.escape(limpio, quote=False))
 
 
+# con esta funcion calculo la cantidad necesaria de acentos graves (backticks) para aislar bloques de codigo sin romper la delimitacion de markdown
 def bloque_codigo(codigo: str) -> str:
     # Un cierre de fence incluido en el snippet nunca sale del bloque literal.
     longitud = max((len(m.group()) for m in re.finditer(r"`+", codigo)), default=0)
@@ -177,6 +179,7 @@ def bloque_codigo(codigo: str) -> str:
     return fence + "\n" + codigo.replace("\r\n", "\n").replace("\r", "\n") + "\n" + fence
 
 
+# con esta clase auxiliar compilo el contenido educativo en formato markdown estructurando titulos listas tablas y notas al pie para las citas
 class _Plantilla:
     def __init__(self, paquete):
         self.l = _ETIQUETAS[paquete.metadatos.idioma_salida.value]
@@ -220,6 +223,7 @@ class _Plantilla:
         return "\n\n".join(self.partes) + "\n"
 
 
+# aqui transformo el paquete educativo aprobado en un documento markdown enriquecido con codificacion utf-8 segun el issue 23
 def renderizar_markdown(paquete: PedagogicalOutput) -> bytes:
     p, contenido, m = _Plantilla(paquete), paquete.contenido_adaptado, paquete.metadatos
     p.agregar("# " + texto(contenido.titulo, una_linea=True))

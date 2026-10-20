@@ -62,6 +62,7 @@ from typing import Callable
 # --------------------------------------------------------------------------
 
 
+# con esta enumeracion defino los tres estados posibles de la evaluacion factual para no inflar artificialmente la puntuacion ante fallos
 class EstadoEvaluacion(str, Enum):
     """Cómo terminó la evaluación (§19.1).
 
@@ -77,6 +78,7 @@ class EstadoEvaluacion(str, Enum):
     FALLO_TECNICO = "fallo_tecnico"
 
 
+# con esta estructura inmutable represento una afirmacion atomica con un identificador unico y estable para validar completitud
 @dataclass(frozen=True)
 class Afirmacion:
     """Una afirmación atómica con id ESTABLE (§19.1: "identificador estable").
@@ -89,6 +91,7 @@ class Afirmacion:
     texto: str
 
 
+# aqui modelo el veredicto booleano del juez sobre una afirmacion con su motivo explicativo y referencias de respaldo
 @dataclass(frozen=True)
 class Juicio:
     """El veredicto del juez sobre UNA afirmación (§19.1: veredicto, motivo
@@ -100,6 +103,7 @@ class Juicio:
     referencias: tuple[str, ...] = ()
 
 
+# con esta clase empaqueto el resultado completo de fidelidad incluyendo la puntuacion de anclaje afirmaciones y hallazgos
 @dataclass
 class ResultadoFidelidad:
     """Resultado completo de una evaluación de fidelidad.
@@ -134,13 +138,16 @@ Descompositor = Callable[[str], list[Afirmacion]]
 JuezNLI = Callable[[list[Afirmacion], str], list[Juicio]]
 
 
+# con esta clase orquesto la descomposicion en hechos y el juicio logico (nli) para calcular el anclaje a la fuente segun el issue 24
 class VerificadorFidelidad:
     """Orquesta descomposición + juicio NLI con todas las salvaguardas."""
 
+    # en el constructor inyecto el descompositor y el juez permitiendo usar modelos de lenguaje reales o dobles de prueba deterministicos
     def __init__(self, descomponer: Descompositor, juzgar: JuezNLI) -> None:
         self._descomponer = descomponer
         self._juzgar = juzgar
 
+    # aqui ejecuto la verificacion de fidelidad aislando distractores de cuestionarios y segmentos etiquetados de analogias
     def verificar(
         self,
         texto: str,
@@ -200,6 +207,7 @@ class VerificadorFidelidad:
             resultado.diagnostico = "No quedan afirmaciones educativas fuera de los segmentos excluidos."
             return resultado
 
+        # en el paso uno descompongo el texto en oraciones simples que sostienen un unico hecho verificable
         # ---- Paso 1: descomposición (falla => fallo técnico) ----
         try:
             afirmaciones = self._descomponer(texto)
@@ -229,6 +237,7 @@ class VerificadorFidelidad:
         resultado.afirmaciones = list(afirmaciones)
         resultado.total = len(afirmaciones)
 
+        # en el paso dos contrasto cada afirmacion contra el contexto recuperado obteniendo un veredicto de respaldo
         # ---- Paso 2: juicio NLI contra el contexto ----
         try:
             juicios = self._juzgar(list(afirmaciones), contexto)
@@ -241,6 +250,7 @@ class VerificadorFidelidad:
             resultado.diagnostico = "El juez devolvió juicios inválidos; se exigen veredictos booleanos."
             return resultado
 
+        # compruebo que el juez haya evaluado todas las afirmaciones sin omitir ni duplicar ninguna para garantizar honestidad en el calculo
         # ---- Validación de completitud (§19.1: el corazón de la honestidad) ----
         esperados = {afirmacion.id for afirmacion in afirmaciones}
         recibidos = [juicio.id_afirmacion for juicio in juicios]
@@ -268,6 +278,7 @@ class VerificadorFidelidad:
         resultado.estado = EstadoEvaluacion.EVALUABLE
         resultado.diagnostico = f"{resultado.respaldadas} de {resultado.total} afirmaciones respaldadas."
 
+        # compruebo los distractores del cuestionario de forma independiente esperando que no esten respaldados para evitar respuestas ambiguas
         # ---- §19.2: distractores comprobados aparte ----
         for distracto in distractores or []:
             try:
@@ -292,6 +303,7 @@ class VerificadorFidelidad:
         return resultado
 
 
+# con esta funcion auxiliar compruebo que la lista de juicios devuelta por el juez cumpla estrictamente con los tipos y campos requeridos
 def _juicios_validos(juicios) -> bool:
     return isinstance(juicios, list) and all(
         isinstance(j, Juicio)
@@ -305,6 +317,7 @@ def _juicios_validos(juicios) -> bool:
     )
 
 
+# con esta funcion acorto el texto del distractor para mostrarlo de forma clara en los reportes de hallazgos
 def distractor_corto(texto: str, largo: int = 60) -> str:
     """Recorta un distractor para los mensajes de hallazgo (legibilidad)."""
     return texto if len(texto) <= largo else texto[: largo - 1] + "…"
@@ -315,6 +328,7 @@ def distractor_corto(texto: str, largo: int = 60) -> str:
 # --------------------------------------------------------------------------
 
 
+# con esta enumeracion defino las bandas de aprobacion segun la politica de calidad separando entre rehacer revisar o candidato
 class FranjaAprobacion(str, Enum):
     """Bandas de §19.3 para un score EVALUABLE.
 
@@ -329,6 +343,7 @@ class FranjaAprobacion(str, Enum):
     CANDIDATO = "candidato"  # 0.85 <= score <= 1.00: sigue la rúbrica completa
 
 
+# con esta funcion pura traduzco la puntuacion de fidelidad a su correspondiente banda de aprobacion sin tomar decisiones de negocio
 def franja_de_aprobacion(score: float) -> FranjaAprobacion:
     """Traduce un score evaluabile a su banda de §19.3 (función pura)."""
     if type(score) not in (int, float) or not isfinite(score) or not 0 <= score <= 1:

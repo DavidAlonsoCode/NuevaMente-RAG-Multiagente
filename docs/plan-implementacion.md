@@ -73,6 +73,10 @@ Ajuste autorizado del 16/10: las comprobaciones pendientes que requieren Gemini/
 
 **Complemento autorizado 33.1**: [modos de generación](modos-generacion.md) agrega básico con RAG sin evaluación independiente y conserva el multiagente. Ambos reutilizan el documento e índice; cambiar de modo crea otro material. Se integra antes de cerrar 51/53 y se documenta en 56/57/58; 46 puede avanzar en paralelo. La comparación real de consumo/calidad queda en #133; 60 conserva sus 12 casos y revisores.
 
+**Ajuste autorizado del 18/10 — E2E**: #53 entrega automatización, matriz de los 14 criterios y [protocolo manual preparado](verificacion-issue-53.md). La ejecución manual local, capturas/video y firma de dos personas se aceptan en #56 junto al ensayo y sus evidencias. Su repetición pública/con proveedores reales sigue en #133. No se declara realizada esa revisión ni se modifica la muestra pedagógica de #60.
+
+**Ajuste autorizado del 18/10 — cierre en paralelo**: #56/#57 pueden ejecutarse sin esperar #60. En #57, #56 y #58 también pasan de prerrequisitos a coordinación recomendada para el repaso final. Se mantienen sus criterios propios y los doce casos/dos revisores de #60; el PR #119 puede integrar herramientas preparadas mientras #60 sigue abierto. Las explicaciones y consejos de ejecución de los issues no agregan requisitos. #133 conserva el último cierre, después de reunir documentación, evaluación humana y evidencias; no se traslada allí la revisión de #60.
+
 - **UI completa y cuidada**: conservar el alcance de los issues 33, 34, 36, 38,
   40, 41, 42 y 46, sus drafts y el diseño previsto. Transiciones, animaciones,
   microinteracciones y efectos forman parte del acabado visual; deben conservar
@@ -250,8 +254,8 @@ Tamaños: **S** ≤ medio día · **M** ≈ 1 día · **L** ≈ 1–2 días. El 
 | ID | Título | Carril | Tamaño | Depende de |
 |---|---|---|---|---|
 | `Issue 55` | Generar y persistir resultados demo etiquetados | QAD | M | `Issue 05`, `Issue 31`, `Issue 49` |
-| `Issue 56` | Guion de demo, grabación de respaldo y evidencias | QAD | M | `Issue 55`, `Issue 53`, `Issue 54`, `Issue 60` |
-| `Issue 57` | README final con arquitectura y guía de instalación | QAD | M | `Issue 48`, `Issue 53`, `Issue 54`, `Issue 55`, `Issue 56`, `Issue 58`, `Issue 59`, `Issue 60` |
+| `Issue 56` | Guion de demo, grabación de respaldo y evidencias | QAD | M | `Issue 55`, `Issue 53`, `Issue 54` |
+| `Issue 57` | README final con arquitectura y guía de instalación | QAD | M | `Issue 48`, `Issue 53`, `Issue 54`, `Issue 55`, `Issue 59` |
 | `Issue 58` | Guía de despliegue en OCI | INF | S | `Issue 48`, `Issue 49`, `Issue 50` |
 | `Issue 59` | Referencia de API (OpenAPI) | API | S | `Issue 35`, `Issue 37`, `Issue 39`, `Issue 45` |
 | `Issue 60` | Evaluación pedagógica multilingüe con anotación humana | QAD | L | `Issue 29`, `Issue 05`, `Issue 31` |

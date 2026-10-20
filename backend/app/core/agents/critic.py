@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+# con esta clase inmutable encapsulo todos los servicios y configuraciones que necesita el agente revisor (critic)
+# valido que el modelo de verificacion este configurado y que los metodos de inspeccion funcionen de forma sincrona
+# esto responde al requisito del issue 29 para auditar borradores antes de autorizar su publicacion final
 class DependenciasCritic:
     grafo: DependenciasGrafo = field(repr=False)
     proveedor: VerificadorSync = field(repr=False)
@@ -62,6 +65,8 @@ class DependenciasCritic:
             raise TypeError("El loader visual debe ser síncrono")
 
 
+# con esta excepcion identifico cuando el modelo de evaluacion devuelve una respuesta rota o con esquema alterado
+# extiendo ValueError para catalogarlo como un fallo tecnico del proveedor y evitar aprobar contenido sin calificar
 class EvaluadorInvalidoError(ValueError):
     """Respuesta incompleta/incoherente del juez: fallo técnico, sin score."""
 
@@ -71,6 +76,8 @@ class EstadoCriticError(ValueError):
         self.code, self.message, self.status = code, message, status
 
 
+# aqui verifico que el contexto y la rubrica del documento no hayan cambiado mientras se realizaba la evaluacion
+# ejecuto nuevamente el supervisor para asegurar que el espacio de trabajo no fue cancelado ni modificado
 def _revalidar(estado, dependencias):
     actualizado = supervisor(estado, dependencias.grafo)
     if "error" in actualizado:
@@ -88,6 +95,8 @@ def _revalidar(estado, dependencias):
         raise EstadoCriticError("INVALID_STATE", "La fuente o su rúbrica cambiaron durante la revisión.")
 
 
+# con esta funcion descompongo recursivamente el contenido educativo generado en fragmentos textuales individuales
+# descarto metadatos y opciones distractoras de cuestionarios para concentrar la evaluacion solo en afirmaciones tecnicas
 def _segmentos(borrador, referencias):
     """Texto factual con ubicación y citas heredadas; distractores quedan fuera."""
     segmentos = {}
@@ -161,6 +170,8 @@ _TAREAS = {
 }
 
 
+# con esta clase administro el ciclo de calificacion dividiendo la revision en tareas atomicas y medibles
+# organizo las llamadas al modelo de lenguaje (LLM) para verificar fidelidad factual rubrica pedagogica y contenido visual
 class _SesionRevision:
     def __init__(self, estado, dependencias, borrador, referencias, presupuesto):
         self.estado, self.dependencias, self.borrador = estado, dependencias, borrador
@@ -173,6 +184,8 @@ class _SesionRevision:
         self.factual = None
         self.contexto = json.dumps([e.model_dump(mode="json") for e in estado.evidencia], ensure_ascii=False)
 
+    # aqui realizo la invocacion estructurada hacia el modelo asegurando que la salida respete el esquema de pydantic
+    # controlo el consumo del presupuesto de solicitudes y preparo las instrucciones del sistema segun la tarea evaluada
     def llamar(self, tarea, modelo_salida, datos, imagen=None):
         _revalidar(self.estado, self.dependencias)
         ctx = self.dependencias.grafo.ejecucion
@@ -258,6 +271,8 @@ class _SesionRevision:
         except (ValueError, TypeError, RecursionError) as error:
             raise EvaluadorInvalidoError("El juez devolvió una respuesta inválida") from error
 
+    # con este paso solicito al evaluador que extraiga cada una de las afirmaciones factuales que contiene el borrador
+    # asigno un identificador unico a cada proposicion tecnica y vinculo sus referencias originales para el contraste posterior
     def descomponer(self, texto):
         try:
             respuesta = self.llamar("descomponer", Descomposicion, {"segmentos": self.segmentos})
@@ -286,6 +301,8 @@ class _SesionRevision:
             self.error_factual = error
             raise
 
+    # aqui evaluo cada afirmacion extraida contrastandola unicamente contra las citas de evidencia documental permitidas
+    # clasifico cada proposicion como respaldada contradicha o sin evidencia para computar el puntaje de fidelidad
     def juzgar(self, afirmaciones, contexto):
         try:
             respuesta = self.llamar(
@@ -321,6 +338,8 @@ class _SesionRevision:
             self.error_factual = error
             raise
 
+    # con esta funcion analizo especificamente las preguntas de opcion multiple generadas para el formato cuestionario (quiz)
+    # verifico que la respuesta correcta este fundamentada en la fuente y que la justificacion aclare por que las otras son erroneas
     def revisar_quiz(self):
         if self.borrador.contenido_adaptado.tipo != "quiz":
             return []
@@ -342,6 +361,8 @@ class _SesionRevision:
                 fallos.append(f"Quiz {pregunta.id}, opción {opcion.option_id}: {opcion.motivo}")
         return fallos
 
+    # aqui contrasto las afirmaciones del borrador contra las imagenes originales de los diagramas del documento tecnico
+    # no confio en descripciones textuales previas y exijo la comprobacion visual directa para descartar alucinaciones
     def revisar_visual(self):
         chunks = [e.chunk for e in self.estado.evidencia if e.chunk.es_diagrama]
         necesaria = self.estado.rubrica.requiere_revision_visual or bool(chunks)
@@ -398,6 +419,9 @@ class _SesionRevision:
         return estado_visual, revisiones
 
 
+# este es el punto de entrada principal del agente revisor dentro del grafo de orquestacion (LangGraph)
+# consolido los puntajes de fidelidad y calidad didactica y decido si el material avanza al finalizador o regresa a redaccion
+# aplico el umbral estricto de fidelidad factual (0.85) exigido por la arquitectura para prevenir informacion erronea
 def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
     """Update consumible por #29; aprobación conduce a Finalizer, nunca a completed."""
     if estado.status != JobStatus.RUNNING:

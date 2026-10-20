@@ -7,6 +7,7 @@ pytestmark = pytest.mark.integration_mock
 
 
 @pytest.mark.parametrize("extension,mime", [("txt", "text/plain"), ("md", "text/markdown"), ("pdf", "application/pdf")])
+@pytest.mark.e2e
 def test_cliente_frontend_upload_con_titulo_y_backend_real(entorno, crear_pdf, extension, mime):
     e = entorno
 
