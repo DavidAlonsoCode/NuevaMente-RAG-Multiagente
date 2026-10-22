@@ -1,0 +1,58 @@
+{
+  "fecha_consulta": "2026-10-21",
+  "metodo": "Conector GitHub, solo lectura: compare_commits y fetch_issue; sin fetch/pull ni escrituras locales en Git.",
+  "repositorio": "No-Country-simulation/G10-Equipo38-NuevaMente",
+  "comparacion": {
+    "base_solicitada": "f1f9ae61a5e52c7f0ef2411754ebd94738400318",
+    "head_remota_solicitada": "develop",
+    "status": "identical",
+    "ahead_by": 0,
+    "behind_by": 0,
+    "total_commits": 0,
+    "base_commit": "f1f9ae61a5e52c7f0ef2411754ebd94738400318",
+    "merge_base": "f1f9ae61a5e52c7f0ef2411754ebd94738400318"
+  },
+  "issues": [
+    {
+      "numero": 57,
+      "url": "https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/57",
+      "estado": "open",
+      "actualizado_en": "2026-10-21T15:40:45Z",
+      "casillas_sin_marcar": 3,
+      "casillas_marcadas": 5
+    },
+    {
+      "numero": 56,
+      "url": "https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/56",
+      "estado": "open",
+      "actualizado_en": "2026-10-18T06:46:29Z",
+      "casillas_sin_marcar": 4,
+      "casillas_marcadas": 3
+    },
+    {
+      "numero": 58,
+      "url": "https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/58",
+      "estado": "closed",
+      "actualizado_en": "2026-10-20T02:47:44Z",
+      "casillas_sin_marcar": 2,
+      "casillas_marcadas": 3
+    },
+    {
+      "numero": 60,
+      "url": "https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/60",
+      "estado": "closed",
+      "actualizado_en": "2026-10-20T02:34:59Z",
+      "casillas_sin_marcar": 3,
+      "casillas_marcadas": 3
+    },
+    {
+      "numero": 133,
+      "url": "https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133",
+      "estado": "open",
+      "actualizado_en": "2026-10-20T02:47:42Z",
+      "casillas_sin_marcar": 14,
+      "casillas_marcadas": 5
+    }
+  ],
+  "limites": "Las casillas y cierres registran declaraciones en GitHub; no sustituyen los artefactos, firmas humanas ni pruebas públicas. Coincidencia develop limitada al momento de consulta, no garantía de actualidad futura. No se validaron por red todos los otros enlaces externos del README."
+}
