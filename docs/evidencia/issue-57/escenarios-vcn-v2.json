@@ -1,0 +1,107 @@
+{
+  "tipo": "inventario_de_evidencia_no_es_solicitud_ni_paquete",
+  "fecha_revision": "2026-10-21",
+  "base_codigo": "f1f9ae61a5e52c7f0ef2411754ebd94738400318",
+  "fuente": {
+    "archivo": "documents/redes_vcn_oci.pdf",
+    "version": "v2",
+    "sha256_verificado": "fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e"
+  },
+  "catalogo": {
+    "archivo": "docs/evidencia/issue-55/v2/catalogo.json",
+    "sha256": "68f0588229fe8fea2e8ccceb46be24687b621993a8aa5b8cdb8ddd42e121eaba"
+  },
+  "informe": {
+    "archivo": "docs/evidencia/issue-55/v2/informe.json",
+    "sha256": "0e026f7e94a0afad1c9e023dad66da1af38845efa5bb303103add76f9d46fd30",
+    "commit_historico": "aaed384b77361465d70ab71a6cd0b1a39d5e68a7"
+  },
+  "consulta_proveedores": false,
+  "resultado_busqueda": "Busqueda exhaustiva documentada en D, no repetida en E: no se localizaron capturas originales ni paquetes. E incorpora tres entradas reconstruidas de parametros registrados; faltan tres salidas canonicas, no reconstruibles.",
+  "escenarios": [
+    {
+      "escenario": "vcn-a",
+      "generation_id": "gen_66279cac6a8748fc91926203198838a1",
+      "parametros_registrados_en_catalogo": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "principiante",
+        "formato_salida": "flashcards",
+        "nicho_sector": "general",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "es",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "paquete_sha256_esperado_no_verificado": "83c654ea61ade9b3ce2dd1dbb92650b95e1eadaf9d6be729bc532dede1ed3ae9",
+      "snapshot_fuente_sha256_del_catalogo_no_pdf": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "segundos_historicos": 94.815,
+      "solicitud_original_json_localizada": false,
+      "paquete_canonico_json_localizado": false,
+      "archivo_solicitud_original": null,
+      "archivo_paquete_canonico": null,
+      "archivo_entrada_reconstruida": "entrada-vcn-a.reconstruida.json",
+      "entrada_reconstruida_sha256": "adc1b5cf1072da8e4137beffe9e505355329d3aae2af5156cd8b990f7bf51497",
+      "validacion_entrada": "GenerateRequest: campos requeridos, enums y alcance validos; equivalencia con ESCENARIOS. Sin modo_generacion registrado: default multiagente del contrato actual; no se agrega al JSON."
+    },
+    {
+      "escenario": "vcn-b",
+      "generation_id": "gen_5733436c8ddf4dfeb09ae96ac5c7c724",
+      "parametros_registrados_en_catalogo": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "junior_ssr",
+        "formato_salida": "tutorial",
+        "nicho_sector": "ecommerce",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "en",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "paquete_sha256_esperado_no_verificado": "6528583a9bdd023db6a477353612b442af2f86c6370ef089d0e535419e65e57d",
+      "snapshot_fuente_sha256_del_catalogo_no_pdf": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "segundos_historicos": 79.624,
+      "solicitud_original_json_localizada": false,
+      "paquete_canonico_json_localizado": false,
+      "archivo_solicitud_original": null,
+      "archivo_paquete_canonico": null,
+      "archivo_entrada_reconstruida": "entrada-vcn-b.reconstruida.json",
+      "entrada_reconstruida_sha256": "e373f61497784bf9d7481644885371def740771da0344942f662b9bf40c99835",
+      "validacion_entrada": "GenerateRequest: campos requeridos, enums y alcance validos; equivalencia con ESCENARIOS. Sin modo_generacion registrado: default multiagente del contrato actual; no se agrega al JSON."
+    },
+    {
+      "escenario": "vcn-c",
+      "generation_id": "gen_92d7ca76b771469a9054e76ff30acc91",
+      "parametros_registrados_en_catalogo": {
+        "document_id": "doc_77474e4eb7834d0bb2d67c79b4e7e9db",
+        "perfil_destinatario": "ejecutivo",
+        "formato_salida": "resumen_ejecutivo",
+        "nicho_sector": "fintech",
+        "nivel_detalle": "didactico",
+        "idioma_salida": "pt",
+        "alcance": {
+          "tipo": "documento_completo",
+          "seccion_id": null
+        }
+      },
+      "paquete_sha256_esperado_no_verificado": "ea0ec80d992bae489564baa236acb176f5b5b3ffdc618782722d9c575317161b",
+      "snapshot_fuente_sha256_del_catalogo_no_pdf": "6b15b6485b67910401f050a18a97f0f8b60c51e02839b018a218523412ea3968",
+      "segundos_historicos": 113.531,
+      "solicitud_original_json_localizada": false,
+      "paquete_canonico_json_localizado": false,
+      "archivo_solicitud_original": null,
+      "archivo_paquete_canonico": null,
+      "archivo_entrada_reconstruida": "entrada-vcn-c.reconstruida.json",
+      "entrada_reconstruida_sha256": "a7911096bbe495abcb5c4b1d4b60c8a646a58de8537f3105afc1b91609aa9e77",
+      "validacion_entrada": "GenerateRequest: campos requeridos, enums y alcance validos; equivalencia con ESCENARIOS. Sin modo_generacion registrado: default multiagente del contrato actual; no se agrega al JSON."
+    }
+  ],
+  "reconstruccion_entradas": {
+    "procedencia": "Copia exacta de parametros del catalogo v2 cotejados con informe y backend/app/demo/scenarios.py; no son capturas HTTP originales ni ejecuciones nuevas.",
+    "contrato": "backend/app/schemas/requests.py:GenerateRequest y backend/app/schemas/pedagogical.py:AlcanceSolicitud",
+    "campos_requeridos_ausentes": [],
+    "no_acredita": "Documento disponible en una sesion actual, cabeceras de autenticacion/idempotencia historicas, proveedor ejecutado ahora ni bytes de salida."
+  }
+}

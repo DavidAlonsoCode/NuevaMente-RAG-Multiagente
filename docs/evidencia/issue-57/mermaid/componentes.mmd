@@ -1,0 +1,20 @@
+flowchart LR
+    UI["React / TypeScript / Vite"]
+    subgraph Backend["Backend Python: un proceso escritor"]
+        API["FastAPI: sesiones y permisos"]
+        API --> W["Worker común: cola y controles"]
+        W --> RAG["Ingestión y RAG"]
+        W --> GEN["Generación básica o multiagente"]
+        RAG <--> C[("Chroma local: índice")]
+        GEN --> RAG
+        API <--> DB[("SQLite: registro operativo")]
+        W <--> DB
+        API --> S["StorageProvider"]
+        RAG --> S
+        GEN --> S
+    end
+    UI <-->|"HTTP y SSE autenticado"| API
+    RAG <--> AI["Gemini: embeddings y visión"]
+    GEN <--> LLM["Gemini: redacción y verificación"]
+    S -->|"MOCK_OCI=0"| OCI[("OCI Object Storage privado")]
+    S -->|"MOCK_OCI=1: desarrollo / CI"| MOCK[("Mock local explícito")]
