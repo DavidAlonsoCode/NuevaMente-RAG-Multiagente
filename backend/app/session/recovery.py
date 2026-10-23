@@ -134,9 +134,6 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                     raise ValueError("Paquete con identidad ajena o no canónica")
                 if paquete.almacenamiento_oci.objeto_id != salida.object_name:
                     raise ValueError("Paquete con almacenamiento ajeno")
-                if ("generation", generation_id) in lapidas:
-                    continue
-
                 fuentes = paquete.documentos_fuente or [paquete.documento_fuente]
                 alguna_lapida = any(("document", f.document_id) in lapidas for f in fuentes)
                 if alguna_lapida:
@@ -145,7 +142,14 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                             retirado = manifiestos_retirados.get(f.document_id)
                             if retirado is not None and (f.hash.removeprefix("sha256:") != retirado[1].hash_sha256):
                                 raise ValueError("Paquete de otra versión del documento retirado")
+                    # Relación de control para purgar sus derivados; la lápida del
+                    # documento impide servir el resultado. Se registra INCLUSO cuando
+                    # la generación tiene lápida propia: sin esta relación la purga de
+                    # la recuperación desconoce sus derivados y jamás los elimina.
                     generaciones_retiradas.append(paquete)
+                    continue
+
+                if ("generation", generation_id) in lapidas:
                     continue
 
                 todas_presentes = True

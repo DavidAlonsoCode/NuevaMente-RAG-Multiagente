@@ -267,7 +267,7 @@ def test_espacio_completo_resolucion_y_rechazo_por_exceso(entorno_multi):
     assert {s["document_id"] for s in snapshot} == {doc1, doc2}
 
 
-def test_generacion_multidocumental_completa_y_documentos_fuente(entorno_multi):
+def test_generacion_multidocumental_completa_y_documentos_fuente(entorno_multi, tmp_path):
     e = entorno_multi
     doc1 = e.subir("Arquitectura A", "Conceptos de arquitectura de sistemas distribuidos.")
     doc2 = e.subir("Arquitectura B", "Patrones de microservicios y mensajería asíncrona.")
@@ -303,16 +303,15 @@ def test_generacion_multidocumental_completa_y_documentos_fuente(entorno_multi):
                 encontrada_con_doc = True
     assert encontrada_con_doc, "Debe haber citas con document_id identificando la procedencia"
 
-    # Exportar evidencia Escenario D (§8.2)
-    import os
-
-    evidencia_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "docs", "evidencia")
-    os.makedirs(evidencia_dir, exist_ok=True)
-    out_file = os.path.join(evidencia_dir, "salida-multidocumental-d.json")
+    # Serializar el paquete completo como lo haría la evidencia D (§8.2), pero
+    # SIEMPRE en tmp_path: un test jamás escribe archivos versionados del repo.
+    # La evidencia de un escenario D se produce con proveedores reales fuera de
+    # la suite; regenerarla aquí la volvería no determinista (IDs aleatorios) y
+    # presentaría salida de dobles como ejecución real.
+    out_file = tmp_path / "salida-multidocumental-d.json"
     json_bytes = json.dumps(contenido, indent=2, ensure_ascii=False).encode("utf-8")
-    with open(out_file, "wb") as f:
-        f.write(json_bytes)
-    assert os.path.isfile(out_file)
+    out_file.write_bytes(json_bytes)
+    assert out_file.is_file()
     assert len(json_bytes) > 100
 
 

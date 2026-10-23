@@ -398,19 +398,23 @@ ID de documento y SHA-256 verificado:
 `fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e`.
 En las tres, detalle `didactico` y alcance `documento_completo`.
 
-A ellos se incorpora el **Escenario D** para verificar la síntesis multidocumental (§8.2 del plan correctivo),
-acreditando la resolución simultánea de múltiples fuentes con procedencia por cita (`document_id`):
+A ellos se incorpora el **Escenario D** para verificar la síntesis multidocumental (§8.2 del plan correctivo).
+Ilustra la resolución simultánea de múltiples fuentes con procedencia por cita (`document_id`), pero su
+JSON proviene de una **simulación con dobles de prueba** sobre fuentes sintéticas: la ejecución real con
+proveedores exigida por §8.2 sigue pendiente y no se presenta como realizada:
 
 | Escenario | Alcance · Perfil · formato · sector · idioma | Fuentes utilizadas | JSON canónico de salida | SHA-256 verificado |
 |---|---|---|---|---|
 | A | 1 doc · Principiante · flashcards · general · ES | `redes_vcn_oci.pdf` | [Reconstrucción A](docs/evidencia/issue-57/entrada-vcn-a.reconstruida.json) | `83c654ea...` (esperado) |
 | B | 1 doc · Junior/Semi Senior · tutorial · e-commerce · EN | `redes_vcn_oci.pdf` | [Reconstrucción B](docs/evidencia/issue-57/entrada-vcn-b.reconstruida.json) | `6528583a...` (esperado) |
 | C | 1 doc · Ejecutivo · resumen ejecutivo · fintech · PT | `redes_vcn_oci.pdf` | [Reconstrucción C](docs/evidencia/issue-57/entrada-vcn-c.reconstruida.json) | `ea0ec80d...` (esperado) |
-| D | 2 docs · Principiante · flashcards · general · ES | Arquitectura A + Arquitectura B | [Salida D](docs/evidencia/salida-multidocumental-d.json) | `cc6d4055c5c199218968d01b11bf1080984e4e8e654912b23aaa8e6064795490` |
+| D | 2 docs · Principiante · flashcards · general · ES | Arquitectura A + Arquitectura B (simuladas) | [Salida D](docs/evidencia/salida-multidocumental-d.json) | `9806ff5ddec0e919cb4f10213cfa92cdfe53575700183d8bc296585341c77107` (simulación con dobles; ejecución real pendiente) |
 
 Las entradas de A/B/C copian los parámetros históricos del catálogo, validados contra el
 contrato actual; **no son capturas HTTP originales**.
-El Escenario D demuestra la síntesis cruzada multidocumental y citas referenciadas por fuente.
+El Escenario D demuestra la mecánica de síntesis cruzada multidocumental y citas referenciadas
+por fuente; su evidencia es simulada y su huella identifica los bytes exactos conservados en el
+repositorio (los tests nunca la regeneran).
 [Inventario y huellas esperadas](docs/evidencia/issue-57/README.md#escenarios-reales-abc-vcn-v2).
 
 ## Cumplimiento y evidencia disponible
