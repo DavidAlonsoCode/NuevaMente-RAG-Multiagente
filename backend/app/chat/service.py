@@ -4,6 +4,7 @@ import json
 import time
 from datetime import datetime, timezone
 
+from app.chat.identity import fuentes_respuesta, scope_historial
 from app.core.agents.critic import DependenciasCritic
 from app.core.agents.draft_validation import parsear_json_estricto
 from app.core.agents.finalizer import finalizer
@@ -148,23 +149,49 @@ class ServicioChat:
     # con este metodo verifico que la respuesta guardada corresponda a la misma fuente documental y espacio de trabajo
     # si el documento original cambio o fue retirado bloqueo la entrega de la respuesta para evitar inconsistencias
     def autorizar_resultado(self, workspace_id, resultado, token=None):
-        respuesta = ChatAnswer.model_validate(resultado)
+        try:
+            respuesta = ChatAnswer.model_validate(resultado)
+            esperadas = fuentes_respuesta(respuesta)
+        except (ValueError, TypeError):
+            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.") from None
+
+        def verificar(fuente, document_id):
+            if (
+                fuente is None
+                or fuente.document_id != document_id
+                or (esperadas and fuente != esperadas[document_id])
+                or (not esperadas and fuente.hash != respuesta.document_hash)
+            ):
+                raise ErrorAplicacion(ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible.")
+
         if token is not None:
             if self.consulta._sesion(token)["workspace_id"] != workspace_id:
                 raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.")
-            fuente = self.consulta.fuente_aprobada(token, respuesta.document_id)
+            for d_id in respuesta.document_ids:
+                verificar(self.consulta.fuente_aprobada(token, d_id), d_id)
         else:
             ctx = ContextoEjecucion("consulta_chat", workspace_id, "consulta", time.monotonic() + 30)
-            doc = self.consulta.documento_grafo(ctx, respuesta.document_id)
-            fuente = doc.fuente if doc is not None else None
-        if fuente is None or fuente.hash != respuesta.document_hash:
-            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible.")
+            for d_id in respuesta.document_ids:
+                doc = self.consulta.documento_grafo(ctx, d_id)
+                if doc is not None and doc.workspace_id != workspace_id:
+                    raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.")
+                verificar(doc.fuente if doc is not None else None, d_id)
         return respuesta
 
     # aqui recibo la consulta del usuario y registro la intencion en la cola de tareas en segundo plano
     # valido que los modelos y cuotas de recuperacion esten listos y devuelvo el identificador del trabajo (job_id)
     def encolar(self, token, solicitud, clave=None):
+        doc_ids = solicitud.document_ids or [solicitud.document_id]
         doc = self.consulta._listo(token, solicitud.document_id)
+        fuentes = []
+        for d_id in doc_ids:
+            self.consulta._listo(token, d_id)
+            f = self.consulta.fuente_aprobada(token, d_id)
+            if f is None:
+                raise ErrorAplicacion(ErrorCode.NOT_FOUND, f"Documento {d_id} no disponible.")
+            fuentes.append(f)
+
+        scope_hash = scope_historial(fuentes)
 
         def preparar():
             self.consulta._sesion(token)
@@ -172,15 +199,23 @@ class ServicioChat:
                 raise ErrorAplicacion(
                     ErrorCode.PROVIDER_UNAVAILABLE, "El tutor requiere proveedores y cuotas explícitos."
                 )
+            for d_id in doc_ids:
+                actual = self.db.obtener_documento(d_id)
+                if actual is None or actual["estado"] != "ready":
+                    raise ErrorAplicacion(ErrorCode.INVALID_STATE, "Una de las fuentes cambió durante la admisión.")
 
+        cuerpo, *alternativos = solicitud.parametros_idempotentes()
         job = admitir_trabajo(
             self.gestor,
             doc["workspace_id"],
             solicitud.document_id,
             "chat",
-            solicitud.model_dump(mode="json"),
+            cuerpo,
             lambda ctx: self.ejecutar(solicitud, ctx),
             clave=clave,
+            cuerpos_alternativos=alternativos,
+            document_ids=doc_ids,
+            scope_hash=scope_hash,
             preparar=preparar,
         )
         return job["job_id"]
@@ -188,12 +223,22 @@ class ServicioChat:
     # en esta funcion ejecuto el ciclo conversacional recuperando fragmentos relevantes y redactando la respuesta
     # si la evidencia recuperada no cubre la pregunta emito una abstencion controlada sin inventar hechos
     def ejecutar(self, solicitud, ctx):
-        doc = self.consulta.documento_grafo(ctx, solicitud.document_id)
-        if doc is None:
+        doc_ids = solicitud.document_ids or [solicitud.document_id]
+        docs = [self.consulta.documento_grafo(ctx, d_id) for d_id in doc_ids]
+        if any(d is None for d in docs):
             raise TrabajoCanceladoError()
+        doc = docs[0]
+        fuentes = [d.fuente for d in docs]
+        scope_hash = scope_historial(fuentes)
+
         historial = acotar_historial(
             self.db.historial_chat(
-                ctx.workspace_id, solicitud.document_id, doc.fuente.hash, self.cfg.chat_history_turns
+                ctx.workspace_id,
+                solicitud.document_id,
+                doc.fuente.hash,
+                self.cfg.chat_history_turns,
+                scope_hash=scope_hash,
+                fuentes=fuentes,
             ),
             self.cfg.chat_history_max_tokens,
         )
@@ -217,26 +262,34 @@ class ServicioChat:
         )
         solicitud_interna = GenerateRequest(
             document_id=solicitud.document_id,
+            document_ids=doc_ids,
             perfil_destinatario=solicitud.perfil_destinatario,
             idioma_salida=solicitud.idioma_salida,
             formato_salida="flashcards",
             nicho_sector="general",
             nivel_detalle="didactico",
+            alcance={"tipo": "multi_documento", "document_ids": doc_ids}
+            if len(doc_ids) > 1
+            else {"tipo": "documento_completo"},
         )
         estado = EstadoGrafo(
             workspace_id=ctx.workspace_id,
             generation_id=ctx.job_id,
             document_id=solicitud.document_id,
+            document_ids=doc_ids,
             parametros=solicitud_interna,
             deadline=ctx.deadline,
         )
         revisado = revisar_sin_publicar(estado, deps)
         ctx.chequear()
-        actual = self.consulta.documento_grafo(ctx, solicitud.document_id)
-        if actual is None or actual.fuente != doc.fuente:
-            raise TrabajoCanceladoError()
+        for d in docs:
+            actual = self.consulta.documento_grafo(ctx, d.fuente.document_id)
+            if actual is None or actual.fuente != d.fuente:
+                raise TrabajoCanceladoError()
         base = dict(
             document_id=solicitud.document_id,
+            document_ids=doc_ids,
+            documentos_fuente=[d.fuente for d in docs],
             document_hash=doc.fuente.hash,
             pregunta=solicitud.pregunta,
             perfil_destinatario=solicitud.perfil_destinatario,
@@ -258,10 +311,10 @@ class ServicioChat:
             raise FalloTrabajoError(revisado.error.code, revisado.error.message)
         # La misma barrera determinista del Finalizer verifica toda la revisión.
         autorizacion = supervisor(revisado, grafo)
-        if autorizacion.get("error") or any(
-            autorizacion[c] != getattr(revisado, c)
-            for c in ("source_hash", "documento_fuente", "idioma_origen", "secciones_disponibles", "rubrica")
-        ):
+        campos_revisar = ["source_hash", "documento_fuente", "idioma_origen", "secciones_disponibles", "rubrica"]
+        if len(doc_ids) > 1:
+            campos_revisar.extend(["source_hashes", "documentos_fuente"])
+        if autorizacion.get("error") or any(autorizacion[c] != getattr(revisado, c) for c in campos_revisar):
             raise FalloTrabajoError("INVALID_STATE", "La fuente cambió después de la revisión.")
         paquete = finalizer(revisado, bucket=self.cfg.oci_bucket_name, created_at=datetime.now(timezone.utc))
         return ChatAnswer(

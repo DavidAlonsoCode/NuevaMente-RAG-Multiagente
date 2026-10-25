@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "fecha_registro_utc": "2026-10-21T18:15:23.293785+00:00",
+  "commit_codigo": "f1f9ae61a5e52c7f0ef2411754ebd94738400318",
+  "codigo_contrastado": "295 archivos backend/frontend/.github iguales al snapshot de C",
+  "navegador": "ChatGPT in-app browser mediante CUA",
+  "entorno": {
+    "python": "3.11.9",
+    "node": "24.19.0",
+    "vite": "8.3.4",
+    "APP_ENV": "test",
+    "MOCK_OCI": true,
+    "MOCK_GEMINI": true,
+    "DATA_DIR": ".data/issue57-c-20261021/checkout/.data/issue57-d-capturas",
+    "env_file": null,
+    "embedding_dimensions": 16,
+    "proveedores": "DobleDemo/DobleEducativo y almacenamiento mock local",
+    "DNS_externo": "bloqueado por audit hook del helper"
+  },
+  "arranque": {
+    "cwd": ".data/issue57-c-20261021/checkout",
+    "helper": ".venv/Scripts/python.exe -m backend.tests.integration.react_backend --data-dir .data/issue57-d-capturas --port 18080",
+    "frontend": "API_URL=http://127.0.0.1:18080; npm --prefix frontend run dev -- --port 18501",
+    "url": "http://127.0.0.1:18501"
+  },
+  "fuente_sintetica": {
+    "titulo": "Fuente sintética para capturas · #57",
+    "texto": "Una red privada agrupa recursos. Una subred divide su rango de direcciones. Estas frases son una fuente sintética usada solo para verificar la interfaz con proveedores simulados.",
+    "sha256": "ced01136fc2e1bc879251b3d191a46204a0ba9f3522867047785d2bcb72c2b77",
+    "estado": "ready",
+    "no_es_vcn_v2": true
+  },
+  "parametros": {
+    "perfil": "principiante",
+    "formato": "flashcards",
+    "sector": "general",
+    "detalle": "didactico",
+    "idioma": "es",
+    "alcance": "documento_completo"
+  },
+  "resultados_sinteticos": [
+    {
+      "modo": "basico",
+      "status_del_paquete_simulado": "no_evaluado",
+      "score_simulado": null,
+      "sha256_paquete_sintetico": "76a2b9f3d7bbfc4268a2d7f96e7660e0f9ebfabb764e6115ba94ce8c12d55a49"
+    },
+    {
+      "modo": "multiagente",
+      "status_del_paquete_simulado": "aprobado",
+      "score_simulado": 1.0,
+      "sha256_paquete_sintetico": "3f49208844b57802cf7fb8c5fca0a461e763c3e469b07353c584f8d6ffe240a3"
+    }
+  ],
+  "recorrido": [
+    "ocultar codigo con Ya guarde mi codigo antes de capturar",
+    "carga TXT desde la UI y ready",
+    "escritorio con carga en area principal",
+    "Multiagente: confirmar y esperar resultado",
+    "Basico: confirmar nueva generacion sobre la misma fuente",
+    "resultado basico en viewport movil con scroll"
+  ],
+  "archivos": [
+    {
+      "archivo": "basico-simulado.jpg",
+      "tipo": "captura_react_actual_con_dobles",
+      "simulada": true,
+      "pixeles_jpeg": [
+        1425,
+        990
+      ],
+      "viewport_solicitado": [
+        1440,
+        1000
+      ],
+      "sha256": "036ae64f7aa29e62deff6b8c78fb83de33dce9a2cce7c5dbb04a4a44fae50c6d",
+      "inspeccion_visual_agente": "realizada; sin tokens ni codigos de recuperacion visibles; no certifica WCAG",
+      "edicion_raster": false
+    },
+    {
+      "archivo": "escritorio-simulado.jpg",
+      "tipo": "captura_react_actual_con_dobles",
+      "simulada": true,
+      "pixeles_jpeg": [
+        1425,
+        990
+      ],
+      "viewport_solicitado": [
+        1440,
+        1000
+      ],
+      "sha256": "6bc4ee8b8b15a578159c933a289525090390fab66ff2745198cb34b06d8aa4f5",
+      "inspeccion_visual_agente": "realizada; sin tokens ni codigos de recuperacion visibles; no certifica WCAG",
+      "edicion_raster": false
+    },
+    {
+      "archivo": "movil-simulado.jpg",
+      "tipo": "captura_react_actual_con_dobles",
+      "simulada": true,
+      "pixeles_jpeg": [
+        375,
+        811
+      ],
+      "viewport_solicitado": [
+        390,
+        844
+      ],
+      "sha256": "8da0000f23852dbd1402732d2fbef091aea4dc313e9acb1c981c513f834ac3fc",
+      "inspeccion_visual_agente": "realizada; sin tokens ni codigos de recuperacion visibles; no certifica WCAG",
+      "edicion_raster": false
+    },
+    {
+      "archivo": "multiagente-simulado.jpg",
+      "tipo": "captura_react_actual_con_dobles",
+      "simulada": true,
+      "pixeles_jpeg": [
+        1425,
+        990
+      ],
+      "viewport_solicitado": [
+        1440,
+        1000
+      ],
+      "sha256": "be65eb5bcbe9d2397e2c574f981a403c70385213add7586ed38e7d1da34fba9d",
+      "inspeccion_visual_agente": "realizada; sin tokens ni codigos de recuperacion visibles; no certifica WCAG",
+      "edicion_raster": false
+    }
+  ],
+  "limites": [
+    "Ninguna captura acredita OCI/Gemini reales ni URL publica",
+    "Los marcadores SOURCE_TITLE y SOURCE_CONCEPT son respuestas del doble; no se editaron",
+    "Revision visual por el agente, sin firmas humanas ni certificacion de accesibilidad",
+    "Viewport solicitado y dimensiones JPEG difieren; se registran ambos",
+    "La captura movil muestra un encuadre desplazado del resultado basico",
+    "No sustituyen entradas/salidas reales A/B/C ni grabacion final de #56"
+  ]
+}

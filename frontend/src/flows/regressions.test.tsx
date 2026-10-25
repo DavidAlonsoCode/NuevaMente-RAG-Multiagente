@@ -1,6 +1,7 @@
+import { AsyncTestScope } from '../test/asyncScope';
 import React, { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from '../App';
 import { APIClient } from '../api/client';
 import { ChatTutorView, GlossaryView, HistoryFullView } from '../components/StudyAndHistoryViews';
@@ -11,12 +12,14 @@ import { PackageViewer } from '../components/FormatRenderers';
 import { clearStudyState } from './studyState';
 import { t } from '../i18n';
 
-beforeEach(() => {
+let scope: AsyncTestScope;
+beforeEach(({ signal }) => {
+  scope = new AsyncTestScope(signal);
   sessionStorage.clear();
   clearStudyState();
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network disabled in unit tests')));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(async () => { await scope.close(); cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('intenciones durables y fronteras', () => {
   it('descarta la página antigua si el filtro cambia antes de recibirla', async () => {
@@ -28,11 +31,11 @@ describe('intenciones durables y fronteras', () => {
         generation_id:'gen-current',document_id:'doc-actual',status:'queued',created_at:'2026-10-15T00:00:00Z',
       }],next_cursor:null}),
     } as unknown as APIClient;
-    render(<HistoryFullView apiClient={api} token="synthetic" workspaceId="ws"
+    await scope.render(<HistoryFullView apiClient={api} token="synthetic" workspaceId="ws"
       idiomaUi="es" onClose={vi.fn()} onSessionInvalid={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(t('historial.perfil','es')), {target:{value:'principiante'}});
     await screen.findByText(/doc-actual/);
-    await act(async () => { resolveOld({items:[{
+    await scope.act(async () => { resolveOld({items:[{
       generation_id:'gen-old',document_id:'doc-anterior',status:'queued',created_at:'2026-10-14T00:00:00Z',
     }],next_cursor:null}); });
     expect(screen.queryByText(/doc-anterior/)).toBeNull();
@@ -141,7 +144,7 @@ describe('intenciones durables y fronteras', () => {
       conceptos_revisados: 0, flashcards_vistas: 0, quiz_intentos: 0,
       quiz_aciertos_primer_intento: 0, quiz_total_primer_intento: 0,
       quiz_aciertos_posteriores: 0, tiempo_estimado_restante_minutos: 0 });
-    render(<StrictMode><App /></StrictMode>);
+    await scope.render(<StrictMode><App /></StrictMode>);
     await screen.findByText('synthetic-recovery');
     expect(create).toHaveBeenCalledTimes(1);
     expect(sessionStorage.getItem('nm_session_token')).toBeNull();
@@ -196,5 +199,64 @@ describe('aislamiento del tutor', () => {
     render(<ChatTutorView {...base} apiClient={api} documentId="doc-a" />);
     await send();
     await screen.findByText('Respuesta sintética verificada');
+  });
+
+  it('envía document_ids ordenados al tutor cuando se especifican múltiples fuentes', async () => {
+    const api = setup({
+      job_id: 'job-m', status: 'completed', result: {
+        document_id: 'doc-a', document_ids: ['doc-a', 'doc-b'], document_hash: 'a'.repeat(64),
+        pregunta: '¿Qué es una red?', perfil_destinatario: 'principiante', idioma_salida: 'es',
+        estado: 'respondida', respuesta: 'Respuesta multidocumental', referencias: [{ chunk_id: 'chunk', document_id: 'doc-a' }],
+        evaluacion_calidad: fixtures.flashcards.evaluacion_calidad,
+      }
+    });
+    render(<ChatTutorView {...base} apiClient={api} documentId="doc-a" documentIds={['doc-b', 'doc-a']} />);
+    await send();
+    await screen.findByText('Respuesta multidocumental');
+    expect(api.createChat).toHaveBeenCalledWith(
+      'synthetic-token',
+      expect.objectContaining({
+        document_id: 'doc-a',
+        document_ids: ['doc-a', 'doc-b'],
+      }),
+      expect.any(String)
+    );
+  });
+
+  it('envía document_ids al glosario cuando se especifican múltiples fuentes', async () => {
+    const api = {
+      getDocument: vi.fn().mockResolvedValue({ status: 'ready' }),
+      createGlossary: vi.fn().mockResolvedValue({ job_id: 'glos-m', glossary_id: 'glos-m', status: 'completed' }),
+      getGlossary: vi.fn().mockResolvedValue({
+        glossary_id: 'glos-m', documento_fuente: { document_id: 'doc-a' },
+        documentos_fuente: [{ document_id: 'doc-a' }, { document_id: 'doc-b' }],
+        perfil_destinatario: 'principiante', idioma_salida: 'es', estado: 'verificado', candidatos_omitidos: 0,
+        evaluacion_calidad: fixtures.flashcards.evaluacion_calidad, trazabilidad: fixtures.flashcards.trazabilidad,
+        terminos: [{ id: 'term-m', termino_original: 'VCN', es_identificador: true, traduccion: null, estado: 'definido',
+          definicion: 'Definición multidocumental', limitacion: null, referencias: [{ chunk_id: 'chunk', document_id: 'doc-b' }] }],
+      }),
+    } as unknown as APIClient;
+    render(
+      <GlossaryView
+        apiClient={api}
+        token="synthetic-token"
+        documentId="doc-a"
+        documentIds={['doc-b', 'doc-a']}
+        perfil="principiante"
+        idiomaSalida="es"
+        idiomaUi="es"
+        onSessionInvalid={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: t('glosario.generar', 'es') }));
+    await screen.findByText('Definición multidocumental');
+    expect(api.createGlossary).toHaveBeenCalledWith(
+      'synthetic-token',
+      expect.objectContaining({
+        document_id: 'doc-a',
+        document_ids: ['doc-a', 'doc-b'],
+      }),
+      expect.any(String)
+    );
   });
 });

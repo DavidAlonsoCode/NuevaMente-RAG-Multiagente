@@ -159,18 +159,22 @@ def entorno(tmp_path, aislar_estado_seguridad):
             doble.bloquear.set()
 
 
-def esperar(e, recibo, status="completed", *, timeout=15):
+def esperar(e, recibo, status="completed", *, timeout=60):
+    """Comprueba HTTP sin saturar el ledger durable con sondeos de 10 ms."""
     limite = time.monotonic() + timeout
     ultimo = None
     while time.monotonic() < limite:
         respuesta = e.cliente.get(recibo["status_url"], headers=e.headers)
         assert respuesta.status_code == 200, respuesta.text
         ultimo = respuesta.json()
+        restante = limite - time.monotonic()
+        if restante <= 0:
+            break
         if ultimo["status"] == status:
             return ultimo
         if ultimo["status"] not in {"queued", "running"}:
             pytest.fail(str(ultimo))
-        time.sleep(0.01)
+        time.sleep(min(0.25, restante))
     pytest.fail(str(ultimo))
 
 

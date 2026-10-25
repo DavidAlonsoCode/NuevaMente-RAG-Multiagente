@@ -18,7 +18,7 @@ from app.session.manifests import sincronizar_pendientes
 from app.session.recovery import restaurar_registro
 from app.storage.object_keys import clave_documento, clave_original, clave_output, clave_progress, clave_workspace
 from app.storage.oci_storage import LocalMockStorageProvider
-from app.storage.provider import StorageUnavailable
+from app.storage.provider import StorageConflict, StorageUnavailable
 from test_schemas import FLASHCARDS, salida_valida
 
 pytestmark = pytest.mark.integration_mock
@@ -47,15 +47,214 @@ def fuente(storage, workspace_id, document_id="doc_01HX"):
     return manifest
 
 
-def paquete(storage, workspace_id, doc, generation_id="gen_01HX"):
+def paquete(storage, workspace_id, doc, generation_id="gen_01HX", *, documentos=None):
     datos = salida_valida(FLASHCARDS).model_dump(mode="json")
     datos["generation_id"] = generation_id
     datos["documento_fuente"]["document_id"] = doc.document_id
     datos["documento_fuente"]["hash"] = doc.hash_sha256
+    if documentos is not None:
+        datos["documentos_fuente"] = [
+            {**datos["documento_fuente"], "document_id": fuente.document_id, "hash": fuente.hash_sha256}
+            for fuente in documentos
+        ]
     datos["almacenamiento_oci"]["objeto_id"] = clave_output(workspace_id, generation_id)
     output = PedagogicalOutput.model_validate(datos)
     storage.upload(clave_output(workspace_id, generation_id), output.model_dump_json())
     return output
+
+
+@pytest.mark.parametrize(
+    "retiradas,lapida_generacion",
+    [
+        (("doc_b",), False),
+        (("doc_a",), False),
+        (("doc_a", "doc_b"), False),
+        (("doc_b",), True),
+        ((), False),
+    ],
+    ids=["secundaria", "primaria", "ambas", "documento-y-generacion", "sin-retiradas"],
+)
+def test_recuperacion_multidocumental_conserva_relaciones_y_estados(pila, tmp_path, retiradas, lapida_generacion):
+    db, storage, manager = pila
+    creado = manager.crear_espacio()
+    ws = creado.workspace_id
+    documentos = [fuente(storage, ws, "doc_a"), fuente(storage, ws, "doc_b")]
+    output = paquete(storage, ws, documentos[0], documentos=documentos)
+    for doc_id in retiradas:
+        db.agendar_borrado("document", doc_id, ws)
+    if lapida_generacion:
+        db.agendar_borrado("generation", output.generation_id, ws)
+    sincronizar_pendientes(db, storage)
+    storage.upload(
+        clave_progress(ws),
+        json.dumps({"version": 1, "eventos": [{"generation_id": output.generation_id}]}),
+    )
+    nuevo = RegistroOperativo(tmp_path / "nuevo.sqlite3")
+    try:
+        assert nuevo.registro_vacio()
+        assert restaurar_registro(nuevo, storage) == 1
+        assert not nuevo.recuperacion_pendiente()
+        assert nuevo.documentos_generacion(output.generation_id) == ["doc_a", "doc_b"]
+        for doc in documentos:
+            assert nuevo.recursos_documentales(ws, doc.document_id)[0] == [output.generation_id]
+            assert nuevo.esta_borrado("document", doc.document_id) == (doc.document_id in retiradas)
+            if doc.document_id in retiradas:
+                assert nuevo.obtener_documento(doc.document_id) is None
+            else:
+                assert nuevo.obtener_documento(doc.document_id)["estado"] == "processing"
+        assert {efecto["document_id"] for efecto in nuevo.listar_efectos_documentales()} == set(retiradas)
+        assert nuevo.esta_borrado("generation", output.generation_id) == lapida_generacion
+        if retiradas:
+            assert nuevo.obtener_generacion(output.generation_id) is None
+            assert nuevo.listar_generaciones(ws) == []
+            assert nuevo.obtener_progreso_restaurado(ws)["eventos"] == []
+        else:
+            assert nuevo.obtener_generacion(output.generation_id)["status"] == "completed"
+            assert [g["generation_id"] for g in nuevo.listar_generaciones(ws)] == [output.generation_id]
+            assert nuevo.snapshot_generacion(output.generation_id) == [
+                f.model_dump(mode="json") for f in output.documentos_fuente
+            ]
+            assert nuevo.obtener_progreso_restaurado(ws)["eventos"] == [{"generation_id": output.generation_id}]
+    finally:
+        nuevo.cerrar()
+
+
+@pytest.mark.parametrize(
+    "caso,mensaje",
+    [
+        ("hash_retirada", "otra versión del documento retirado"),
+        ("hash_vigente", "otra versión del documento"),
+        ("fuente_ajena", "ausente del espacio recuperado"),
+        ("primario_ausente", "primario no coincide"),
+        ("primario_incoherente", "primario no coincide"),
+        ("identidad", "identidad ajena o no canónica"),
+        ("almacenamiento", "almacenamiento ajeno"),
+    ],
+)
+def test_recuperacion_multidocumental_retirada_rechaza_paquetes_incoherentes(pila, tmp_path, caso, mensaje):
+    db, storage, manager = pila
+    creado = manager.crear_espacio()
+    ws = creado.workspace_id
+    documentos = [fuente(storage, ws, "doc_a"), fuente(storage, ws, "doc_b")]
+    output = paquete(storage, ws, documentos[0], documentos=documentos)
+    clave = clave_output(ws, output.generation_id)
+    datos = json.loads(storage.get(clave))
+    if caso == "hash_retirada":
+        datos["documentos_fuente"][1]["hash"] = "c" * 64
+    elif caso == "hash_vigente":
+        datos["documento_fuente"]["hash"] = datos["documentos_fuente"][0]["hash"] = "c" * 64
+    elif caso == "fuente_ajena":
+        otro = manager.crear_espacio()
+        ajena = fuente(storage, otro.workspace_id, "doc_ajeno")
+        datos["documentos_fuente"].append(
+            {**datos["documento_fuente"], "document_id": ajena.document_id, "hash": ajena.hash_sha256}
+        )
+    elif caso == "primario_ausente":
+        datos["documentos_fuente"] = datos["documentos_fuente"][1:]
+    elif caso == "primario_incoherente":
+        datos["documentos_fuente"][0]["hash"] = "c" * 64
+    elif caso == "identidad":
+        datos["generation_id"] = "gen_ajena"
+    else:
+        datos["almacenamiento_oci"]["objeto_id"] = clave_output("otro_workspace", output.generation_id)
+    storage.upload(clave, json.dumps(datos))
+    db.agendar_borrado("document", "doc_b", ws)
+    sincronizar_pendientes(db, storage)
+    nuevo = RegistroOperativo(tmp_path / "nuevo.sqlite3")
+    try:
+        with pytest.raises(ValueError, match=mensaje):
+            restaurar_registro(nuevo, storage)
+        assert nuevo.workspace_para_manifest(ws) is None
+        assert nuevo.documentos_generacion(output.generation_id) == []
+        assert nuevo.recuperacion_pendiente()
+        # Rechazar el paquete no elimina la evidencia necesaria para su revisión.
+        assert storage.get(clave)
+    finally:
+        nuevo.cerrar()
+
+
+@pytest.mark.parametrize(
+    "caso,error",
+    [
+        ("manifest_ausente", ValueError),
+        ("manifest_ajeno", ValueError),
+        ("clave_no_canonica", ValueError),
+        ("hash_incompatible", ValueError),
+        ("admision_no_confirmada", ValueError),
+        ("etag_cambiado", StorageConflict),
+    ],
+)
+def test_procedencia_residual_multidocumental_rechaza_evidencia_invalida(pila, tmp_path, monkeypatch, caso, error):
+    db, storage, manager = pila
+    creado = manager.crear_espacio()
+    ws = creado.workspace_id
+    documentos = []
+    for doc_id, contenido in (
+        ("doc_a", b"Fuente A confirmada pero sin original recuperable."),
+        ("doc_b", b"Fuente B retirada y distinta a las otras fuentes."),
+        ("doc_c", b"Fuente C vigente con su original verificable."),
+    ):
+        manifest = ManifiestoDocumento(
+            workspace_id=ws,
+            document_id=doc_id,
+            source_name=f"{doc_id}.txt",
+            hash_sha256=hashlib.sha256(contenido).hexdigest(),
+            estado=DocumentStatus.READY,
+            **({"admision_confirmada": True, "admision_sqlite_confirmada": True} if doc_id == "doc_a" else {}),
+        )
+        storage.upload(clave_documento(ws, doc_id), manifest.model_dump_json())
+        storage.upload(clave_original(ws, doc_id), contenido)
+        documentos.append(manifest)
+    a, b, c = documentos
+    assert len({doc.hash_sha256 for doc in documentos}) == 3
+    output = paquete(storage, ws, a, "gen_ab_residual", documentos=[a, b])
+    paquete(storage, ws, c, "gen_c_vigente")
+    db.agendar_borrado("document", b.document_id, ws)
+    sincronizar_pendientes(db, storage)
+    clave_a = clave_documento(ws, a.document_id)
+    clave_ab = clave_output(ws, output.generation_id)
+    storage.delete(clave_original(ws, a.document_id))
+    if caso == "manifest_ausente":
+        storage.delete(clave_a)
+    elif caso == "manifest_ajeno":
+        storage.upload(clave_a, a.model_copy(update={"workspace_id": "ws_ajeno"}).model_dump_json())
+    elif caso == "clave_no_canonica":
+        storage.upload(clave_documento(ws, "doc_alias"), storage.get(clave_a))
+        storage.delete(clave_a)
+    elif caso == "hash_incompatible":
+        datos = json.loads(storage.get(clave_ab))
+        distinto = hashlib.sha256(b"Version de A sin respaldo documental").hexdigest()
+        datos["documento_fuente"]["hash"] = datos["documentos_fuente"][0]["hash"] = distinto
+        storage.upload(clave_ab, json.dumps(datos))
+    elif caso == "admision_no_confirmada":
+        storage.upload(clave_a, a.model_copy(update={"admision_confirmada": False}).model_dump_json())
+    cambiado = []
+    if caso == "etag_cambiado":
+        leer = storage.get
+
+        def leer_paquete_y_cambiar_manifest(clave, **kwargs):
+            contenido = leer(clave, **kwargs)
+            if clave == clave_ab and not cambiado:
+                cambiado.append(True)
+                storage.upload(clave_a, a.model_copy(update={"titulo": "Cambio concurrente de A"}).model_dump_json())
+            return contenido
+
+        monkeypatch.setattr(storage, "get", leer_paquete_y_cambiar_manifest)
+    nuevo = RegistroOperativo(tmp_path / "nuevo_residual.sqlite3")
+    try:
+        with pytest.raises(error):
+            restaurar_registro(nuevo, storage)
+        assert nuevo.workspace_para_manifest(ws) is None
+        assert nuevo.documentos_generacion(output.generation_id) == []
+        for tabla in ("documents", "generations", "retired_generation_controls"):
+            assert nuevo._conn.execute(f"SELECT 1 FROM {tabla} WHERE workspace_id=?", (ws,)).fetchone() is None
+        assert nuevo.obtener_documento(a.document_id) is None
+        assert nuevo.recuperacion_pendiente()
+        assert storage.get(clave_ab)
+        if caso == "etag_cambiado":
+            assert cambiado == [True]
+    finally:
+        nuevo.cerrar()
 
 
 def test_borrado_durable_no_se_restaura_en_volumen_nuevo(pila, tmp_path):

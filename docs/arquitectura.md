@@ -1,313 +1,184 @@
-# 🏗️ Arquitectura de NuevaMente
+# Arquitectura implementada de NuevaMente
 
-> **Fuente de decisiones**: [`decisiones_proyecto.md`](../decisiones_proyecto.md) — este documento las traduce a diagramas y es la base del diagrama final del README (`Issue 57`).
-> **Estado**: diseño aprobado. Las secciones enlazan la implementación; el despliegue objetivo requiere la aceptación pública de #133 (los issues referenciados pertenecen al [plan de implementación](plan-implementacion.md)).
+Base contrastada: `develop` / HEAD `f1f9ae6`, 21/10/2026. Esta descripción de
+componentes corresponde a la etapa B del #57; no acredita una instalación limpia,
+proveedores ejecutados de nuevo ni despliegue público. Las decisiones de alcance
+están en [decisiones_proyecto.md](../decisiones_proyecto.md) y los datos de intercambio
+en [contratos](contratos-api.md) y [modos de generación](modos-generacion.md).
 
----
-
-Ampliación [33.1: modos de generación](modos-generacion.md): ambos recorridos comparten documento preparado, RAG, worker, permisos y almacenamiento. El modo pertenece a cada adaptación, no al documento.
-
-```mermaid
-flowchart LR
-    R["Documento ready e índice existente"] --> M{"Modo de la nueva generación"}
-    M -->|multiagente| G["Grafo actual con Writer y Critic"]
-    G --> A["Paquete aprobado y guardado"]
-    M -->|básico| B["RAG + una redacción, sin Critic"]
-    B --> V["Validación estructural y de citas"]
-    V --> N["Paquete no evaluado y guardado"]
-```
-
-Implementación: [selección y persistencia](../backend/app/generations/service.py), [recorrido básico](../backend/app/core/agents/basic.py), [grafo conservado](../backend/app/core/agents/graph.py) y [variantes del contrato](../backend/app/schemas/responses.py). Fallos y cancelación no exponen material; ambas salidas exigen persistencia confirmada. El diagrama describe implementación local, no acredita proveedores ni despliegue reales.
-
-## Tabla de Contenidos
-
-1. [Contexto del sistema](#1-contexto-del-sistema)
-2. [Diagrama de contenedores](#2-diagrama-de-contenedores)
-3. [Flujo de datos extremo a extremo](#3-flujo-de-datos-extremo-a-extremo)
-4. [Pipeline RAG](#4-pipeline-rag)
-5. [Grafo multi-agente (LangGraph)](#5-grafo-multi-agente-langgraph)
-6. [Verificación de fidelidad](#6-verificación-de-fidelidad)
-7. [Persistencia: OCI Object Storage + estado local](#7-persistencia-oci-object-storage--estado-local)
-8. [Progreso en vivo (SSE) y trabajos](#8-progreso-en-vivo-sse-y-trabajos)
-9. [Despliegue en OCI Compute Always Free](#9-despliegue-en-oci-compute-always-free)
-10. [Decisiones arquitectónicas clave](#10-decisiones-arquitectónicas-clave)
-
----
+Los dos diagramas resumidos se mantienen en el README:
+[componentes](../README.md#arquitectura-implementada) y
+[ingestión, RAG y generación](../README.md#del-documento-al-material-de-estudio).
+Las tablas siguientes vinculan sus cajas y transiciones con código existente.
 
 ## 1. Contexto del sistema
 
-```mermaid
-graph TB
-    User["👤 Usuario anónimo<br/>(documento público + código de recuperación)"]
-    NM["NuevaMente<br/>Adaptación de contenido educativo"]
-    Gemini["Gemini API<br/>generación · verificación · embeddings · visión"]
-    OCI[("Oracle Cloud<br/>Object Storage · Compute<br/>(Always Free)")]
+El navegador ejecuta React y se comunica por HTTP/SSE con FastAPI. Los documentos
+admitidos son públicos o simulados: PDF, Markdown, TXT y texto pegado. El backend
+controla acceso por espacio, procesamiento, proveedores y persistencia. El código
+de recuperación permite volver al espacio sin registro por correo; los tokens
+permanecen en memoria en React. Ver [guía del frontend](../frontend/README.md).
 
-    User -- "HTTPS" --> NM
-    NM -- "LLM + embeddings" --> Gemini
-    NM -- "originales y paquetes" --> OCI
-```
-
-Límites del contexto (decisiones §1, §11):
-
-- Entrada: documentos **públicos o simulados** (PDF/MD/TXT o texto pegado). No se procesan datos sensibles ni confidenciales.
-- La IA provee texto e interpretación visual. El multiagente publica únicamente paquetes aprobados; el básico valida estructura y citas y se identifica como no evaluado, sin score ni sello independiente.
-- Toda la infraestructura vive en la capa Always Free de OCI; sin recursos pagos ni fallback de pago.
-
----
+La ejecución local implementada puede usar Gemini/OCI reales con configuración
+explícita o dobles inyectados para pruebas. `MOCK_OCI=1` selecciona almacenamiento
+local en desarrollo/CI. `MOCK_GEMINI=1` requiere además inyectar los proveedores;
+no crea un simulador funcional por sí solo. Véanse la [configuración](../backend/app/config.py),
+el [ensamblado de la API](../backend/app/main.py), la
+[factoría de embeddings](../backend/app/core/rag/embeddings.py) y el
+[helper de verificación aislada](../backend/tests/integration/react_backend.py).
 
 ## 2. Diagrama de contenedores
 
-```mermaid
-graph TB
-    subgraph Host["VM OCI (Ubuntu 24.04 · ARM64)"]
-        Caddy["Caddy (host)<br/>proxy HTTPS · SSE sin buffering"]
-        subgraph Compose["docker compose"]
-            UI["frontend · React<br/>UI ES/EN/PT · tema rojo/coral"]
-            API["backend · FastAPI<br/>validación · sesión · trabajos · RAG · agentes"]
-            VOL[("volumen backend_data<br/>ChromaDB · SQLite · temporales")]
-        end
-    end
-    Store[("OCI Object Storage<br/>bucket privado<br/>nuevamente-contenidos-educativos")]
+El diagrama de componentes del README representa responsabilidades de ejecución,
+no contenedores adicionales: worker, RAG y agentes pertenecen al backend. Compose
+contiene dos servicios, `backend` y `frontend`; solo el backend monta `backend_data`.
 
-    User2["👤 Usuario"] -- "HTTPS 443" --> Caddy
-    Caddy -- "/api/*" --> API
-    Caddy -- "UI estática" --> UI
-    API -- "originales · paquetes · manifiestos" --> Store
-    API -- "índice + registro operativo" --> VOL
-```
+| Caja del diagrama | Implementación | Responsabilidad |
+|---|---|---|
+| React / TypeScript / Vite (`UI`) | [App.tsx](../frontend/src/App.tsx), [cliente HTTP](../frontend/src/api/client.ts), [Vite](../frontend/vite.config.ts), [servidor del build](../frontend/entrypoint.py) | UI; proxy `/api` al backend en desarrollo o build local |
+| FastAPI (`API`) | [main.py](../backend/app/main.py), [rutas](../backend/app/api/routes/), [sesiones](../backend/app/session/manager.py), [seguridad](../backend/app/api/security.py) | Componer servicios, validar sesión/ownership y admitir solicitudes |
+| Worker común (`W`) | [manager.py](../backend/app/jobs/manager.py), [admisión](../backend/app/jobs/admission.py), [cuotas](../backend/app/jobs/quotas.py) | Cola compartida por ingestión, generación, chat y glosario; cancelación, deadlines y cuotas |
+| Ingestión y RAG (`RAG`) | [runtime documental](../backend/app/documents/runtime.py), [ingestión](../backend/app/documents/ingestion.py), [retriever](../backend/app/core/rag/retriever.py) | Preparar documentos y recuperar evidencia autorizada |
+| Generación (`GEN`) | [servicio](../backend/app/generations/service.py), [grafo](../backend/app/core/agents/graph.py), [básico](../backend/app/core/agents/basic.py) | Elegir el recorrido de cada nueva adaptación |
+| Chroma (`C`) | [vectorstore.py](../backend/app/core/rag/vectorstore.py) | Índice persistente local y catálogo auxiliar; filtros por espacio/documento |
+| SQLite operativo (`DB`) | [store.py](../backend/app/jobs/store.py) | Sesiones, trabajos, eventos, idempotencia y efectos durables de limpieza |
+| StorageProvider (`S`, `OCI`, `MOCK`) | [interfaz](../backend/app/storage/provider.py), [selección y mock](../backend/app/storage/oci_storage.py), [OCI real](../backend/app/storage/oci_real.py) | Selección al arranque; nunca fallback ante fallos de OCI |
+| Gemini (`AI`, `LLM`) | [embeddings](../backend/app/core/rag/embeddings.py), [multimodal](../backend/app/core/rag/multimodal.py), [generación/verificación](../backend/app/core/agents/gemini_generation.py) | Adaptadores síncronos usados bajo controles del worker |
 
-El diagrama representa el despliegue objetivo; no acredita una VM disponible.
-La UI React está en [frontend/src/App.tsx](../frontend/src/App.tsx), el cliente
-HTTP en [frontend/src/api/client.ts](../frontend/src/api/client.ts) y las rutas
-públicas en [infra/caddy/Caddyfile](../infra/caddy/Caddyfile). En desarrollo,
-[Vite](../frontend/vite.config.ts) y el [servidor del build](../frontend/entrypoint.py)
-redirigen `/api` al backend configurado.
-
-Reglas estructurales (decisiones §3.1, §14):
-
-| Regla | Motivo |
-|---|---|
-| El frontend **solo** habla HTTP con la API | No accede al bucket, al índice ni a claves del proveedor |
-| Solo el backend monta `backend_data` | Chroma y SQLite pertenecen al backend; único proceso escritor |
-| Puertos 8000/8501 en loopback | Lo público pasa exclusivamente por el proxy HTTPS |
-| La UI nunca afirma éxito completo sin confirmación OCI | Un resultado redactado, aprobado y guardado son hechos distintos |
-
----
+Las cajas Gemini separan funciones, no exigen cuentas o modelos distintos.
+Modelos, dimensiones y cuotas dependen de la configuración. El Critic hace llamadas
+separadas del Writer aunque compartan modelo. En pruebas los adaptadores reciben
+dobles explícitos. Contenedores y puertos efectivos: [Compose](../docker-compose.yml).
 
 ## 3. Flujo de datos extremo a extremo
 
-Secuencia del recorrido multiagente del caso de uso principal (decisiones §3.2):
+| Transición del diagrama de flujo | Módulos y condición real |
+|---|---|
+| Entrada → original confirmado (`D`, `O`) | [ruta documental](../backend/app/api/routes/documents.py) y [admission.py](../backend/app/documents/admission.py): validación, intención idempotente, original/manifiestos verificados antes de procesar |
+| Ingestión → índice → `ready` (`I`, `C`, `READY`) | [ingestion.py](../backend/app/documents/ingestion.py): extracción, cobertura textual/visual, inventario indexado y manifiesto confirmado; páginas visuales pendientes conservan `processing` |
+| Nueva solicitud → modo (`N`, `M`) | [ruta de generación](../backend/app/api/routes/generations.py), [ServicioGeneraciones](../backend/app/generations/service.py): nueva intención y trabajo en el gestor existente; `ready` no dispara generación automática |
+| Básico → paquete no evaluado (`B`, `V`) | [basic.py](../backend/app/core/agents/basic.py), [draft_validation.py](../backend/app/core/agents/draft_validation.py), [variantes de respuesta](../backend/app/schemas/responses.py) |
+| Multiagente → revisión/finalización (`S`, `R`, `W`, `CR`, `F`, `REJ`) | [graph.py](../backend/app/core/agents/graph.py) y nodos detallados en sección 5 |
+| Paquete → persistencia → `completed` (`P`, `DONE`) | `_persistir` en [service.py](../backend/app/generations/service.py): guarda el canónico, contrasta bytes, prepara exportaciones y revalida acceso/fuente; ambos recorridos exigen confirmación |
+| Fallo técnico (`ERR`) | [gestor](../backend/app/jobs/manager.py), [grafo](../backend/app/core/agents/graph.py) y [básico](../backend/app/core/agents/basic.py): diagnóstico seguro sin paquete publicable |
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor U as Usuario
-    participant UI as React
-    participant API as FastAPI
-    participant Q as Cola de trabajos
-    participant G as Grafo LangGraph
-    participant V as ChromaDB
-    participant S as OCI Object Storage
-
-    U->>UI: crea espacio (recibe código de recuperación 1 vez)
-    U->>UI: sube PDF/MD/TXT
-    UI->>API: POST /api/documents/upload
-    API->>S: guarda original
-    API->>Q: encola ingestión (processing)
-    Q->>V: parse → chunk → embed → indexar
-    API-->>UI: 202 document_id + processing
-    UI->>API: consulta estado del documento
-    API-->>UI: ready solo tras finalizar ingestión (cobertura)
-
-    U->>UI: perfil + formato + nicho + idioma → GENERAR
-    UI->>API: POST /api/generate
-    API-->>UI: 202 · generation_id + status_url + events_url
-    API->>Q: encola generación
-    Q->>G: Supervisor → Researcher → Writer → Critic (≤3 intentos)
-    G->>V: recupera evidencia autorizada (filtra workspace+documento)
-    G->>G: verifica fidelidad + rúbrica + visual
-    alt aprobado
-        G->>API: paquete validado
-        API->>S: outputs/{ws}/{gen}/content.json
-        S-->>API: confirmación de escritura
-        API-->>UI: completed (SSE) + paquete + almacenamiento_oci
-    else 3 intentos sin aprobación
-        API-->>UI: rejected_quality (diagnóstico, sin contenido)
-    else fallo técnico / OCI
-        API-->>UI: failed (STORAGE_UNAVAILABLE → persist reintenta subida)
-    end
-    UI->>U: contenido interactivo · fuentes · exportaciones
-```
-
-Puntos no negociables del flujo:
-
-1. El original se persiste en OCI **antes** de declarar el documento disponible.
-2. `completed` se emite **solo** después de la confirmación de persistencia del paquete.
-3. Un rechazo de calidad, una falla técnica y una falla de almacenamiento son estados distintos y visibles.
-
----
+El diagrama resume el recorrido exitoso y los fallos principales. Cancelación,
+deadlines, cuota y errores de validación/autorización también pueden interrumpirlo;
+no se infiere aprobación ni se entrega un borrador por esas salidas. Los eventos
+y las lecturas de estado permiten distinguir `failed`, `cancelled` y `rejected_quality`.
 
 ## 4. Pipeline RAG
 
-```mermaid
-graph LR
-    Doc["PDF · MD · TXT · texto pegado"] --> Val["Validación<br/>firma real · tamaño · páginas · tokens"]
-    Val -- "rechazo explicativo" --> Err["error accionable<br/>(sin truncado silencioso)"]
-    Val --> Parse["Extracción<br/>PyPDF · MD/TXT"]
-    Parse --> Raster["Páginas visuales<br/>pypdfium2 → descripción Gemini<br/>(≤20 págs · procedencia)"]
-    Parse --> Chunk["Chunker estructural<br/>750 tok / 120 solape · metadatos"]
-    Raster --> Chunk
-    Chunk --> Embed["Embeddings gemini-embedding-2<br/>768 d · 1 vector por chunk"]
-    Embed --> Chroma[("ChromaDB<br/>filtrado workspace+documento")]
-    Query["consulta temática"] --> MMR["MMR k=5 · fetch_k=15 · λ=0.7<br/>dedup · presupuesto 12k tokens"]
-    Chroma --> MMR
-    MMR --> Ev["evidencia tipada<br/>chunk_id · página · sección"]
-```
+La extracción textual corresponde a [parser.py](../backend/app/core/rag/parser.py).
+Las páginas visuales se rasterizan en [raster.py](../backend/app/core/rag/raster.py)
+y sus interpretaciones se mantienen separadas del texto en
+[multimodal.py](../backend/app/core/rag/multimodal.py), con acceso a la página original.
+[Ingestión](../backend/app/documents/ingestion.py) coordina la cobertura antes de `ready`.
 
-Parámetros de partida (calibrables, decisiones §4): chunk 750 tokens con 120 de solape medidos con tokenizador explícito; presupuestos de evidencia 12.000 tokens por borrador; metadatos completos por chunk (`document_hash`, `page`, `section_title`, `chunk_index`, `start_index`, `source_type`, `language`).
-
-**Aislamiento**: toda recuperación filtra por `workspace_id` + `document_id` autorizados; la biblioteca demo vive en una colección de solo lectura separada. Ninguna búsqueda libre cruza espacios.
-
----
+[chunker.py](../backend/app/core/rag/chunker.py) segmenta respetando estructura y
+ubicaciones; [tokenizer.py](../backend/app/core/rag/tokenizer.py) mide los presupuestos.
+Los embeddings se calculan después para indexar en
+[Chroma](../backend/app/core/rag/vectorstore.py). La recuperación
+[MMR](../backend/app/core/rag/retriever.py) filtra espacio/documento, deduplica y
+acota la evidencia. [Researcher](../backend/app/core/agents/researcher.py) busca por
+objetivos y cobertura dentro del presupuesto. Ver pruebas de
+[ingestión](../backend/tests/test_document_ingestion.py),
+[segmentación](../backend/tests/test_chunker.py), [índice](../backend/tests/test_vectorstore.py)
+y [recuperación](../backend/tests/test_retriever.py).
 
 ## 5. Grafo multi-agente (LangGraph)
 
-```mermaid
-flowchart TB
-    Start(["POST /api/generate<br/>202 + generation_id"]) --> Sup["Supervisor (determinista)<br/>valida parámetros · idioma · permisos · alcance<br/>fija restricciones + rúbrica"]
-    Sup --> Res["Researcher<br/>consultas por tema · cobertura<br/>amplía evidencia dentro del presupuesto"]
-    Res --> Wri["Writer<br/>salida tipada del formato<br/>citas a chunk_id · metadatos pedagógicos"]
-    Wri --> Cri["Critic<br/>fidelidad Faithfulness · rúbrica pedagógica<br/>verificación visual"]
-    Cri --> Gate{"¿Cumple TODOS<br/>los criterios?"}
-    Gate -- "sí" --> Fin["Finalizer<br/>empaqueta lo ya revisado<br/>(sin contenido nuevo)"]
-    Fin --> Save["Backend escribe y verifica paquete en OCI"]
-    Save -->|"confirmación"| Done(["completed + persistencia.status_upload"])
-    Gate -- "corregible y quedan intentos<br/>(≤3 totales)" --> Wri
-    Gate -- "falta evidencia y quedan intentos/presupuesto" --> Res
-    Gate -- "3 intentos sin aprobación" --> Rej(["rejected_quality<br/>diagnóstico · sin contenido"])
-    Start --> Fail(["failed / cancelled<br/>deadline · cuota · persistencia · usuario"])
-    Save -- "fallo de escritura OCI" --> Fail
+[graph.py](../backend/app/core/agents/graph.py) conecta los nodos y ejecuta el grafo
+síncrono dentro del worker; no crea otra cola.
 
-    style Done fill:#27a644
-    style Rej fill:#f59e0b
-    style Fail fill:#ef4444
-```
+| Nodo | Módulo | Función y salida |
+|---|---|---|
+| Supervisor | [supervisor.py](../backend/app/core/agents/supervisor.py) | Determinista: autorización, versión de fuente, parámetros, restricciones y rúbrica |
+| Researcher | [researcher.py](../backend/app/core/agents/researcher.py) | Recupera evidencia y comprueba cobertura |
+| Writer | [writer.py](../backend/app/core/agents/writer.py) | Redacta salida tipada; máximo tres redacciones totales, incluida la inicial |
+| Critic | [critic.py](../backend/app/core/agents/critic.py) | Revisión factual, pedagógica y visual; vuelve a Writer para corregir o a Researcher si pide evidencia y quedan redacciones/presupuesto |
+| Finalizer | [finalizer.py](../backend/app/core/agents/finalizer.py) | Empaqueta el contenido aprobado sin nuevas afirmaciones educativas |
 
-Propiedades del grafo (decisiones §5, §19):
+Al agotarse las redacciones sin aprobación, termina `rejected_quality`. Un fallo
+técnico del evaluador es `failed`, sin sustituir el juicio ni activar Básico.
+La función `_finalizar` del grafo revalida la fuente con Supervisor, llama al
+Finalizer, persiste y exige la confirmación antes de `completed`.
+Cobertura existente: [test_graph.py](../backend/tests/test_graph.py) y
+[test_critic.py](../backend/tests/test_critic.py).
 
-- **Tres intentos totales** (inicial + 2 correcciones). Sin ciclo de investigación ilimitado.
-- **Presupuesto global**: ≤20 llamadas LLM por generación y deadline de 300 s — agotados → `failed` técnico, nunca falso veredicto factual.
-- **Critic con llamadas separadas** del redactor (modelo/rúbrica/evidencia propios).
-- **Finalizer determinista**: no agrega conceptos, prerrequisitos ni explicaciones; IDs de sistema y storage los completa el backend.
-- El grafo termina **siempre** en un estado terminal explícito.
-
----
+El [recorrido básico](../backend/app/core/agents/basic.py) reutiliza Supervisor,
+Researcher y Writer como funciones, sin invocar LangGraph ni Critic. Limita a una
+redacción, valida estructura y citas y construye `BasicPedagogicalOutput` con
+`status=no_evaluado`, evaluación `no_realizada` y métricas nulas. No ejecuta el
+Finalizer multiagente ni atribuye aprobación independiente. Comparte persistencia
+y controles del worker; pruebas en [test_basic_mode.py](../backend/tests/test_basic_mode.py).
 
 ## 6. Verificación de fidelidad
 
-Implementación propia de la metodología Faithfulness de Ragas (decisiones §19.1):
-
-```mermaid
-graph LR
-    Draft["borrador + metadatos"] --> Dec["1 · Descomposición<br/>afirmaciones atómicas<br/>IDs estables · pronombres resueltos"]
-    Dec --> NLI["2 · Juicio NLI vs evidencia<br/>respaldada / no respaldada<br/>motivo + referencias"]
-    NLI --> Score["3 · anclaje_fuente_score<br/>respaldadas / total (denominador =<br/>lista original de afirmaciones)"]
-    Score --> Pol{"Política"}
-    Pol -- "≥0.85 y sin marcas" --> Aprob["candidato a aprobación"]
-    Pol -- "0.70 ≤ score < 0.85" --> FB["feedback + nuevo intento"]
-    Pol -- "<0.70" --> Redo["rehacer · nunca aprobar"]
-```
-
-Salvaguardas: lista de juicios incompleta → evaluación inválida (`no_evaluable`); cero afirmaciones evaluables → score nulo (nunca 1.0); fallo del juez → fallo técnico. Distractores de quiz deliberadamente falsos se comprueban aparte; analogías etiquetadas no se juzgan como hechos literales.
-
-Separación de conceptos (§19.2): **fidelidad** (hechos respaldados) ≠ **cobertura** (alcance y objetivos cubiertos) ≠ **adecuación pedagógica** (utilizable por el destinatario). Un score alto con un tutorial inutilizable no pasa la revisión.
-
----
+[faithfulness.py](../backend/app/core/faithfulness/faithfulness.py) implementa la
+metodología inspirada en Ragas: descompone afirmaciones y contrasta su respaldo
+con evidencia. Critic integra ese resultado con cobertura, rúbrica y revisión
+visual cuando corresponde. El score mínimo no permite publicar errores conocidos;
+la aprobación exige superar todos los controles. Una evaluación incompleta o
+vacía no recibe un score inventado. Política: [decisiones §19](../decisiones_proyecto.md#19-mecanismo-anti-alucinación).
+El básico no realiza esta evaluación. Pruebas: [test_faithfulness.py](../backend/tests/test_faithfulness.py).
 
 ## 7. Persistencia: OCI Object Storage + estado local
 
-Distribución de responsabilidades (decisiones §7.2, §8):
+| Capa | Responsabilidad y límite |
+|---|---|
+| OCI privado o mock explícito | Originales, manifiestos, paquetes de ambos modos, progreso recuperable y exportaciones; `persistencia.provider` distingue `oci` de `mock` |
+| SQLite operativo local | Sesiones, trabajos, eventos, idempotencia y obligaciones durables; conservar el volumen no equivale a reconstruirlo íntegramente desde OCI |
+| Chroma local | Índice de búsqueda; existen funciones de reconstrucción, con límites operativos para pérdida selectiva registrados en #58 |
 
-| Capa | Contenido | Rôle |
-|---|---|---|
-| **OCI Object Storage** (obligatorio) | originales, paquetes educativos aprobados, manifiestos de espacio, progreso recuperable, exportaciones, demo | fuente de verdad durable para originales, paquetes y manifiestos |
-| **SQLite local** (volumen) | sesiones/tokens, cola, idempotencia, eventos, tombstones | registro operativo; se reconstruye tras reinicio normal |
-| **ChromaDB local** (volumen) | índice vectorial filtrable | caché de búsqueda; **reconstruible** desde los originales de OCI |
+Las claves las genera [object_keys.py](../backend/app/storage/object_keys.py).
+[ServicioGeneraciones._persistir](../backend/app/generations/service.py) devuelve
+`status_upload=completado` también con mock, acompañado de `provider=mock`: nunca
+acredita una escritura OCI. Un fallo de guardado impide `completed`; el reintento
+de persistencia utiliza el material retenido sin volver a redactarlo.
+Los paquetes básicos guardados conservan su ausencia de evaluación.
 
-Layout del bucket (§8.3):
-
-```text
-nuevamente-contenidos-educativos/
-├── workspaces/{workspace_id}/manifest.json
-├── source_documents/{workspace_id}/{document_id}/original
-├── source_documents/{workspace_id}/{document_id}/manifest.json
-├── outputs/{workspace_id}/{generation_id}/content.json
-├── exports/{workspace_id}/{generation_id}/{format}
-├── progress/{workspace_id}/state.json
-└── demo/
-```
-
-Reglas de escritura: claves de objeto generadas por el backend (IDs), nombre original solo como metadata; reintentar persistencia conserva el mismo `objeto_id`; `MOCK_OCI=1` solo en desarrollo/CI (etiquetado en UI, sin `status_upload=completado`); un fallo real **nunca** degrada a mock.
-
-Presupuestos propios (§8.4): ≤1 GB total, ≤20.000 solicitudes/mes, 5 documentos y 20 generaciones por espacio, alerta al 80%, retención de 30 días de inactividad.
-
----
+La selección del proveedor y sus controles están en [oci_storage.py](../backend/app/storage/oci_storage.py),
+[oci_real.py](../backend/app/storage/oci_real.py) y [oci_budget.py](../backend/app/storage/oci_budget.py).
+Cuotas, costos y operación se mantienen en [gobernanza](gobernanza-costos.md) y el
+[runbook](despliegue-oci.md); no se deduce costo cero de una bandera.
+Los huecos 17.1/17.4 y la revisión humana del runbook constan en
+[verificación #58](verificacion-issue-58.md#capacidades-actuales-y-aceptación-pendiente).
 
 ## 8. Progreso en vivo (SSE) y trabajos
 
-```mermaid
-graph LR
-    Gen["POST /api/generate"] -- "202" --> Resp["generation_id · status_url · events_url"]
-    Resp --> SSE["GET …/events<br/>text/event-stream · heartbeat"]
-    Resp --> Poll["GET /api/generations/{id}<br/>estado sin SSE"]
-    SSE --> Ev["evento: id monotónico · step · status · iteration"]
-    Ev --> UIx["React: etapa + intento<br/>sin porcentajes ficticios"]
-```
+[GestorTrabajos](../backend/app/jobs/manager.py) comparte admisión y controles de
+trabajos intensivos. Las [rutas comunes](../backend/app/api/routes/jobs.py) y las
+[de generación](../backend/app/api/routes/generations.py) exponen estado, eventos y
+cancelación. React usa [fetch SSE autenticado](../frontend/src/api/sse.ts) y
+[reconciliación de progreso](../frontend/src/flows/generationProgress.ts), sin
+reenviar la generación al reconectar. Detalle y límites: [verificación #33](verificacion-issue-33.md).
 
-Cola (§7.5): 1 trabajo intensivo global (compartido por ingestión, generación, chat y glosario) · cola ≤5 con posición visible y cancelación · 1 trabajo por espacio · deadline 300 s · timeout por llamada 60 s · 2 reintentos transitorios con backoff/jitter. Estados: `queued · running · completed · rejected_quality · failed · cancelled`.
-
-El worker ejecuta proveedores Gemini síncronos; cada solicitud real y cada retry pasan por `ctx.llamar`. El grafo usa `invoke` dentro del worker. La API entrega 202 para trabajo en segundo plano y SSE sigue disponible sin requerir un SDK async. El gestor y las rutas comunes de estado/eventos/cancelación pertenecen a Issue 20; los consumidores no crean otro gestor ni otra cola. [Contrato interno de proveedores y trabajos](contratos-api.md#contrato-de-ejecución-de-proveedores-issues-13-y-20).
-
----
+El material usa [renderizadores de estudio](../frontend/src/components/FormatRenderers.tsx)
+y [vistas de estudio/historial](../frontend/src/components/StudyAndHistoryViews.tsx).
+El [progreso](../backend/app/progress/service.py) y el
+[catálogo de generaciones](../backend/app/generations/catalog.py) pertenecen al
+espacio recuperable. [ExportDownloads](../frontend/src/components/ExportDownloads.tsx)
+consume el [servicio de exportaciones](../backend/app/exports/router.py): deriva
+JSON/MD/PDF y CSV/TSV/APKG para flashcards del contenido guardado, conservando el modo.
+Ver [cobertura React vigente](verificacion-issue-139.md) y [exportaciones](verificacion-issue-46.md).
 
 ## 9. Despliegue en OCI Compute Always Free
 
-```mermaid
-graph TB
-    DNS["DNS (dominio gratuito o propio)"] --> Cd["Caddy · HTTPS/ACME<br/>flush inmediato para SSE"]
-    pub["Internet: 80/443"] --> Cd
-    subgraph VM["VM.Standard.A1.Flex · 2 OCPU · 12 GB · home region"]
-        Cd
-        Compose2["docker compose: backend + frontend"]
-        Vol2[("backend_data: Chroma + SQLite")]
-    end
-    Cd -->|loopback 8000/8501| Compose2
-    Compose2 --> Vol2
-    Compose2 --> Buck[("bucket privado OCI<br/>via oci-sdk · permisos mínimos")]
-```
+[Compose](../docker-compose.yml) sirve API/UI en loopback. La configuración de
+[Caddy](../infra/caddy/Caddyfile) y el [runbook #58](despliegue-oci.md) describen la
+publicación HTTPS con SSE. Su existencia no acredita VM, DNS o URL pública
+operativos. La aceptación externa continúa en [#133](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/issues/133).
+Las contradicciones entre casillas de GitHub e informes versionados se conservan
+explícitas en [trazabilidad #57](verificacion-issue-57.md).
 
-Reglas operativas (§9): Ubuntu 24.04 LTS como única receta; SSH restringido a IPs de administración; sin cambio automático a VM paga ante falta de capacidad (se documenta el bloqueo); reinicios de contenedores conservan el volumen, los trabajos en curso quedan `failed` (no `completed`); pérdida de VM → reconstruir índice y datos persistidos desde OCI; invalidar sesiones y marcar trabajos/eventos operativos perdidos como no recuperables, sin afirmar continuidad de ejecución.
+## 10. Alcance y pendientes documentales
 
----
+La [biblioteca de ejemplos](ejemplos-demo.md) permite consultar materiales ya
+publicados; no implementa generar directamente desde las fuentes compartidas.
+Ese puente sigue pendiente y no se sustituye por carga privada ni por un snapshot.
 
-## 10. Decisiones arquitectónicas clave
-
-Resumen ejecutivo del porqué (detalle y justificación completa en `decisiones_proyecto.md`):
-
-| # | Decisión | Alternativa descartada | Por qué |
-|---|---|---|---|
-| 1 | Frontend y backend separados (React + FastAPI) | UI con lógica de proveedores embebida | Contratos compartidos, pruebas sin UI, secrets solo en backend |
-| 2 | ChromaDB local como índice reconstruible; OCI como fuente de verdad | Vector store en la nube o índice como dato primario | Always Free, reconstrucción desde originales, sin costo extra |
-| 3 | Grafo LangGraph con Supervisor y Finalizer deterministas | LLM en cada nodo | Menos llamadas, menos latencia, comportamiento predecible |
-| 4 | Crítica con umbrales + bloqueo al 3.er intento | Publicar «el mejor borrador» con advertencia | El material de estudio no puede contener errores detectados |
-| 5 | `completed` solo tras confirmación de persistencia | Marcar éxito al generar | La UI no debe prometer guardado que no ocurrió |
-| 6 | Acceso anónimo con código criptográfico | Registro por correo / sin recuperación | Recuperación real sin datos personales; alcance del MVP |
-| 7 | SQLite + cola en la misma VM | Redis/Celery distribuidos | Una sola VM Always Free; sin servidores extra |
-| 8 | Exportaciones derivadas del contenido canónico (sin re-llamar al LLM) | Regenerar por formato | Consistencia, costo cero en llamadas, rapidez |
-| 9 | Multimodal vía rasterizado + descripciones separadas del texto | Solo texto de PyPDF | Los diagramas son parte del contenido técnico real |
-| 10 | Presupuestos de aplicación por debajo de las cuotas OCI | Confiar en los límites de la capa | Control preventivo con reservas, cuotas verificadas y bloqueo; alertar no corta el gasto |
-
----
-
-> **Enlaces de evidencia (completar al implementar)**: cada diagrama de este documento deberá enlazar a los módulos que lo implementan (`backend/app/core/rag/`, `backend/app/core/agents/`, `backend/app/storage/`, `frontend/`) cuando el código exista — el issue `Issue 57` es responsable de mantener esta correspondencia al día.
+Esta etapa no valida instalación, captura nuevas pantallas ni completa la matriz
+de cumplimiento. C/D/E y la revisión humana siguen pendientes; #56 abierto no
+bloquea esta descripción. La evaluación humana de #60 no se infiere de sus
+herramientas ni del estado cerrado del issue: ver [registro #57](verificacion-issue-57.md).

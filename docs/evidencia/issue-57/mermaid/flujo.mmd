@@ -1,0 +1,25 @@
+flowchart TB
+    D["PDF / MD / TXT o texto pegado"] --> O["Validar; guardar y verificar original<br/>OCI o mock explícito"]
+    O --> I["Worker: extracción, visión si aplica<br/>chunking y embeddings"]
+    I --> C[("Chroma local: índice confirmado")]
+    C --> READY["Documento ready: cobertura confirmada"]
+    READY --> N["Nueva solicitud de generación al worker"]
+    N --> M{"Modo de esta adaptación"}
+    M -->|"Básico"| B["Autorización y RAG sobre Chroma<br/>Writer: una redacción"]
+    B --> V["Validar estructura y citas<br/>Paquete no evaluado: sin score"]
+    M -->|"Multiagente"| S["Supervisor"]
+    S --> R["Researcher: evidencia MMR y cobertura"]
+    R --> W["Writer: máximo tres redacciones totales"]
+    W --> CR["Critic: fidelidad, pedagogía y visuales"]
+    CR -->|"Corregir; quedan redacciones"| W
+    CR -->|"Falta evidencia; quedan redacciones y presupuesto"| R
+    CR -->|"Aprobado"| F["Finalizer determinista"]
+    CR -->|"Límite sin aprobación"| REJ["rejected_quality: sin borrador publicable"]
+    F --> P["Guardar paquete y preparar exportaciones<br/>Verificar persistencia: OCI o mock"]
+    V --> P
+    P -->|"Confirmada"| DONE["completed; provider=oci o mock"]
+    O -->|"Fallo de persistencia"| ERR["failed: diagnóstico técnico"]
+    I -->|"Fallo técnico"| ERR
+    B -->|"Respuesta inválida o fallo técnico"| ERR
+    CR -->|"Fallo técnico del evaluador"| ERR
+    P -->|"Fallo de persistencia o exportación"| ERR

@@ -58,7 +58,7 @@ def estudio(tmp_path):
         datos["almacenamiento_oci"]["objeto_id"] = clave_output("ws_estudio", gid)
         paquete = PedagogicalOutput.model_validate(datos)
         if db.obtener_documento(doc) is None:
-            db.registrar_documento(doc, "ws_estudio", "Fuente", DocumentStatus.READY, "a" * 64)
+            db.registrar_documento(doc, "ws_estudio", paquete.documento_fuente.titulo, DocumentStatus.READY, "a" * 64)
         db.registrar_generacion(gid, "ws_estudio", doc)
         db.actualizar_generacion(gid, JobStatus.COMPLETED)
         paquetes[gid] = paquete

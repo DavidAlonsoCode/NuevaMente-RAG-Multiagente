@@ -107,6 +107,98 @@ no reintentan escrituras automáticamente. Si falla el transporte, conservar los
 archivos/claves y resolver el resultado antes de enviar otra escritura.
 Creación/recuperación/rotación/borrado no obtienen idempotencia por añadir ese header.
 
+### Selección de fuentes y alcances
+
+Generación, chat y glosario aceptan `document_id` histórico o una lista superior
+`document_ids` de hasta cinco fuentes propias listas y vigentes. La normalización
+ordena y deduplica; el primer ID es el primario canónico. Enviar también un
+`document_id` diferente produce **422**, aunque la UI tenga el foco en él.
+El orden A+B/B+A es equivalente para idempotencia; A+B/A+C no lo es.
+El contrato de chat utilizado por la ruta es
+[`schemas/chat.py`](../backend/app/schemas/chat.py).
+
+Ejemplo **ilustrativo** de generación explícita A+B en Básico 1.1. Los IDs no
+representan documentos de una sesión disponible; no es una captura de ejecución:
+
+```json
+{
+  "document_id": "doc-a",
+  "document_ids": ["doc-b", "doc-a"],
+  "perfil_destinatario": "principiante",
+  "formato_salida": "flashcards",
+  "nicho_sector": "general",
+  "nivel_detalle": "didactico",
+  "idioma_salida": "es",
+  "modo_generacion": "basico",
+  "alcance": {"tipo": "multi_documento"}
+}
+```
+
+| Alcance de generación | Comportamiento |
+|---|---|
+| `documento_completo` | Una fuente; es el default. Con varias fuentes superiores se normaliza a `multi_documento`. |
+| `seccion` | Una fuente con `seccion_id` válido dentro de ella. |
+| `multi_documento` | Dos a cinco fuentes explícitas. |
+| `espacio_completo` | El servidor fija al admitir todas las fuentes propias, listas y vigentes; una sola es válida, vacío da 404 y más de cinco da 422, sin truncar. |
+
+Ejemplo **ilustrativo** de `espacio_completo` sin IDs ni modo explícito (Multiagente
+1.0). También se admite la forma histórica con `document_id`; ese campo no limita
+la resolución a ese documento:
+
+```json
+{
+  "perfil_destinatario": "principiante",
+  "formato_salida": "flashcards",
+  "nicho_sector": "general",
+  "nivel_detalle": "didactico",
+  "idioma_salida": "es",
+  "alcance": {"tipo": "espacio_completo"}
+}
+```
+
+La admisión persiste primario, vínculos y snapshot completo de las fuentes
+(ID, título, hash, versión, procedencia). El worker contrasta esa procedencia con
+la autorización vigente, en ambos modos; una fuente cambiada antes de ejecutar
+impide consumir proveedores con otra versión. El snapshot no concede acceso por
+sí mismo. Los resultados y sus citas usan las fuentes guardadas y se revalidan.
+
+Un reintento `espacio_completo` equivalente con la misma clave se reconoce antes
+de consultar el conjunto actual o exigir proveedores/cuotas de un trabajo nuevo.
+Conserva generación, primario, relaciones, snapshot y hash, sin otra reserva ni
+ejecución, aunque se haya añadido C o se superen cinco documentos. Una clave nueva
+resuelve el estado actual; retirar una fuente original sigue denegando el acceso.
+Las formas históricas se contrastan con parámetros y vínculos originales, sin
+reescribir hashes. Cambios reales de perfil, idioma, formato, detalle, nicho, modo
+o alcance mantienen 409. También se preservan estrictamente las representaciones
+unidocumentales anteriores y las ya guardadas con `document_ids` por esta PR.
+Omitir modo conserva 1.0; explicitarlo solicita 1.1 en una intención nueva, sin
+actualizar el paquete de una intención anterior equivalente.
+
+Chat y glosario no reciben `alcance`. Ejemplo **ilustrativo** de chat A+B con
+primario A, independientemente del foco visual:
+
+```json
+{
+  "document_id": "doc-a",
+  "document_ids": ["doc-b", "doc-a"],
+  "pregunta": "¿Cómo se relacionan los conceptos de ambas fuentes?",
+  "perfil_destinatario": "principiante",
+  "idioma_salida": "es"
+}
+```
+
+El mismo conjunto y perfil/idioma pueden enviarse a glosario omitiendo `pregunta`.
+Su caché incluye todas las fuentes/versiones y la configuración pertinente;
+no sustituye la comparación idempotente por clave/cuerpo.
+
+React ofrece casillas de selección explícita, documento completo/sección para una
+fuente y `multi_documento` para varias. El foco es independiente y la recuperación
+de un trabajo activo conserva la selección original frente a páginas tardías.
+Al llegar a cinco se pide desmarcar una antes de añadir otra; «Seleccionar todos»
+se deshabilita con explicación si hay más de cinco documentos listos.
+**No hay selector UI `espacio_completo`**: seleccionar todos envía IDs explícitos.
+Más detalle: [contrato de procedencia e idempotencia](contratos-api.md#fuentes-alcances-y-procedencia-multidocumental-pr-146).
+
 ### Éxitos asíncronos, errores y persistencia
 
 202 confirma admisión, **no éxito**. `queued` y `running` requieren seguimiento.
@@ -231,16 +323,32 @@ para localizarlos en el snapshot o en un viewer que lo soporte.
   respuesta devuelve el mismo feedback. Las fuentes e imágenes provienen de
   snapshots verificados, sin fallback privado. `/image` entrega PNG con
   `Cache-Control: no-store`. `provider=mock` no acredita preparación real.
-- **Generaciones:** documento propio ready. Historial descendente por creación e
+- **Generaciones:** todas las fuentes propias ready, con snapshot de admisión
+  contrastado con su autorización actual. Cualquier fuente retirada impide servir
+  la generación, sus materiales y sus exports. Historial descendente por creación e
   ID, cursor ligado a filtros; `desde`/`hasta` con zona horaria y `desde <= hasta`.
   Cancelación cooperativa: puede seguir `running` hasta que el worker la observe;
   repetir `cancelled` conserva estado, otro terminal produce 409. `/persist`
   reintenta el aprobado retenido hasta 24 h, mismo objeto y sin LLM; devuelve 202
   incluso si ya estaba completed. Perder el aprobado local no permite reconstruirlo.
-- **Chat y glosario:** requieren fuente ready propia. Chat devuelve siempre 202,
+- **Chat y glosario:** requieren todas las fuentes ready propias. Chat devuelve siempre 202,
   también para una intención repetida completada. Glosario devuelve 202 en curso
   o 200 para caché aprobada verificada, ambos `GlossaryJobResponse`, con
   `glossary_id = job_id`. Consultar un glosario aún no completado devuelve 409.
+  Un resultado de chat se autoriza contra todas sus fuentes guardadas, también
+  secundarias: un cambio o retirada bloquea su entrega por GET y su seguimiento
+  SSE. El historial se liga al workspace y al conjunto de IDs/hashes/versiones:
+  documentos distintos con igual hash no se mezclan. Los turnos unidocumentales
+  históricos se reutilizan sólo si su resultado y vínculos acreditan la misma
+  identidad/hash; no se reconstruye procedencia ausente ni se reescribe idempotencia.
+- **Cupos de retención:** `WORKSPACE_MAX_DOCUMENTS` y `WORKSPACE_MAX_GENERATIONS`
+  son configurables al iniciar; no cambian el máximo de cinco fuentes de una
+  solicitud. Cada generación ocupa una plaza, aunque tenga varias relaciones.
+  Retirarla directamente o retirar cualquiera de sus fuentes libera esa plaza
+  antes de terminar la limpieza física, incluso si está pendiente o falla.
+  Se conservan los vínculos de purga y el aislamiento del workspace; admisiones
+  concurrentes compiten atómicamente por las plazas restantes. Al alcanzar el
+  límite se devuelve 429 `RATE_LIMITED`, con `motivo=workspace_resource_limit`.
 - **Quiz y progreso:** `question_id` y `option_id` se obtienen de la vista
   estudiante. La respuesta devuelve sólo el feedback de esa pregunta, calculado
   por el backend sin LLM. `concepto_revisado` exige documento/concepto;
@@ -284,6 +392,10 @@ Antes de headers, los errores son HTTP con `ErrorResponse`. Después de headers,
 un error de acceso/storage manejado envía `event: error` y
 `data: <ErrorResponse>`, sin `id`, y cierra manteniendo HTTP 200. El recorrido
 detecta ese evento y aborta; siempre comprueba después estado y contenido.
+La autorización incluye las fuentes vinculadas y las versiones guardadas del
+resultado del chat; una secundaria retirada o modificada no queda autorizada por
+la vigencia del primario. Antes de headers se deniega por HTTP; después se cierra
+con `event: error`. La respuesta educativa se obtiene sólo por consulta autorizada.
 
 ## Recorridos curl ejecutables
 
@@ -554,6 +666,13 @@ del recorrido TXT comprobado aquí.
 ## Evidencia y alcance de la comprobación
 
 Ver [registro de revisión integrada](verificacion-issue-59.md) y su captura del snapshot vigente.
+
+La actualización documental de la PR #146 contrasta los ejemplos JSON nuevos con
+los esquemas vigentes y revisa enlaces/huellas sin llamadas externas. No vuelve a
+ejecutar los siete recorridos curl ni el viewer. Los resultados, fechas y huellas
+de esas ejecuciones conservados debajo son registros históricos, no mediciones de
+la entrega multidocumental. La evidencia D real sigue pendiente; ver
+[bytes históricos y cobertura con dobles](evidencia/multidocumental-d.md).
 
 `verify_api_reference.py --check` contrasta las 37 filas (método, ruta,
 parámetros, modelos, HTTP y tipos de contenido), enlaces de schemas y los siete

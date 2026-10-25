@@ -115,18 +115,29 @@ export async function recoverActiveGeneration(api: APIClient, token: string) {
   if (!item) return null;
   const params = item.parametros;
   const scope = params?.alcance;
+  const ids: string[] = params?.document_ids ?? [params?.document_id];
+  const validIds = Array.isArray(ids) && ids.length >= 1 && ids.length <= 5 &&
+    ids.every(id => typeof id === 'string' && id.trim() === id && id.length > 0) && new Set(ids).size === ids.length;
+  const sameIds = (other: unknown) => Array.isArray(other) && other.length === ids.length &&
+    new Set(other).size === other.length && other.every(id => ids.includes(id));
   if (typeof item.generation_id !== 'string' || !item.generation_id ||
       (params?.modo_generacion !== undefined && !['multiagente', 'basico'].includes(params.modo_generacion)) ||
       typeof item.document_id !== 'string' || params?.document_id !== item.document_id ||
       !PERFILES.includes(params?.perfil_destinatario) || !FORMATOS.includes(params?.formato_salida) ||
       !NICHOS.includes(params?.nicho_sector) || !NIVELES_DETALLE.includes(params?.nivel_detalle) ||
       !IDIOMAS_SALIDA.includes(params?.idioma_salida) || !scope ||
-      !['documento_completo', 'seccion'].includes(scope.tipo) ||
+      !validIds || params.document_id !== [...ids].sort()[0] ||
+      !['documento_completo', 'seccion', 'multi_documento'].includes(scope.tipo) ||
+      (scope.tipo === 'multi_documento' ? ids.length < 2 || !sameIds(scope.document_ids) : ids.length !== 1) ||
+      (scope.document_ids !== undefined && !sameIds(scope.document_ids)) ||
       (scope.tipo === 'seccion' && (typeof scope.seccion_id !== 'string' || !scope.seccion_id))) {
     throw new APIError('INVALID_RESPONSE', 'Solicitud recuperada incompatible.', 502);
   }
-  const doc = await api.getDocument(token, item.document_id);
-  if (doc?.document_id !== item.document_id) throw new APIError('INVALID_RESPONSE', 'Fuente incompatible.', 502);
+  const docs = await Promise.all(ids.map(id => api.getDocument(token, id)));
+  if (docs.some((doc, index) => doc?.document_id !== ids[index])) {
+    throw new APIError('INVALID_RESPONSE', 'Fuente incompatible.', 502);
+  }
+  const doc = docs.find(doc => doc.document_id === item.document_id)!;
   const route = `/api/generations/${encodeURIComponent(item.generation_id)}`;
   return { generation_id: item.generation_id, status: item.status, status_url: route, events_url: route + '/events',
     parametros: params as GenerateRequest, documento_titulo: typeof doc.titulo === 'string' ? doc.titulo : item.document_id,

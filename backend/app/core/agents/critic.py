@@ -20,13 +20,20 @@ from app.core.agents.critic_contracts import (
     RubricaPedagogica,
     VerificadorSync,
 )
-from app.core.agents.draft_validation import BorradorInvalidoError, parsear_json_estricto, validar_borrador
+from app.core.agents.draft_validation import (
+    BorradorInvalidoError,
+    cobertura_documental,
+    evidencia_autorizada,
+    parsear_json_estricto,
+    validar_borrador,
+)
 from app.core.agents.gemini_generation import GeneracionGeminiError
 from app.core.agents.graph_state import DependenciasGrafo, DiagnosticoGrafo, EstadoGrafo
 from app.core.agents.prompts import PROMPT_VERSION, preparar_prompts
 from app.core.agents.supervisor import supervisor
 from app.core.faithfulness.faithfulness import Afirmacion, EstadoEvaluacion, Juicio, VerificadorFidelidad
 from app.core.rag.tokenizer import TokenizadorBPE
+from app.core.rag.vectorstore import seccion_del_chunk
 from app.jobs.manager import (
     CuotaAgotadaError,
     DeadlineExcedidoError,
@@ -82,22 +89,33 @@ def _revalidar(estado, dependencias):
     actualizado = supervisor(estado, dependencias.grafo)
     if "error" in actualizado:
         raise EstadoCriticError(actualizado["error"].code, actualizado["error"].message, actualizado["status"])
-    if any(
-        actualizado[campo] != getattr(estado, campo)
-        for campo in (
-            "source_hash",
-            "documento_fuente",
-            "idioma_origen",
-            "secciones_disponibles",
-            "rubrica",
-        )
-    ):
+    campos = [
+        "document_id",
+        "document_ids",
+        "source_hash",
+        "documento_fuente",
+        "idioma_origen",
+        "secciones_disponibles",
+        "rubrica",
+    ]
+    if len(estado.document_ids) > 1:
+        campos.extend(["source_hashes", "documentos_fuente", "secciones_por_documento", "idiomas_origen"])
+    if any(actualizado.get(campo) != getattr(estado, campo) for campo in campos):
         raise EstadoCriticError("INVALID_STATE", "La fuente o su rúbrica cambiaron durante la revisión.")
+
+
+def _es_sintesis(estado, dependencias):
+    return (
+        len(estado.document_ids) > 1
+        and estado.parametros.alcance.tipo in ("multi_documento", "espacio_completo")
+        and estado.parametros.modo_generacion == "multiagente"
+        and dependencias.grafo.ejecucion.tipo in ("generation", "generacion")
+    )
 
 
 # con esta funcion descompongo recursivamente el contenido educativo generado en fragmentos textuales individuales
 # descarto metadatos y opciones distractoras de cuestionarios para concentrar la evaluacion solo en afirmaciones tecnicas
-def _segmentos(borrador, referencias):
+def _segmentos(borrador, referencias, *, es_sintesis=False):
     """Texto factual con ubicación y citas heredadas; distractores quedan fuera."""
     segmentos = {}
     omitidos = {
@@ -117,6 +135,8 @@ def _segmentos(borrador, referencias):
 
     def recorrer(valor, ruta, citas):
         if isinstance(valor, dict):
+            if es_sintesis and ruta == "/contenido_adaptado":
+                citas = []
             citas = [r["chunk_id"] for r in valor.get("referencias", [])] or citas
             for clave, item in valor.items():
                 if clave in omitidos or clave == "referencias":
@@ -150,6 +170,7 @@ _TAREAS = {
     "Cada ubicación debe ser UNA clave literal de segmentos; repetirla para varios hechos atómicos.",
     "juzgar": "Juzgar cada ID original exactamente una vez. Para respaldada/contradicha citar chunks que prueben "
     "el veredicto y estén entre las citas_permitidas de esa afirmación. Sin prueba usar sin_evidencia. "
+    "Citar únicamente los chunks realmente utilizados para probar el hecho, no enumerar todas las citas permitidas. "
     "Conservar números, unidades, negaciones y condiciones. No usar conocimiento externo.",
     "pedagogia": "Revisar el borrador COMPLETO y metadatos: claridad, perfil, objetivos, coherencia, conceptos, "
     "prerrequisitos, estimación didáctica, alcance y nivel_detalle solicitado. No aceptar que Writer rebaje "
@@ -176,7 +197,7 @@ class _SesionRevision:
     def __init__(self, estado, dependencias, borrador, referencias, presupuesto):
         self.estado, self.dependencias, self.borrador = estado, dependencias, borrador
         self.presupuesto = presupuesto
-        self.segmentos = _segmentos(borrador, referencias)
+        self.segmentos = _segmentos(borrador, referencias, es_sintesis=_es_sintesis(estado, dependencias))
         self.citas = {}
         self.ubicaciones = {}
         self.solicitudes = []
@@ -198,6 +219,7 @@ class _SesionRevision:
             contenido=self.borrador.contenido_adaptado,
             metadatos=self.borrador.metadatos,
             evaluacion_factual=self.factual,
+            source_hashes=self.estado.source_hashes,
         )
         payload = json.loads(prompts.critic.datos_json)
         if tarea in ("descomponer", "juzgar"):
@@ -371,16 +393,23 @@ class _SesionRevision:
         revisiones = []
         for chunk in {c.chunk_id: c for c in chunks}.values():
             _revalidar(self.estado, self.dependencias)
+            doc_id = getattr(chunk, "document_id", None) or self.estado.document_id
+            doc_hash = (
+                self.estado.source_hashes.get(doc_id)
+                if getattr(self.estado, "source_hashes", None) and doc_id in self.estado.source_hashes
+                else self.estado.source_hash
+            )
             imagen = (
                 None
                 if self.dependencias.obtener_imagen is None
                 else self.dependencias.obtener_imagen(
                     self.estado.workspace_id,
-                    self.estado.document_id,
-                    self.estado.source_hash,
+                    doc_id,
+                    doc_hash,
                     chunk.chunk_id,
                 )
             )
+            _revalidar(self.estado, self.dependencias)
             if inspect.isawaitable(imagen):
                 if inspect.iscoroutine(imagen):
                     imagen.close()
@@ -399,7 +428,7 @@ class _SesionRevision:
                 imagen.document_id,
                 imagen.source_hash,
                 imagen.chunk_id,
-            ) != (self.estado.workspace_id, self.estado.document_id, self.estado.source_hash, chunk.chunk_id):
+            ) != (self.estado.workspace_id, doc_id, doc_hash, chunk.chunk_id):
                 raise EstadoCriticError("NOT_FOUND", "Imagen no disponible para el documento y espacio autorizados.")
             imagen = ImagenOriginal.model_validate(imagen.model_dump(), strict=True)
             if imagen.interpretacion_ambigua:
@@ -477,8 +506,7 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
         ):
             raise EstadoCriticError("INVALID_STATE", "Las restricciones no coinciden con la solicitud.")
         presupuesto.limite = min(presupuesto.limite, estado.restricciones.max_llamadas)
-        if set(estado.secciones_cubiertas) - set(estado.secciones_disponibles):
-            raise EstadoCriticError("INVALID_STATE", "La cobertura contiene secciones ajenas al documento.")
+        cobertura_por_documento = cobertura_documental(estado)
         try:
             borrador, referencias = validar_borrador(estado.borrador.model_dump_json(), estado)
         except BorradorInvalidoError as error:
@@ -522,6 +550,8 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
             set(estado.secciones_disponibles)
             if estado.parametros.alcance.tipo == "documento_completo"
             else {estado.parametros.alcance.seccion_id}
+            if estado.parametros.alcance.tipo == "seccion"
+            else set(estado.secciones_cubiertas)
         )
         faltantes = sorted(necesarias - set(estado.secciones_cubiertas))
         solicitudes = [
@@ -529,7 +559,29 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
             *rubrica.solicitudes_evidencia,
             *[f"Recuperar sección {s}" for s in faltantes],
         ]
-        cobertura = "parcial" if faltantes else rubrica.cobertura_objetivos
+        fuentes_sin_aporte = set()
+        if _es_sintesis(estado, dependencias):
+            evidencia = evidencia_autorizada(estado)
+            aportes = {
+                evidencia[chunk_id].chunk.document_id
+                for juicio in factual.juicios
+                if juicio.respaldada and sesion.ubicaciones[juicio.id_afirmacion].startswith("/contenido_adaptado/")
+                for chunk_id in juicio.referencias
+                if (
+                    evidencia[chunk_id].chunk.document_id,
+                    seccion_del_chunk(evidencia[chunk_id].chunk),
+                )
+                in cobertura_por_documento
+            }
+            fuentes_sin_aporte = set(estado.document_ids) - aportes
+            cubiertas = {document_id for document_id, _ in cobertura_por_documento}
+            for document_id in sorted(fuentes_sin_aporte):
+                feedback.append(
+                    f"La fuente {document_id} aún no respalda hechos del contenido; revisar con evidencia pertinente."
+                )
+                if document_id not in cubiertas:
+                    solicitudes.append(f"Recuperar evidencia pertinente de la fuente {document_id}.")
+        cobertura = "parcial" if faltantes or fuentes_sin_aporte else rubrica.cobertura_objetivos
         if cobertura == "parcial":
             razones.append("cobertura_incompleta")
             feedback.append("Cubrir el alcance y objetivos pendientes con evidencia del documento.")

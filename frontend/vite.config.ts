@@ -1,6 +1,8 @@
 import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { availableParallelism } from 'node:os';
+import { frontendTestWorkers } from './src/test/workerPolicy.ts';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -26,6 +28,11 @@ export default defineConfig(({ mode }) => {
       sourcemap: false,
       assetsInlineLimit: 0,
     },
-    test: { environment: 'jsdom', include: ['src/**/*.test.{ts,tsx}'], restoreMocks: true },
+    test: {
+      environment: 'jsdom',
+      include: ['src/**/*.test.{ts,tsx}'],
+      restoreMocks: true,
+      maxWorkers: frontendTestWorkers(availableParallelism()),
+    },
   };
 });

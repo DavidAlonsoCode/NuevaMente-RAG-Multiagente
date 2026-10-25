@@ -1,11 +1,14 @@
+import { AsyncTestScope } from '../test/asyncScope';
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { App } from '../App';
 import { APIClient, APIError } from '../api/client';
 import { t } from '../i18n';
 
-beforeEach(() => {
+let scope: AsyncTestScope;
+beforeEach(({ signal }) => {
+  scope = new AsyncTestScope(signal);
   sessionStorage.clear();
   vi.spyOn(APIClient.prototype, 'createWorkspace').mockResolvedValue({
     workspace_id: 'synthetic-ws', token: 'synthetic-token', recovery_code: 'synthetic-recovery',
@@ -16,18 +19,18 @@ beforeEach(() => {
   vi.spyOn(APIClient.prototype, 'getProgress').mockResolvedValue({});
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network disabled')));
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(async () => { await scope.close(); cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it.each(['es', 'en', 'pt'] as const)('ofrece carga accesible en el área principal en %s', async (idioma) => {
   sessionStorage.setItem('nm_idioma_ui', idioma);
-  render(<App />);
+  await scope.render(<App />);
   const input = await screen.findByLabelText(t('upload.titulo', idioma), { selector: 'input' });
   expect(input.closest('main')).not.toBeNull();
   expect(document.querySelector('aside input[type="file"]')).toBeNull();
   expect(input.getAttribute('accept')).toBe('.pdf,.md,.txt');
   expect(screen.getByText(t('upload.aviso_privacidad', idioma))).toBeTruthy();
-  expect(screen.getByRole('button', { name: t('upload.procesar', idioma) }).hasAttribute('disabled')).toBe(true);
-  const main = within(screen.getByRole('main'));
+  const main = within(input.closest('main')!);
+  expect(main.getByRole('button', { name: t('upload.procesar', idioma) }).hasAttribute('disabled')).toBe(true);
   fireEvent.click(main.getByRole('button', { name: t('upload.enviar_texto', idioma) }));
   expect(main.getByLabelText(t('upload.texto_titulo', idioma))).toBeTruthy();
   expect(main.getByText(t('upload.aviso_privacidad', idioma))).toBeTruthy();
@@ -39,12 +42,12 @@ it('conserva permisos e intención al reintentar un upload fallido desde el pane
   const upload = vi.spyOn(APIClient.prototype, 'uploadFile')
     .mockRejectedValueOnce(new APIError('STORAGE_UNAVAILABLE', 'Fallo sintético', 503))
     .mockResolvedValueOnce({ document_id: 'synthetic-doc', job_id: 'synthetic-job', status: 'processing', status_url: '/api/jobs/synthetic-job', events_url: '/api/jobs/synthetic-job/events', cancel_url: '/api/jobs/synthetic-job/cancel' });
-  render(<App />);
+  await scope.render(<App />);
   const input = await screen.findByLabelText(t('upload.titulo', 'es'), { selector: 'input' });
   const file = new File(['Una red privada conecta subredes.'], 'fuente.txt', { type: 'text/plain' });
   Object.defineProperty(file, 'arrayBuffer', { value: async () => new TextEncoder().encode('Una red privada conecta subredes.').buffer });
   fireEvent.change(input, { target: { files: [file] } });
-  const button = screen.getByRole('button', { name: t('upload.procesar', 'es') });
+  const button = within(input.closest('main')!).getByRole('button', { name: t('upload.procesar', 'es') });
   expect(button.hasAttribute('disabled')).toBe(true);
   fireEvent.click(screen.getByLabelText(t('upload.confirmar_publico', 'es')));
   fireEvent.click(button);
@@ -59,7 +62,7 @@ it('conserva permisos e intención al reintentar un upload fallido desde el pane
 
 it('rechaza archivos no admitidos sin enviar al backend', async () => {
   const upload = vi.spyOn(APIClient.prototype, 'uploadFile');
-  render(<App />);
+  await scope.render(<App />);
   const input = await screen.findByLabelText(t('upload.titulo', 'es'), { selector: 'input' });
   fireEvent.change(input, { target: { files: [new File(['x'], 'archivo.exe')] } });
   fireEvent.click(screen.getByLabelText(t('upload.confirmar_publico', 'es')));

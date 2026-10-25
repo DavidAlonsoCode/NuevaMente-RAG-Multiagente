@@ -127,24 +127,32 @@ class VectorStoreChroma:
         with _LOCKS_GUARD:
             self._lock = _LOCKS.setdefault(self.ruta, threading.RLock())
         self._cliente = chromadb.PersistentClient(path=str(self.ruta), settings=Settings(anonymized_telemetry=False))
-        self.tamano_lote = min(tamano_lote, self._cliente.get_max_batch_size())
-        metadata = {
-            "modelo": embeddings.modelo,
-            "dimensiones": embeddings.dimensiones,
-            "preparacion": embeddings.preparation_version,
-            "schema_indice": 1,
-        }
-        self._privada = self._coleccion(embeddings.collection_name, metadata)
-        self._demo = self._coleccion("demo-" + embeddings.collection_name, metadata)
-        with self._db() as db:
-            db.executescript("""
+        try:
+            self.tamano_lote = min(tamano_lote, self._cliente.get_max_batch_size())
+            metadata = {
+                "modelo": embeddings.modelo,
+                "dimensiones": embeddings.dimensiones,
+                "preparacion": embeddings.preparation_version,
+                "schema_indice": 1,
+            }
+            self._privada = self._coleccion(embeddings.collection_name, metadata)
+            self._demo = self._coleccion("demo-" + embeddings.collection_name, metadata)
+            with self._db() as db:
+                db.executescript("""
                 CREATE TABLE IF NOT EXISTS documentos (
                     coleccion TEXT NOT NULL, workspace TEXT NOT NULL, documento TEXT NOT NULL,
                     version TEXT NOT NULL, hash TEXT NOT NULL, firma TEXT NOT NULL, cantidad INTEGER NOT NULL,
                     PRIMARY KEY (coleccion, workspace, documento));
                 CREATE TABLE IF NOT EXISTS retirados (
                     workspace TEXT NOT NULL, documento TEXT NOT NULL, PRIMARY KEY (workspace, documento));
-            """)
+                """)
+        except BaseException as error:
+            # El llamador no recibe una instancia que pueda cerrar.
+            try:
+                self.cerrar()
+            except BaseException as cierre:
+                error.add_note(f"Falló también el cierre del cliente Chroma adquirido: {cierre!r}")
+            raise
 
     # con este metodo cierro la conexion persistente de chromadb de manera segura e idempotente
     def cerrar(self) -> None:
@@ -648,3 +656,108 @@ class VectorStoreChroma:
         contexto.chequear()
         actual = self._activo(coleccion, workspace_id, document_id)
         return resultado if actual and actual["version"] == activo["version"] else []
+
+    def buscar_multidocumental(
+        self,
+        workspace_id: str,
+        document_ids: list[str],
+        consulta: str,
+        *,
+        contexto: ContextoEjecucion,
+        limite: int = 15,
+        tipo_fuente: str | None = None,
+    ) -> list[CoincidenciaVectorial]:
+        """Búsqueda vectorial sobre un conjunto de documentos autorizados del espacio.
+
+        Aplica un filtro compuesto por la versión activa de cada documento para evitar
+        residuos o chunks zombi de versiones previas.
+        """
+        if not document_ids:
+            return []
+        if tipo_fuente not in (None, "pdf", "md", "txt", "text", "image_description"):
+            raise ValueError("Tipo de fuente no soportado")
+        if type(limite) is not int or not 1 <= limite <= 100:
+            raise ValueError("limite debe estar entre 1 y 100")
+
+        for doc_id in document_ids:
+            self._autorizar(workspace_id, doc_id, contexto)
+
+        activos = {}
+        for doc_id in document_ids:
+            act = self._activo(self._privada, workspace_id, doc_id)
+            if act is not None:
+                activos[doc_id] = act
+
+        if not activos:
+            return []
+
+        clausulas = []
+        for doc_id, act in activos.items():
+            conds = [
+                {"workspace_id": workspace_id},
+                {"document_id": doc_id},
+                {"version_indice": act["version"]},
+            ]
+            if tipo_fuente is not None:
+                conds.append({"source_type": tipo_fuente})
+            clausulas.append({"$and": conds})
+
+        filtro = clausulas[0] if len(clausulas) == 1 else {"$or": clausulas}
+
+        total_candidatos = sum(act["cantidad"] for act in activos.values())
+        vector = self.embeddings.embed_query(consulta, contexto=contexto)
+        contexto.chequear()
+
+        if total_candidatos <= limite:
+            exactos = self._privada.get(where=filtro, include=["metadatas", "embeddings"])
+            if not exactos["ids"]:
+                return []
+            norma_query = math.hypot(*vector)
+            if not norma_query or not math.isfinite(norma_query):
+                raise IndiceInconsistenteError("El vector de consulta no permite comparar por coseno")
+            filas = []
+            for metadata, embedding in zip(exactos["metadatas"], exactos["embeddings"], strict=True):
+                contexto.chequear()
+                norma = math.hypot(*embedding)
+                if len(embedding) != len(vector) or not norma or not math.isfinite(norma):
+                    raise IndiceInconsistenteError("El índice contiene un vector incompatible")
+                distancia = 1.0 - sum(
+                    (float(a) / norma_query) * (float(b) / norma) for a, b in zip(vector, embedding, strict=True)
+                )
+                filas.append((metadata, max(0.0, min(2.0, distancia)), embedding))
+            filas.sort(key=lambda f: (f[1], f[0].get("orden", 0)))
+            datos = {
+                "metadatas": [[f[0] for f in filas]],
+                "distances": [[f[1] for f in filas]],
+                "embeddings": [[f[2] for f in filas]],
+            }
+        else:
+            datos = self._privada.query(
+                query_embeddings=[vector],
+                n_results=limite,
+                where=filtro,
+                include=["metadatas", "distances", "embeddings"],
+            )
+
+        resultado = []
+        if datos["metadatas"] and datos["metadatas"][0]:
+            for metadata, distancia, embedding in zip(
+                datos["metadatas"][0], datos["distances"][0], datos["embeddings"][0], strict=True
+            ):
+                chunk = Chunk.model_validate_json(metadata["chunk"])
+                if tipo_fuente is not None and (chunk.source_type or "text") != tipo_fuente:
+                    raise IndiceInconsistenteError("El tipo de fuente no corresponde al filtro")
+                if (
+                    chunk.workspace_id != workspace_id
+                    or chunk.document_id not in activos
+                    or not math.isfinite(distancia)
+                ):
+                    raise IndiceInconsistenteError("Trazabilidad o distancia inválida")
+                resultado.append(CoincidenciaVectorial(chunk, max(0.0, float(distancia)), tuple(map(float, embedding))))
+
+        contexto.chequear()
+        for doc_id, act in activos.items():
+            actual = self._activo(self._privada, workspace_id, doc_id)
+            if actual is None or actual["version"] != act["version"]:
+                return []
+        return resultado
