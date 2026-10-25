@@ -5,24 +5,12 @@ from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
+from app.generations.provenance import leer_declaracion, validar_procedencia
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.responses import cargar_paquete_json, modo_paquete
 from app.session.manifests import ManifiestoEspacio
 from app.storage.object_keys import clave_output, clave_workspace
 from app.storage.provider import StorageNotFound, StorageUnavailable
-
-
-def _pares_unicos(pares):
-    datos = {}
-    for clave, valor in pares:
-        if clave in datos:
-            raise ValueError("El canónico contiene claves duplicadas")
-        datos[clave] = valor
-    return datos
-
-
-def _constante_invalida(valor):
-    raise ValueError("El canónico contiene una constante ajena a JSON")
 
 
 class CatalogoGeneraciones:
@@ -58,7 +46,8 @@ class CatalogoGeneraciones:
         try:
             datos = self.storage.get(clave)
             # Un JSON ambiguo no puede ser fuente común de dos exportaciones.
-            json.loads(datos, object_pairs_hook=_pares_unicos, parse_constant=_constante_invalida)
+            declaracion = leer_declaracion(datos)
+            validar_procedencia(self.db, fila, declaracion)
             paquete = cargar_paquete_json(datos)
         except (ValueError, RecursionError, StorageNotFound):
             raise StorageUnavailable("El paquete publicado no es verificable") from None
@@ -82,14 +71,19 @@ class CatalogoGeneraciones:
         if fila is None or fila["workspace_id"] != sesion["workspace_id"]:
             raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Generación no encontrada.")
         _, manifest = self.espacio(token)
+        doc_ids = self.db.documentos_generacion(generation_id) or [fila["document_id"]]
         if any(
-            (r.recurso_tipo, r.recurso_id) in {("generation", generation_id), ("document", fila["document_id"])}
+            (r.recurso_tipo == "generation" and r.recurso_id == generation_id)
+            or (r.recurso_tipo == "document" and r.recurso_id in doc_ids)
             for r in manifest.recursos_borrados
         ):
             raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Generación no encontrada.")
         if fila["status"] != "completed":
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La generación no está completada.")
         fuente = self.consulta.fuente_aprobada(token, fila["document_id"])
+        for d_id in doc_ids:
+            if d_id != fila["document_id"]:
+                self.consulta.fuente_aprobada(token, d_id)
         if self.db.obtener_sesion(token) is None:
             raise ErrorAplicacion(ErrorCode.SESSION_INVALID, "La sesión dejó de estar disponible.")
         actual = self.db.obtener_generacion(generation_id)
@@ -105,6 +99,21 @@ class CatalogoGeneraciones:
 
     def validar_fuente(self, token, paquete):
         """Revalida la identidad del material inmutable sin volver a descargarlo."""
-        _, fuente = self.fuente(token, paquete.generation_id)
+        fila, fuente = self.fuente(token, paquete.generation_id)
+        esperadas = validar_procedencia(self.db, fila, paquete)
         if fuente != paquete.documento_fuente:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente cambió durante la consulta.")
+        for doc_id, esperada in esperadas.items():
+            actual = fuente if doc_id == fila["document_id"] else self.consulta.fuente_aprobada(token, doc_id)
+            if actual != esperada:
+                raise ErrorAplicacion(ErrorCode.INVALID_STATE, "Una fuente del material cambió durante la consulta.")
+        actual = self.db.obtener_generacion(paquete.generation_id)
+        if actual is None:
+            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Generación no encontrada.")
+        if (actual["workspace_id"], actual["document_id"], actual["status"]) != (
+            fila["workspace_id"],
+            fila["document_id"],
+            "completed",
+        ):
+            raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La generación cambió durante la consulta.")
+        validar_procedencia(self.db, actual, paquete)

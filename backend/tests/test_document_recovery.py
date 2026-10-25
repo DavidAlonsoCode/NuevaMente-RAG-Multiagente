@@ -430,6 +430,219 @@ def test_recuperacion_reanuda_purga_de_derivados_y_conserva_otros_espacios(
         assert pila.storage.get(clave_output(vigente.workspace_id, salida_vigente.generation_id))
 
 
+@pytest.mark.parametrize(
+    "retiradas,lapida_generacion",
+    [(("doc_b",), False), (("doc_a",), False), (("doc_a", "doc_b"), False), (("doc_b",), True)],
+    ids=["secundaria", "primaria", "ambas", "documento-y-generacion"],
+)
+def test_recuperacion_multidocumental_limpia_derivados_sin_retirar_fuentes_vigentes(pila, retiradas, lapida_generacion):
+    ws = pila.ws.workspace_id
+    documentos = [fuente(pila, doc="doc_a"), fuente(pila, doc="doc_b")]
+    salida = paquete(pila.storage, ws, documentos[0], "gen_multi", documentos=documentos)
+    exports = [clave_export(ws, salida.generation_id, formato) for formato in ("json", "md", "pdf", "apkg")]
+    for clave in exports:
+        pila.storage.upload(clave, b"derivado multidocumental")
+    vigente = next((doc for doc in documentos if doc.document_id not in retiradas), None)
+    eventos_vigentes = [{"document_id": vigente.document_id}] if vigente else []
+    salida_vigente = paquete(pila.storage, ws, vigente, "gen_independiente") if vigente else None
+    export_vigente = clave_export(ws, salida_vigente.generation_id, "pdf") if salida_vigente else None
+    if export_vigente:
+        pila.storage.upload(export_vigente, b"derivado vigente")
+    otro = fuente(pila, doc="doc_otro", ws=pila.otro)
+    salida_ajena = paquete(pila.storage, otro.workspace_id, otro, "gen_otro")
+    export_ajeno = clave_export(otro.workspace_id, salida_ajena.generation_id, "pdf")
+    pila.storage.upload(export_ajeno, b"derivado de otro espacio")
+    pila.storage.upload(
+        clave_progress(ws),
+        json.dumps(
+            {
+                "version": 1,
+                "eventos": [{"generation_id": salida.generation_id}, *eventos_vigentes],
+                "sin_referencia": {"valor": 3},
+            }
+        ),
+    )
+    for doc_id in retiradas:
+        pila.origen.agendar_borrado("document", doc_id, ws)
+    if lapida_generacion:
+        pila.origen.agendar_borrado("generation", salida.generation_id, ws)
+    sincronizar_pendientes(pila.origen, pila.storage)
+
+    # Restaurar explícitamente la base nueva permite comprobar el seguimiento
+    # antes de que el arranque normal ejecute los efectos documentales.
+    nuevo = RegistroOperativo(pila.ruta / "operativo.db")
+    try:
+        assert nuevo.registro_vacio()
+        assert restaurar_registro(nuevo, pila.storage) == 2
+        assert not nuevo.recuperacion_pendiente()
+        assert nuevo.obtener_generacion(salida.generation_id) is None
+        assert nuevo.documentos_generacion(salida.generation_id) == ["doc_a", "doc_b"]
+        for doc in documentos:
+            assert salida.generation_id in nuevo.recursos_documentales(ws, doc.document_id)[0]
+        assert {efecto["document_id"] for efecto in nuevo.listar_efectos_documentales()} == set(retiradas)
+    finally:
+        nuevo.cerrar()
+
+    with abrir(pila) as e:
+        assert e.cliente.get(f"/api/generations/{salida.generation_id}", headers=e.headers).status_code == 404
+        assert e.db.documentos_generacion(salida.generation_id) == ["doc_a", "doc_b"]
+        for doc in documentos:
+            assert e.db.esta_borrado("document", doc.document_id) == (doc.document_id in retiradas)
+            if doc.document_id in retiradas:
+                assert e.cliente.get(f"/api/documents/{doc.document_id}", headers=e.headers).status_code == 404
+                assert e.db.limpieza_documental_completada(ws, doc.document_id)
+                for clave in (clave_original(ws, doc.document_id), clave_documento(ws, doc.document_id)):
+                    with pytest.raises(StorageNotFound):
+                        pila.storage.get(clave)
+        for clave in [clave_output(ws, salida.generation_id), *exports]:
+            with pytest.raises(StorageNotFound):
+                pila.storage.get(clave)
+        for progreso in (e.db.obtener_progreso_restaurado(ws), json.loads(pila.storage.get(clave_progress(ws)))):
+            assert progreso["eventos"] == eventos_vigentes
+            assert progreso["sin_referencia"] == {"valor": 3}
+        if vigente:
+            assert terminal(e, vigente.document_id)["estado"] == "ready"
+            assert e.cliente.get(f"/api/documents/{vigente.document_id}", headers=e.headers).status_code == 200
+            assert_fuente(e, vigente)
+            assert not e.db.limpieza_documental_completada(ws, vigente.document_id)
+            assert e.db.obtener_generacion(salida_vigente.generation_id)
+            assert pila.storage.get(clave_original(ws, vigente.document_id)) == TEXTO
+            assert pila.storage.get(clave_documento(ws, vigente.document_id))
+            assert pila.storage.get(clave_output(ws, salida_vigente.generation_id))
+            assert pila.storage.get(export_vigente) == b"derivado vigente"
+        assert pila.storage.get(clave_original(otro.workspace_id, otro.document_id)) == TEXTO
+        assert pila.storage.get(clave_output(otro.workspace_id, salida_ajena.generation_id))
+        assert pila.storage.get(export_ajeno) == b"derivado de otro espacio"
+
+
+@pytest.mark.parametrize("evidencia_a", ["ausente", "hash", "metadata"])
+@pytest.mark.parametrize("fallo_export", [False, True], ids=["purga-directa", "purga-con-reintento"])
+def test_purga_multidocumental_no_autoriza_fuente_descartada(pila, monkeypatch, evidencia_a, fallo_export):
+    ws = pila.ws.workspace_id
+    texto_a = b"# Fuente A\n\nMARCADOR_A_DESCARTADA describe redes privadas y configuraciones.\n" * 15
+    texto_b = b"# Fuente B\n\nMARCADOR_B_RETIRADA describe gateways y subredes publicas.\n" * 15
+    texto_c = b"# Fuente C\n\nMARCADOR_C_AUTORIZADA describe redes VCN y aislamiento verificable.\n" * 15
+    a = fuente(pila, doc="doc_a_descartada", contenido=texto_a)
+    b = fuente(pila, doc="doc_b_retirada", contenido=texto_b)
+    c = fuente(pila, doc="doc_c_vigente", contenido=texto_c)
+    assert len({a.hash_sha256, b.hash_sha256, c.hash_sha256}) == 3
+    salida_ab = paquete(pila.storage, ws, a, "gen_ab", documentos=[a, b])
+    salida_c = paquete(pila.storage, ws, c, "gen_c")
+    output_c = pila.storage.get(clave_output(ws, salida_c.generation_id))
+    export_ab = clave_export(ws, salida_ab.generation_id, "pdf")
+    export_c = clave_export(ws, salida_c.generation_id, "pdf")
+    pila.storage.upload(export_ab, b"derivado A+B")
+    pila.storage.upload(export_c, b"derivado C vigente")
+    eventos_c = [{"document_id": c.document_id, "generation_id": salida_c.generation_id}]
+    pila.storage.upload(
+        clave_progress(ws),
+        json.dumps({"version": 1, "eventos": [{"generation_id": salida_ab.generation_id}, *eventos_c]}),
+    )
+    pila.origen.agendar_borrado("document", b.document_id, ws)
+    sincronizar_pendientes(pila.origen, pila.storage)
+    if evidencia_a == "ausente":
+        pila.storage.delete(clave_original(ws, a.document_id))
+    elif evidencia_a == "hash":
+        pila.storage.upload(clave_original(ws, a.document_id), b"original sin la huella confirmada")
+    else:
+        pila.storage.upload(
+            clave_documento(ws, a.document_id), a.model_copy(update={"metadatos": None}).model_dump_json()
+        )
+    manifest_a = pila.storage.get(clave_documento(ws, a.document_id))
+
+    def sin_autorizacion_de_a(db):
+        assert db.obtener_documento(a.document_id) is None
+        assert not db.esta_borrado("document", a.document_id)
+        for tabla in ("documents", "document_admissions", "document_cleanup", "jobs"):
+            assert db._conn.execute(f"SELECT 1 FROM {tabla} WHERE document_id=?", (a.document_id,)).fetchone() is None
+        assert db.obtener_generacion(salida_ab.generation_id) is None
+        assert db.documentos_generacion(salida_ab.generation_id) == [a.document_id, b.document_id]
+        assert db.recursos_documentales(ws, b.document_id)[0] == [salida_ab.generation_id]
+
+    ruta_db = pila.ruta / "operativo.db"
+    nuevo = RegistroOperativo(ruta_db)
+    try:
+        assert nuevo.registro_vacio()
+        assert restaurar_registro(nuevo, pila.storage) == 2
+        assert not nuevo.recuperacion_pendiente()
+        assert nuevo.obtener_workspace(ws)
+        assert nuevo.obtener_documento(c.document_id)
+        sin_autorizacion_de_a(nuevo)
+    finally:
+        nuevo.cerrar()
+    reabierto = RegistroOperativo(ruta_db)
+    try:
+        sin_autorizacion_de_a(reabierto)
+        assert {efecto["document_id"] for efecto in reabierto.listar_efectos_documentales()} == {b.document_id}
+        assert not reabierto.limpieza_documental_completada(ws, b.document_id)
+    finally:
+        reabierto.cerrar()
+
+    reconstruidos = []
+    recuperar = ProcesadorIngestionDocumental.recuperar
+
+    def registrar_reconstruccion(self, contexto, document_id):
+        reconstruidos.append(document_id)
+        return recuperar(self, contexto, document_id)
+
+    monkeypatch.setattr(ProcesadorIngestionDocumental, "recuperar", registrar_reconstruccion)
+    borrar = pila.storage.delete
+
+    def fallo_de_export(clave):
+        if clave == export_ab:
+            raise StorageUnavailable("Export A+B pendiente de purga")
+        return borrar(clave)
+
+    if fallo_export:
+        monkeypatch.setattr(pila.storage, "delete", fallo_de_export)
+    doble = DobleGemini(16)
+    with abrir(pila, doble=doble) as e:
+        sin_autorizacion_de_a(e.db)
+        assert terminal(e, c.document_id)["estado"] == "ready"
+        assert e.cliente.get(f"/api/documents/{a.document_id}", headers=e.headers).status_code == 404
+        assert e.cliente.get(f"/api/generations/{salida_ab.generation_id}", headers=e.headers).status_code == 404
+        assert e.cliente.get(f"/api/exports/{salida_ab.generation_id}?format=pdf", headers=e.headers).status_code == 404
+        assert e.cliente.get(f"/api/documents/{c.document_id}", headers=e.headers).status_code == 200
+        assert_fuente(e, c)
+        assert e.db.esta_borrado("document", b.document_id)
+        if fallo_export:
+            assert not e.db.limpieza_documental_completada(ws, b.document_id)
+            assert pila.storage.get(export_ab) == b"derivado A+B"
+            assert pila.storage.get(clave_output(ws, salida_ab.generation_id))
+            monkeypatch.setattr(pila.storage, "delete", borrar)
+            e.db._conn.execute(
+                "UPDATE document_cleanup SET proximo_intento_en=NULL WHERE document_id=?", (b.document_id,)
+            )
+            assert e.efectos.reconciliar(b.document_id) == 1
+        assert e.db.limpieza_documental_completada(ws, b.document_id)
+        for clave in (
+            export_ab,
+            clave_output(ws, salida_ab.generation_id),
+            clave_original(ws, b.document_id),
+            clave_documento(ws, b.document_id),
+        ):
+            with pytest.raises(StorageNotFound):
+                pila.storage.get(clave)
+        sin_autorizacion_de_a(e.db)
+        assert pila.storage.get(clave_documento(ws, a.document_id)) == manifest_a
+        if evidencia_a == "ausente":
+            with pytest.raises(StorageNotFound):
+                pila.storage.get(clave_original(ws, a.document_id))
+        else:
+            esperado_a = b"original sin la huella confirmada" if evidencia_a == "hash" else texto_a
+            assert pila.storage.get(clave_original(ws, a.document_id)) == esperado_a
+        assert e.db.obtener_generacion(salida_c.generation_id)
+        assert pila.storage.get(clave_original(ws, c.document_id)) == texto_c
+        assert pila.storage.get(clave_output(ws, salida_c.generation_id)) == output_c
+        assert pila.storage.get(export_c) == b"derivado C vigente"
+        for progreso in (e.db.obtener_progreso_restaurado(ws), json.loads(pila.storage.get(clave_progress(ws)))):
+            assert progreso["eventos"] == eventos_c
+        assert reconstruidos == [c.document_id]
+        entradas = [texto for lote in doble.entradas_embeddings for texto in lote]
+        assert entradas and any("MARCADOR_C_AUTORIZADA" in texto for texto in entradas)
+        assert all("MARCADOR_A_DESCARTADA" not in texto and "MARCADOR_B_RETIRADA" not in texto for texto in entradas)
+
+
 def test_purga_interrumpida_conserva_relacion_remota_hasta_retirar_exports(pila, monkeypatch):
     mf = fuente(pila)
     salida = paquete(pila.storage, mf.workspace_id, mf, "gen_interrumpida")

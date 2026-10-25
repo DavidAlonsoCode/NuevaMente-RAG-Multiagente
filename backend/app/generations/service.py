@@ -2,8 +2,10 @@
 
 import hashlib
 import json
+import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from app.core.agents.basic import ejecutar_basico
@@ -17,13 +19,46 @@ from app.core.rag.retriever import RetrieverMMR
 from app.documents.cursor import CursorDocumental
 from app.exports.router import ServicioExportaciones
 from app.generations.catalog import CatalogoGeneraciones
-from app.jobs.manager import ContextoEjecucion, TrabajoCanceladoError
+from app.generations.provenance import leer_declaracion, validar_procedencia
+from app.jobs.admission import consultar_intencion
+from app.jobs.manager import ContextoEjecucion, FalloTrabajoError, TrabajoCanceladoError
 from app.schemas.enums import JobStatus
 from app.schemas.errors import ErrorAplicacion, ErrorBody, ErrorCode
 from app.schemas.requests import GenerateRequest
-from app.schemas.responses import GenerationJobResponse, PersistenciaInfo, cargar_paquete_json
+from app.schemas.responses import DocumentoFuente, GenerationJobResponse, PersistenciaInfo, cargar_paquete_json
 from app.storage.object_keys import clave_output
 from app.storage.provider import StorageConflict, StorageUnavailable
+
+
+class _CoordinacionEspacio:
+    def __init__(self):
+        self.bloqueo = threading.Lock()
+        self.usuarios = 0
+
+
+_GUARDIA_COORDINACIONES = threading.Lock()
+_COORDINACIONES_ESPACIO: dict[tuple[object, str], _CoordinacionEspacio] = {}
+
+
+@contextmanager
+def _coordinar_espacio(gestor, workspace_id):
+    """Compartida entre servicios; sólo conserva entradas con titular o esperas."""
+    clave = (gestor, workspace_id)
+    with _GUARDIA_COORDINACIONES:
+        coordinacion = _COORDINACIONES_ESPACIO.get(clave)
+        if coordinacion is None:
+            coordinacion = _CoordinacionEspacio()
+            _COORDINACIONES_ESPACIO[clave] = coordinacion
+        coordinacion.usuarios += 1
+    try:
+        # No esperar bajo la guardia. Orden: workspace → gestor → SQLite.
+        with coordinacion.bloqueo:
+            yield
+    finally:
+        with _GUARDIA_COORDINACIONES:
+            coordinacion.usuarios -= 1
+            if coordinacion.usuarios == 0:
+                del _COORDINACIONES_ESPACIO[clave]
 
 
 # con esta clase orquesto la creacion consulta cancelacion y persistencia de adaptaciones educativas
@@ -66,11 +101,14 @@ class ServicioGeneraciones:
 
     def _propia(self, token, generation_id):
         fila = self._propia_db(token, generation_id)
-        self.consulta.detalle(token, fila["document_id"])
+        doc_ids = self.db.documentos_generacion(generation_id) or [fila["document_id"]]
+        for d_id in doc_ids:
+            self.consulta.detalle(token, d_id)
         try:
             manifest = _workspace_vigente(self.storage, self._lectura(token), fila["document_id"])
             if any(
-                r.get("recurso_tipo") == "generation" and r.get("recurso_id") == generation_id
+                (r.get("recurso_tipo") == "generation" and r.get("recurso_id") == generation_id)
+                or (r.get("recurso_tipo") == "document" and r.get("recurso_id") in doc_ids)
                 for r in manifest.get("recursos_borrados", [])
             ):
                 raise TrabajoCanceladoError()
@@ -172,24 +210,35 @@ class ServicioGeneraciones:
         fila = self.db.obtener_generacion(generation_id)
         if fila is None or (fila["workspace_id"], fila["document_id"]) != (contexto.workspace_id, document_id):
             raise TrabajoCanceladoError()
-        ws = _workspace_vigente(self.storage, contexto, document_id)
-        if any(
-            r.get("recurso_tipo") == "generation" and r.get("recurso_id") == generation_id
-            for r in ws.get("recursos_borrados", [])
-        ):
-            raise TrabajoCanceladoError()
+        esperadas = validar_procedencia(self.db, fila, paquete) if paquete is not None else None
+        doc_ids = (
+            list(esperadas) if esperadas is not None else self.db.documentos_generacion(generation_id) or [document_id]
+        )
+        for d_id in doc_ids:
+            ws = _workspace_vigente(self.storage, contexto, d_id)
+            if any(
+                (r.get("recurso_tipo") == "generation" and r.get("recurso_id") == generation_id)
+                or (r.get("recurso_tipo") == "document" and r.get("recurso_id") == d_id)
+                for r in ws.get("recursos_borrados", [])
+            ):
+                raise TrabajoCanceladoError()
+            doc_obj = self.consulta.documento_grafo(contexto, d_id)
+            if doc_obj is None:
+                raise TrabajoCanceladoError()
+            if esperadas is not None and doc_obj.fuente != esperadas[d_id]:
+                raise ErrorAplicacion(ErrorCode.INVALID_STATE, "Una fuente del material cambió.")
         documento = self.consulta.documento_grafo(contexto, document_id)
         if documento is None:
             raise TrabajoCanceladoError()
-        if paquete is not None and documento.fuente != paquete.documento_fuente:
+        if esperadas is not None and documento.fuente != esperadas[document_id]:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente del material cambió.")
         return documento
 
     # con esta funcion guardo el artefacto educativo definitivo en el almacenamiento de oracle cloud infrastructure (oci)
     # retengo una copia local durante veinticuatro horas para permitir descargas o reintentos ante fallas de red
-    def _persistir(self, paquete, contexto, *, retener=True):
+    def _persistir(self, paquete, contexto, *, retener=True, canonico=None):
         self._vigente(contexto, paquete.generation_id, paquete.documento_fuente.document_id, paquete)
-        texto = paquete.model_dump_json()
+        texto = paquete.model_dump_json() if canonico is None else canonico
         if retener:
             self.db.guardar_aprobado(
                 paquete.generation_id, texto, (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
@@ -215,10 +264,41 @@ class ServicioGeneraciones:
     # selecciono entre el modo de generacion basico de un solo agente o el flujo multiagente completo segun la peticion
     def _trabajo(self, solicitud, generation_id, creado_en):
         def ejecutar(contexto):
-            grafo = DependenciasGrafo(
-                contexto,
-                lambda ws, doc: self.consulta.documento_grafo(contexto, doc) if ws == contexto.workspace_id else None,
-            )
+            fila = self.db.obtener_generacion(generation_id)
+            try:
+                snapshot = self.db.snapshot_generacion(generation_id)
+                fuentes = [DocumentoFuente.model_validate(f) for f in snapshot or []]
+            except (ValueError, TypeError):
+                raise FalloTrabajoError("INVALID_STATE", "La generación no acredita sus fuentes admitidas.") from None
+            esperadas = {f.document_id: f for f in fuentes}
+            ids = list(solicitud.document_ids)
+            if (
+                fila is None
+                or fila["workspace_id"] != contexto.workspace_id
+                or fila["document_id"] != solicitud.document_id
+                or not ids
+                or solicitud.document_id != ids[0]
+                or len(esperadas) != len(fuentes)
+                or set(esperadas) != set(ids)
+                or set(self.db.documentos_generacion(generation_id)) != set(ids)
+            ):
+                raise FalloTrabajoError("INVALID_STATE", "La generación no acredita sus fuentes admitidas.")
+
+            def documento_admitido(workspace_id, document_id):
+                contexto.chequear()
+                if workspace_id != contexto.workspace_id or document_id not in esperadas:
+                    return None
+                actual = self.consulta.documento_grafo(contexto, document_id)
+                contexto.chequear()
+                if actual is None or actual.workspace_id != workspace_id or actual.fuente != esperadas[document_id]:
+                    raise FalloTrabajoError("INVALID_STATE", "Una fuente cambió desde la admisión de la generación.")
+                return actual
+
+            # El snapshot fija procedencia; cada lectura sigue autorizando el
+            # estado vigente. No iniciar parser, retrieval ni modelos con otra fuente.
+            for document_id in ids:
+                documento_admitido(contexto.workspace_id, document_id)
+            grafo = DependenciasGrafo(contexto, documento_admitido)
             investigador = DependenciasResearcher(
                 grafo, self.retriever, self.consulta.version_parser(contexto, solicitud.document_id)
             )
@@ -228,6 +308,7 @@ class ServicioGeneraciones:
                         workspace_id=contexto.workspace_id,
                         generation_id=generation_id,
                         document_id=solicitud.document_id,
+                        document_ids=list(solicitud.document_ids),
                         parametros=solicitud,
                         deadline=contexto.deadline,
                     ),
@@ -253,6 +334,7 @@ class ServicioGeneraciones:
                     workspace_id=contexto.workspace_id,
                     generation_id=generation_id,
                     document_id=solicitud.document_id,
+                    document_ids=list(solicitud.document_ids),
                     parametros=solicitud,
                     deadline=contexto.deadline,
                 ),
@@ -271,19 +353,111 @@ class ServicioGeneraciones:
             raise ErrorAplicacion(ErrorCode.INVALID_REQUEST, "Idempotency-Key inválida.")
         return clave.strip() if clave is not None else None
 
+    @staticmethod
+    def _cuerpo_intencion(solicitud):
+        datos = solicitud.parametros_persistidos()
+        if solicitud.alcance.tipo == "espacio_completo":
+            # Los selectores no identifican esta intención: las fuentes se
+            # congelan por separado al admitir el trabajo.
+            datos.pop("document_id", None)
+            datos.pop("document_ids", None)
+            datos["alcance"].pop("document_ids", None)
+        return json.dumps(datos, sort_keys=True, ensure_ascii=False)
+
+    def _consultar_intencion(self, ws, clave, solicitud, cuerpos):
+        if solicitud.alcance.tipo != "espacio_completo":
+            return consultar_intencion(self.db, ws, "generate", clave, cuerpos)
+        original = self.db.intencion_generacion(ws, clave)
+        if original is None:
+            return None
+        conflicto = ("conflicto", None)
+        if not original["parametros_json"] or not original["fuentes_propias"]:
+            return conflicto
+        try:
+            parametros = json.loads(original["parametros_json"])
+            previa = GenerateRequest.model_validate(parametros)
+        except ValueError:
+            return conflicto
+        ids = original["document_ids"]
+        if (
+            previa.alcance.tipo != "espacio_completo"
+            or not ids
+            or parametros.get("document_id") != original["document_id"]
+            or original["document_id"] != ids[0]
+            or parametros.get("document_ids") != ids
+            or parametros.get("alcance", {}).get("document_ids", []) not in (ids, [] if len(ids) == 1 else ids)
+            or previa.parametros_persistidos() != parametros
+        ):
+            return conflicto
+        semantico = self._cuerpo_intencion(previa)
+        historico = json.dumps(parametros, sort_keys=True, ensure_ascii=False)
+        hashes = {hashlib.sha256(cuerpo.encode()).hexdigest() for cuerpo in (semantico, historico)}
+        if original["hash_cuerpo"] not in hashes or cuerpos[0] != semantico:
+            return conflicto
+        return ("duplicada", original["recurso_id"])
+
     # en este metodo principal inicio una nueva generacion pedagogica validando limites y garantizando idempotencia
     # registro la intencion en la base de datos y encolo la tarea para su procesamiento en segundo plano
     def generar(self, token, solicitud: GenerateRequest, clave=None):
+        if solicitud.alcance.tipo == "espacio_completo":
+            clave = self._clave(clave)
+            ws = self._sesion(token)["workspace_id"]
+            # La autorización puede esperar I/O sin retener el gestor global.
+            with _coordinar_espacio(self.gestor, ws):
+                return self._generar(token, solicitud, clave)
+        return self._generar(token, solicitud, clave)
+
+    def _generar(self, token, solicitud: GenerateRequest, clave=None):
         clave = self._clave(clave)
-        self.consulta._listo(token, solicitud.document_id)
-        cuerpo = json.dumps(solicitud.parametros_persistidos(), sort_keys=True, ensure_ascii=False)
+        ws = self._sesion(token)["workspace_id"]
+        cuerpos = (
+            (self._cuerpo_intencion(solicitud),)
+            if solicitud.alcance.tipo == "espacio_completo"
+            else tuple(
+                json.dumps(datos, sort_keys=True, ensure_ascii=False) for datos in solicitud.parametros_idempotentes()
+            )
+        )
         if clave is not None:
             with self.gestor.admision_serializada():
-                previo = self.db.idempotencia_consultar(self._sesion(token)["workspace_id"], "generate", clave, cuerpo)
+                previo = self._consultar_intencion(ws, clave, solicitud, cuerpos)
             if previo is not None:
                 if previo[0] == "conflicto":
                     raise ErrorAplicacion(ErrorCode.IDEMPOTENCY_CONFLICT, "La clave ya corresponde a otro cuerpo.")
                 return self._propia(token, previo[1])
+        if solicitud.alcance.tipo == "espacio_completo":
+            ready_docs = self.db.documentos_ready(ws)
+            if not ready_docs:
+                raise ErrorAplicacion(ErrorCode.NOT_FOUND, "No hay documentos listos en el espacio.")
+            if len(ready_docs) > 5:
+                raise ErrorAplicacion(
+                    ErrorCode.VALIDATION_ERROR,
+                    "El alcance espacio_completo supera el límite máximo de 5 documentos.",
+                    details={"cantidad": len(ready_docs), "maximo": 5},
+                )
+            doc_ids = sorted([d["document_id"] for d in ready_docs])
+            datos_sol = solicitud.model_dump()
+            datos_sol["document_ids"] = doc_ids
+            datos_sol["document_id"] = doc_ids[0]
+            if len(doc_ids) > 1 or datos_sol["alcance"].get("document_ids"):
+                datos_sol["alcance"]["document_ids"] = doc_ids
+            resuelta = GenerateRequest.model_validate(datos_sol)
+            # Copiar solo la resolución validada conserva la presencia de los
+            # demás campos, en particular el modo implícito del contrato 1.0.
+            solicitud = solicitud.model_copy(
+                update={
+                    "document_id": resuelta.document_id,
+                    "document_ids": resuelta.document_ids,
+                    "alcance": resuelta.alcance,
+                }
+            )
+        if len(solicitud.document_ids) > 5:
+            raise ErrorAplicacion(
+                ErrorCode.VALIDATION_ERROR,
+                "La solicitud supera el límite máximo de 5 documentos fuente.",
+                details={"cantidad": len(solicitud.document_ids), "maximo": 5},
+            )
+        for doc_id in solicitud.document_ids:
+            self.consulta._listo(token, doc_id)
         if (
             self.generador is None
             or self.retriever is None
@@ -299,12 +473,20 @@ class ServicioGeneraciones:
         if solicitud.alcance.tipo == "seccion" and solicitud.alcance.seccion_id not in documento.secciones:
             raise ErrorAplicacion(ErrorCode.VALIDATION_ERROR, "La sección no pertenece al documento.")
         generation_id = "gen_" + uuid.uuid4().hex
+        snapshot = []
+        for d_id in solicitud.document_ids:
+            d_grafo = self.consulta.documento_grafo(ctx, d_id)
+            if d_grafo is None or d_grafo.fuente is None:
+                raise ErrorAplicacion(ErrorCode.NOT_FOUND, f"Documento {d_id} no encontrado.")
+            snapshot.append(d_grafo.fuente.model_dump(mode="json"))
         with self.gestor.admision_serializada():
             try:
                 with self.db.transaccion():
                     if clave is not None:
-                        resultado, anterior = self.db.idempotencia_iniciar(
-                            ctx.workspace_id, "generate", clave, cuerpo, recurso_id=generation_id
+                        resultado, anterior = self._consultar_intencion(
+                            ctx.workspace_id, clave, solicitud, cuerpos
+                        ) or self.db.idempotencia_iniciar(
+                            ctx.workspace_id, "generate", clave, cuerpos[0], recurso_id=generation_id
                         )
                         if resultado == "conflicto":
                             raise ErrorAplicacion(
@@ -312,8 +494,15 @@ class ServicioGeneraciones:
                             )
                         if resultado == "duplicada":
                             return self._propia_db(token, anterior)
-                    self.db.comprobar_limite_recursos(ctx.workspace_id, "generations", 20)
-                    self.db.registrar_generacion(generation_id, ctx.workspace_id, solicitud.document_id)
+                    max_gen = getattr(self.cfg, "workspace_max_generations", None)
+                    self.db.comprobar_limite_recursos(ctx.workspace_id, "generations", max_gen)
+                    self.db.registrar_generacion(
+                        generation_id,
+                        ctx.workspace_id,
+                        solicitud.document_id,
+                        document_ids=list(solicitud.document_ids),
+                        snapshot=snapshot,
+                    )
                     self.db.guardar_parametros_generacion(generation_id, solicitud.parametros_persistidos())
                 fila = self.db.obtener_generacion(generation_id)
                 self.gestor.enqueue(
@@ -322,6 +511,7 @@ class ServicioGeneraciones:
                     self._trabajo(solicitud, generation_id, fila["creado_en"]),
                     generation_id=generation_id,
                     document_id=solicitud.document_id,
+                    document_ids=list(solicitud.document_ids),
                     al_terminar=lambda status: self._terminal(generation_id, status),
                 )
                 if clave is not None:
@@ -350,7 +540,11 @@ class ServicioGeneraciones:
                 raise ErrorAplicacion(
                     ErrorCode.INVALID_STATE, "No hay material retenido vigente; iniciar otra generación."
                 )
-            paquete = cargar_paquete_json(texto)
+            try:
+                validar_procedencia(self.db, fila, leer_declaracion(texto))
+                paquete = cargar_paquete_json(texto)
+            except (ValueError, TypeError, RecursionError):
+                raise ErrorAplicacion(ErrorCode.INVALID_STATE, "El material retenido no es verificable.") from None
             operacion = "persist:" + generation_id
             if clave is not None:
                 resultado, _ = self.db.idempotencia_iniciar(
@@ -363,7 +557,10 @@ class ServicioGeneraciones:
 
             def ejecutar(contexto):
                 contexto.registrar_paso("persist", 1)
-                self._persistir(paquete, contexto, retener=False)
+                try:
+                    self._persistir(paquete, contexto, retener=False, canonico=texto)
+                except ErrorAplicacion as error:
+                    raise FalloTrabajoError(error.error.code.value, error.error.message) from error
                 return paquete
 
             try:
@@ -375,6 +572,7 @@ class ServicioGeneraciones:
                     ejecutar,
                     generation_id=generation_id,
                     document_id=fila["document_id"],
+                    document_ids=self.db.documentos_generacion(generation_id) or [fila["document_id"]],
                     al_terminar=lambda status: self._terminal(generation_id, status),
                 )
                 if clave is not None:

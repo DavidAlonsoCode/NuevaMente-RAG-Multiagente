@@ -1,5 +1,6 @@
+import { AsyncTestScope } from '../test/asyncScope';
 import React from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import fixtures from './fixtures.test-data.json';
 import { validarGeneracionCompletada, validarPaquete } from './validators';
@@ -9,7 +10,9 @@ import { t } from '../i18n';
 import { App } from '../App';
 import { GenerationLiveStatus } from '../components/GenerationLiveStatus';
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+let scope: AsyncTestScope;
+beforeEach(({ signal }) => { scope = new AsyncTestScope(signal); });
+afterEach(async () => { await scope.close(); cleanup(); vi.restoreAllMocks(); });
 
 it('el progreso básico informa una sola redacción sin prometer revisiones', () => {
   const stream: any = { progress: { step: 'writer', iteration: 1 }, phase: 'connected', error: null, reconnect: vi.fn() };
@@ -75,7 +78,7 @@ it('seleccionar otro modo no genera ni vuelve a cargar el documento', async () =
   vi.spyOn(APIClient.prototype, 'getGenerations').mockResolvedValue({ items: [] });
   vi.spyOn(APIClient.prototype, 'workspaceStatus').mockResolvedValue({});
   const generate = vi.spyOn(APIClient.prototype, 'createGeneration');
-  render(<App />);
+  await scope.render(<App />);
   await waitFor(() => expect(docs).toHaveBeenCalled());
   const before = docs.mock.calls.length;
   const select = screen.getByLabelText(t('modo.selector'));

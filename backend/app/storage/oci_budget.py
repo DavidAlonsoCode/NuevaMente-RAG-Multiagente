@@ -5,10 +5,13 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import RLock
+from time import monotonic
 
 from app.storage.provider import StorageBudgetExceeded, StorageUnavailable
 
 _mantenimiento = ContextVar("storage_mantenimiento", default=False)
+_TIMEOUT_SQLITE = 30.0
 
 
 @contextmanager
@@ -26,6 +29,7 @@ class PresupuestoOCI:
         if not 1 <= solicitudes <= 20000 or not 1 <= bytes_maximos <= 1_000_000_000:
             raise ValueError("El presupuesto OCI solo puede reducir los límites de §8.4")
         self.ruta, self.solicitudes, self.bytes_maximos = Path(ruta), solicitudes, bytes_maximos
+        self._lock = RLock()
         self.margen_limpieza = solicitudes // 10
         self.margen_bytes = bytes_maximos // 100
         self.ruta.parent.mkdir(parents=True, exist_ok=True)
@@ -45,8 +49,16 @@ class PresupuestoOCI:
     @contextmanager
     def _transaccion(self):
         db = None
+        adquirido = False
+        limite = monotonic() + _TIMEOUT_SQLITE
         try:
-            db = sqlite3.connect(self.ruta, timeout=30)
+            # Evitar aperturas/PRAGMA/cierres concurrentes de esta instancia.
+            # El proveedor se ejecuta fuera de estas transacciones locales.
+            adquirido = self._lock.acquire(timeout=_TIMEOUT_SQLITE)
+            restante = limite - monotonic()
+            if not adquirido or restante <= 0:
+                raise StorageUnavailable("El presupuesto OCI no está disponible; no se enviará la solicitud")
+            db = sqlite3.connect(self.ruta, timeout=restante)
             db.execute("PRAGMA synchronous=FULL")
             db.execute("BEGIN IMMEDIATE")
             yield db
@@ -54,8 +66,12 @@ class PresupuestoOCI:
         except sqlite3.Error:
             raise StorageUnavailable("El presupuesto OCI no está disponible; no se enviará la solicitud") from None
         finally:
-            if db is not None:
-                db.close()
+            try:
+                if db is not None:
+                    db.close()
+            finally:
+                if adquirido:
+                    self._lock.release()
 
     @staticmethod
     def _mes():

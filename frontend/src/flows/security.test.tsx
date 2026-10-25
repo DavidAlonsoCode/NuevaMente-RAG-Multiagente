@@ -19,7 +19,7 @@ it.each(Object.entries(fixtures))('presenta texto hostil como texto literal en %
   validarPaquete(paquete);
   const { container } = render(<PackageViewer paquete={paquete} idioma="es" apiClient={new APIClient()}
     token="synthetic-token" onSessionInvalid={vi.fn()} />);
-  expect(screen.getByRole('heading', { name: ataque })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: ataque, level: 2 })).toBeTruthy();
   expect(container.querySelector('script, img, iframe, a[href^="javascript:"]')).toBeNull();
   expect(fetch).not.toHaveBeenCalled();
 });
