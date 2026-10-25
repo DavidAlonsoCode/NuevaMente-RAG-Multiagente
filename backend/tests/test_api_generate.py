@@ -160,24 +160,21 @@ def entorno(tmp_path, aislar_estado_seguridad):
 
 
 def esperar(e, recibo, status="completed", *, timeout=60):
-    """Espera un estado terminal del trabajo con red de seguridad amplia.
-
-    El timeout NO es una aserción de velocidad: los estados failed/cancelled
-    cortan de inmediato. Medido en equipos cargados una generación con dobles
-    puede superar 10 s (incluye Chroma, SQLite y SSE); con el margen anterior
-    de 15 s la suite se volvía intermitente bajo contención.
-    """
+    """Comprueba HTTP sin saturar el ledger durable con sondeos de 10 ms."""
     limite = time.monotonic() + timeout
     ultimo = None
     while time.monotonic() < limite:
         respuesta = e.cliente.get(recibo["status_url"], headers=e.headers)
         assert respuesta.status_code == 200, respuesta.text
         ultimo = respuesta.json()
+        restante = limite - time.monotonic()
+        if restante <= 0:
+            break
         if ultimo["status"] == status:
             return ultimo
         if ultimo["status"] not in {"queued", "running"}:
             pytest.fail(str(ultimo))
-        time.sleep(0.01)
+        time.sleep(min(0.25, restante))
     pytest.fail(str(ultimo))
 
 

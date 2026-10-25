@@ -210,14 +210,16 @@ class ServicioGlosario:
                     raise ErrorAplicacion(ErrorCode.INVALID_STATE, "La fuente cambió durante la admisión.")
             self.consulta._sesion(token)
 
+        cuerpo, *alternativos = solicitud.parametros_idempotentes()
         return admitir_trabajo(
             self.gestor,
             ws,
             solicitud.document_id,
             "glosario",
-            solicitud.model_dump(mode="json"),
+            cuerpo,
             lambda ctx: self.ejecutar(solicitud, ctx, cache_key),
             clave=clave,
+            cuerpos_alternativos=alternativos,
             cache_key=cache_key,
             preparar=preparar,
             document_ids=doc_ids,

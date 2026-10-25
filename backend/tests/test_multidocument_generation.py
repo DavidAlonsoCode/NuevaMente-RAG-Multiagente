@@ -26,6 +26,25 @@ pytestmark = pytest.mark.integration_mock
 
 
 class DobleMultiDocumento(DobleGemini):
+    def _vector_de(self, texto):
+        # Los escenarios seleccionan fuentes tecnicas relacionadas. La consulta
+        # pide una sintesis de ellas; el embedding simulado conserva esos ejes.
+        normalizado = texto.casefold()
+        grupos = (
+            ("redes", "subred", "servidor"),
+            ("almacenamiento", "base de datos", "bases de datos"),
+            ("seguridad", "firewall", "autentic", "oauth", "jwt"),
+            ("arquitectura", "sistema", "microservicio", "mensajer", "distribuid"),
+        )
+        afinidades = [float(any(termino in normalizado for termino in grupo)) for grupo in grupos]
+        if normalizado.startswith("task: search result | query:"):
+            afinidades = [1.0] * len(grupos)
+        if not any(afinidades):
+            return super()._vector_de(texto)
+        vector = ([1.0, *afinidades] + [0.0] * self.dimension_embeddings)[: self.dimension_embeddings]
+        norma = sum(componente**2 for componente in vector) ** 0.5
+        return [componente / norma for componente in vector]
+
     def generar_sync(self, prompt, **kwargs):
         datos = json.loads(prompt)
         p = datos["parametros"]
@@ -45,16 +64,28 @@ class DobleMultiDocumento(DobleGemini):
             alcance={**p["alcance"], "secciones_cubiertas": datos.get("secciones_cubiertas", [])},
         )
 
-        # Distribuir citas entre los chunks disponibles si hay más de una fuente
+        # Una contribución factual por fuente, con su propia cita canónica.
         chunks_disponibles = [e["chunk"] for e in evidencias] if evidencias else [chunk_primario]
+        chunks_por_documento = {chunk["document_id"]: chunk for chunk in reversed(chunks_disponibles)}
+        if solicitud.formato_salida == "flashcards":
+            salida["contenido_adaptado"]["items"] = [
+                {
+                    "id": f"item_{indice}",
+                    "frente": f"¿Qué desarrolla la fuente {indice}?",
+                    "dorso": chunk["texto"].split(".")[0] + ".",
+                    "referencias": [{"chunk_id": chunk["chunk_id"]}],
+                }
+                for indice, chunk in enumerate(chunks_por_documento.values(), start=1)
+            ]
+        chunks_por_id = {chunk["chunk_id"]: chunk for chunk in chunks_disponibles}
 
         def citas(valor):
             if isinstance(valor, dict):
                 for clave, item in valor.items():
                     if clave == "referencias":
                         nuevas = []
-                        for i, ref in enumerate(item):
-                            target = chunks_disponibles[i % len(chunks_disponibles)]
+                        for ref in item:
+                            target = chunks_por_id[ref["chunk_id"]]
                             ref_dict = {
                                 "chunk_id": target["chunk_id"],
                                 "pagina": target.get("pagina"),
@@ -80,18 +111,22 @@ class DobleMultiDocumento(DobleGemini):
         if fase == "descomponer":
             salida = {
                 "afirmaciones": [
-                    {"texto": "Afirmación sintética del doble", "ubicacion": ruta}
-                    for ruta in list(datos["segmentos"])[:2]
+                    {"texto": segmento["texto"], "ubicacion": ruta}
+                    for ruta, segmento in datos["segmentos"].items()
+                    if ruta.startswith("/contenido_adaptado/") and ruta.endswith("/dorso")
                 ]
             }
         elif fase == "juzgar":
+            chunks = {e["chunk"]["chunk_id"]: e["chunk"] for e in datos["evidencia"]}
             salida = {
                 "juicios": [
                     {
                         "id_afirmacion": a["id"],
                         "estado": "respaldada",
-                        "motivo": "Juicio simulado",
-                        "referencias": a["citas_permitidas"],
+                        "motivo": "La afirmación reproduce contenido de la fuente citada",
+                        "referencias": [
+                            chunk_id for chunk_id in a["citas_permitidas"] if a["texto"] in chunks[chunk_id]["texto"]
+                        ],
                     }
                     for a in datos["afirmaciones"]
                 ]
@@ -294,14 +329,26 @@ def test_generacion_multidocumental_completa_y_documentos_fuente(entorno_multi, 
     assert len(contenido["documentos_fuente"]) == 2
     assert {df["document_id"] for df in contenido["documentos_fuente"]} == {doc1, doc2}
 
-    # Verificar que las citas del contenido incluyen document_id
+    # Ambas fuentes respaldan contenido, además de figurar en el snapshot.
     items = contenido["contenido_adaptado"]["items"]
-    encontrada_con_doc = False
-    for item in items:
-        for ref in item.get("referencias", []):
-            if ref.get("document_id") in {doc1, doc2}:
-                encontrada_con_doc = True
-    assert encontrada_con_doc, "Debe haber citas con document_id identificando la procedencia"
+    assert {ref["document_id"] for item in items for ref in item["referencias"]} == {doc1, doc2}
+    revisiones = [json.loads(entrada["prompt"]) for entrada in e.doble.entradas_verificacion]
+    descomposicion = next(revision for revision in revisiones if revision["tarea"] == "descomponer")
+    juicio = next(revision for revision in revisiones if revision["tarea"] == "juzgar")
+    chunks = {evidencia["chunk"]["chunk_id"]: evidencia["chunk"] for evidencia in juicio["evidencia"]}
+    contribuciones = set()
+    for indice, item in enumerate(items):
+        segmento = descomposicion["segmentos"][f"/contenido_adaptado/items/{indice}/dorso"]
+        assert segmento["texto"] == item["dorso"]
+        afirmacion = next(a for a in juicio["afirmaciones"] if a["texto"] == item["dorso"])
+        assert afirmacion["citas_permitidas"] == [ref["chunk_id"] for ref in item["referencias"]]
+        for ref in item["referencias"]:
+            original = chunks[ref["chunk_id"]]
+            assert item["dorso"] in original["texto"]
+            assert ref["document_id"] == original["document_id"]
+            assert (ref["pagina"], ref["seccion"]) == (original["pagina"], original["seccion"])
+            contribuciones.add(original["document_id"])
+    assert contribuciones == {doc1, doc2}
 
     # Serializar el paquete completo como lo haría la evidencia D (§8.2), pero
     # SIEMPRE en tmp_path: un test jamás escribe archivos versionados del repo.

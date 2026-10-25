@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.core.agents.graph_state import BorradorPedagogico, EstadoGrafo
 from app.core.agents.prompts import modelo_borrador
+from app.core.rag.vectorstore import seccion_del_chunk
 from app.schemas.pedagogical import Referencia
 
 
@@ -32,6 +33,51 @@ def _constante_invalida(valor):
 def parsear_json_estricto(texto: str):
     """Rechaza claves duplicadas, NaN/inf y cercas Markdown en cualquier rol."""
     return json.loads(texto, object_pairs_hook=_sin_duplicados, parse_constant=_constante_invalida)
+
+
+def evidencia_autorizada(estado: EstadoGrafo):
+    """Índice interno de evidencia: una cita nunca cambia de fuente o versión."""
+    documentos = estado.document_ids or [estado.document_id]
+    hashes = estado.source_hashes or {estado.document_id: estado.source_hash}
+    if set(hashes) != set(documentos):
+        raise ValueError("Faltan versiones de las fuentes seleccionadas.")
+    permitidas = {}
+    for evidencia in estado.evidencia:
+        chunk = evidencia.chunk
+        if (
+            chunk.workspace_id != estado.workspace_id
+            or chunk.document_id not in documentos
+            or chunk.document_hash != hashes[chunk.document_id]
+        ):
+            raise ValueError("La evidencia no pertenece a las fuentes y versiones autorizadas.")
+        anterior = permitidas.get(chunk.chunk_id)
+        if anterior is not None and anterior.chunk != chunk:
+            raise ValueError("Un chunk_id identifica evidencias diferentes.")
+        permitidas[chunk.chunk_id] = evidencia
+    return permitidas
+
+
+def cobertura_documental(estado: EstadoGrafo) -> set[tuple[str, str]]:
+    """La cobertura pública sigue siendo plana; su procedencia interna no lo es."""
+    evidencia = evidencia_autorizada(estado)
+    documentos = estado.document_ids or [estado.document_id]
+    if len(documentos) > 1:
+        if set(estado.secciones_por_documento) != set(documentos):
+            raise ValueError("El mapa de secciones no corresponde a las fuentes seleccionadas.")
+        for item in evidencia.values():
+            chunk = item.chunk
+            if seccion_del_chunk(chunk) not in estado.secciones_por_documento[chunk.document_id]:
+                raise ValueError("La sección de la evidencia no pertenece a su documento.")
+        recuperadas = {seccion_del_chunk(item.chunk) for item in evidencia.values()}
+        if set(estado.secciones_cubiertas) - recuperadas:
+            raise ValueError("La cobertura declara secciones sin evidencia recuperada.")
+    elif set(estado.secciones_cubiertas) - set(estado.secciones_disponibles):
+        raise ValueError("La cobertura contiene secciones ajenas al documento.")
+    return {
+        (item.chunk.document_id, seccion_del_chunk(item.chunk))
+        for item in evidencia.values()
+        if seccion_del_chunk(item.chunk) in estado.secciones_cubiertas
+    }
 
 
 # con esta funcion valido exhaustivamente la estructura del borrador comprobando que coincida con el perfil formato y citas autorizadas
@@ -70,7 +116,8 @@ def validar_borrador(texto: str, estado: EstadoGrafo) -> tuple[BorradorPedagogic
     es_multidocumento = (
         len(getattr(estado, "document_ids", None) or ([estado.document_id] if estado.document_id else [])) > 1
     )
-    permitidas = {item.chunk.chunk_id: item.como_referencia() for item in estado.evidencia}
+    cobertura_documental(estado)
+    permitidas = {chunk_id: item.como_referencia() for chunk_id, item in evidencia_autorizada(estado).items()}
     referencias = {}
     contenido = validado.contenido_adaptado.model_dump(mode="json")
 

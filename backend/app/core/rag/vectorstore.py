@@ -127,24 +127,32 @@ class VectorStoreChroma:
         with _LOCKS_GUARD:
             self._lock = _LOCKS.setdefault(self.ruta, threading.RLock())
         self._cliente = chromadb.PersistentClient(path=str(self.ruta), settings=Settings(anonymized_telemetry=False))
-        self.tamano_lote = min(tamano_lote, self._cliente.get_max_batch_size())
-        metadata = {
-            "modelo": embeddings.modelo,
-            "dimensiones": embeddings.dimensiones,
-            "preparacion": embeddings.preparation_version,
-            "schema_indice": 1,
-        }
-        self._privada = self._coleccion(embeddings.collection_name, metadata)
-        self._demo = self._coleccion("demo-" + embeddings.collection_name, metadata)
-        with self._db() as db:
-            db.executescript("""
+        try:
+            self.tamano_lote = min(tamano_lote, self._cliente.get_max_batch_size())
+            metadata = {
+                "modelo": embeddings.modelo,
+                "dimensiones": embeddings.dimensiones,
+                "preparacion": embeddings.preparation_version,
+                "schema_indice": 1,
+            }
+            self._privada = self._coleccion(embeddings.collection_name, metadata)
+            self._demo = self._coleccion("demo-" + embeddings.collection_name, metadata)
+            with self._db() as db:
+                db.executescript("""
                 CREATE TABLE IF NOT EXISTS documentos (
                     coleccion TEXT NOT NULL, workspace TEXT NOT NULL, documento TEXT NOT NULL,
                     version TEXT NOT NULL, hash TEXT NOT NULL, firma TEXT NOT NULL, cantidad INTEGER NOT NULL,
                     PRIMARY KEY (coleccion, workspace, documento));
                 CREATE TABLE IF NOT EXISTS retirados (
                     workspace TEXT NOT NULL, documento TEXT NOT NULL, PRIMARY KEY (workspace, documento));
-            """)
+                """)
+        except BaseException as error:
+            # El llamador no recibe una instancia que pueda cerrar.
+            try:
+                self.cerrar()
+            except BaseException as cierre:
+                error.add_note(f"Falló también el cierre del cliente Chroma adquirido: {cierre!r}")
+            raise
 
     # con este metodo cierro la conexion persistente de chromadb de manera segura e idempotente
     def cerrar(self) -> None:

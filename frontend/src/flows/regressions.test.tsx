@@ -1,6 +1,7 @@
+import { AsyncTestScope } from '../test/asyncScope';
 import React, { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from '../App';
 import { APIClient } from '../api/client';
 import { ChatTutorView, GlossaryView, HistoryFullView } from '../components/StudyAndHistoryViews';
@@ -11,12 +12,14 @@ import { PackageViewer } from '../components/FormatRenderers';
 import { clearStudyState } from './studyState';
 import { t } from '../i18n';
 
-beforeEach(() => {
+let scope: AsyncTestScope;
+beforeEach(({ signal }) => {
+  scope = new AsyncTestScope(signal);
   sessionStorage.clear();
   clearStudyState();
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network disabled in unit tests')));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(async () => { await scope.close(); cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('intenciones durables y fronteras', () => {
   it('descarta la página antigua si el filtro cambia antes de recibirla', async () => {
@@ -28,11 +31,11 @@ describe('intenciones durables y fronteras', () => {
         generation_id:'gen-current',document_id:'doc-actual',status:'queued',created_at:'2026-10-15T00:00:00Z',
       }],next_cursor:null}),
     } as unknown as APIClient;
-    render(<HistoryFullView apiClient={api} token="synthetic" workspaceId="ws"
+    await scope.render(<HistoryFullView apiClient={api} token="synthetic" workspaceId="ws"
       idiomaUi="es" onClose={vi.fn()} onSessionInvalid={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(t('historial.perfil','es')), {target:{value:'principiante'}});
     await screen.findByText(/doc-actual/);
-    await act(async () => { resolveOld({items:[{
+    await scope.act(async () => { resolveOld({items:[{
       generation_id:'gen-old',document_id:'doc-anterior',status:'queued',created_at:'2026-10-14T00:00:00Z',
     }],next_cursor:null}); });
     expect(screen.queryByText(/doc-anterior/)).toBeNull();
@@ -141,7 +144,7 @@ describe('intenciones durables y fronteras', () => {
       conceptos_revisados: 0, flashcards_vistas: 0, quiz_intentos: 0,
       quiz_aciertos_primer_intento: 0, quiz_total_primer_intento: 0,
       quiz_aciertos_posteriores: 0, tiempo_estimado_restante_minutos: 0 });
-    render(<StrictMode><App /></StrictMode>);
+    await scope.render(<StrictMode><App /></StrictMode>);
     await screen.findByText('synthetic-recovery');
     expect(create).toHaveBeenCalledTimes(1);
     expect(sessionStorage.getItem('nm_session_token')).toBeNull();

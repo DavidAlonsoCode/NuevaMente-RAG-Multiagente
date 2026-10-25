@@ -19,7 +19,7 @@ y no bloquea los criterios locales de #59.
 - **Base**: `/api` (sin `/v1`; el versionado vive en `schema_version=1.0|1.1` de los paquetes).
 - **Autenticación**: `Authorization: Bearer <token_de_sesion>` en todas las rutas salvo creación de workspace, recuperación y `/health`.
 - **Autorización**: todo recurso se resuelve desde la sesión validada; un ID ajeno responde **404** (no 403).
-- **Idempotencia**: `POST` de upload, generación, persist y eventos de progreso aceptan header `Idempotency-Key`. Duplicado en curso → misma respuesta; mismo key con otro cuerpo → **409**.
+- **Idempotencia**: upload, generación, persist, chat, glosario, respuestas de quiz y eventos de progreso aceptan `Idempotency-Key` según su contrato. Una intención equivalente conserva su recurso; reutilizar la clave con cambios semánticos devuelve **409**. El ámbito incluye workspace y operación; no equivale a la caché de glosario.
 - **Idioma de UI**: Accept-Language es/en/pt (default es) controla mensajes; idioma_salida controla contenido.
 - **Trazabilidad**: toda respuesta incluye cabecera X-Request-ID; los errores JSON también incluyen request_id. No modificar cuerpos binarios de exportación ni el artefacto canónico para añadirlo.
 
@@ -83,7 +83,7 @@ Los `code` son estables y no se traducen; los `message` se localizan según idio
 - La recuperación reserva como máximo cinco plazas por origen, contando fallos del último minuto e intentos en vuelo. Un código válido no borra los fallos previos del minuto. Los fallos técnicos liberan su plaza; un conflicto de versión devuelve `409 INVALID_STATE`. Un bloqueo devuelve `429 RECOVERY_LOCKED` con `Retry-After`.
 - La actividad autenticada renueva la retención del espacio con escrituras agrupadas cada cinco minutos. No prolonga el token. Los manifiestos pendientes se sincronizan al arrancar y cada minuto; la confirmación de una versión vieja no borra una actividad posterior.
 - El manifiesto privado conserva hash, versión, expiración, última actividad y lápidas. Las escrituras usan creación exclusiva o `if_match`; un manifiesto retirado no se reactiva. Si OCI falla al borrar, el acceso local queda bloqueado y la confirmación durable permanece pendiente, con diagnóstico y reintento. Se debe preservar SQLite hasta confirmar esa lápida: un borrado que nunca llegó a storage no puede reconstruirse después de perder también el volumen local.
-- `session/recovery.py` reconstruye el índice hash→espacio al arrancar un registro nuevo y retoma reconstrucciones interrumpidas. Pagina manifiestos, verifica identidad/ETag/hash y restaura documentos, registros de paquetes canónicos aprobados y el agregado privado de progreso; omite recursos retirados. No restaura tokens, colas, borradores ni invoca Gemini. Los documentos quedan `processing` hasta reconstruir índices (#17) y, cuando corresponda, visión (#30). La API de progreso corresponde a #35, su presentación a #41 y la gestión visual del espacio a #42.
+- `session/recovery.py` reconstruye el índice hash→espacio al arrancar un registro nuevo y retoma reconstrucciones interrumpidas. Pagina manifiestos, verifica identidad/ETag/hash y restaura documentos, registros de paquetes canónicos aprobados y el agregado privado de progreso. Una generación con cualquier fuente retirada permanece inaccesible, pero conserva relaciones de control para limpiar sus derivados. Esa procedencia de purga no autoriza una fuente sin original verificable ni crea lápidas para las demás. No restaura tokens, colas, borradores ni invoca Gemini. Los documentos restaurables quedan `processing` hasta reconstruir índices (#17) y, cuando corresponda, visión (#30). La API de progreso corresponde a #35, su presentación a #41 y la gestión visual del espacio a #42.
 - `Accept-Language` selecciona mensajes ES/EN/PT; los códigos, detalles e idioma del contenido conservan su contrato. El cliente React envía el idioma de interfaz vigente.
 
 **Origen detrás de Caddy**: producción requiere `TRUSTED_ORIGIN_SECRET`, aleatorio, de al menos 32 caracteres, compartido solamente por Caddy y backend. El proxy sobrescribe `X-NuevaMente-Client-IP` con la IP de conexión y `X-NuevaMente-Origin-Key` con esa clave. El navegador solicita `/api` al mismo origen y Caddy agrega ambas cabeceras al reenviar a FastAPI. La API autentica la clave antes de usar el origen; rechaza cabeceras incompletas/falsificadas e ignora `X-Forwarded-For` aportado por el cliente. Sin esas cabeceras usa la IP de conexión directa (desarrollo/API directa).
@@ -362,6 +362,89 @@ Ejemplo de fuente textual (ilustrativo, no contenido desplegado):
 
 ### Generación (issues `Issue 31`, `Issue 29`, `Issue 32`, `Issue 33`)
 
+#### Fuentes, alcances y procedencia multidocumental (PR #146)
+
+Generación, chat y glosario admiten `document_id` histórico o `document_ids`
+en el nivel superior. Se eliminan duplicados y se ordenan los IDs no vacíos;
+el primero es el **primario canónico**. Si se envían ambos campos,
+`document_id` debe coincidir con ese primario; una contradicción es **422**.
+A+B y B+A identifican el mismo conjunto; A+B y A+C son distintos. Todas las
+fuentes deben ser propias del workspace, estar listas y seguir autorizadas.
+El máximo es **cinco fuentes por solicitud**, independiente de los cupos de
+documentos almacenados y generaciones retenidas.
+
+| `GenerateRequest.alcance.tipo` | Selección y validación |
+|---|---|
+| `documento_completo` (default) | Una fuente completa. Una lista superior de varias fuentes normaliza este default a `multi_documento`. |
+| `seccion` | Una sola fuente y `seccion_id` perteneciente a ella; no admite selección múltiple. |
+| `multi_documento` | Dos a cinco fuentes explícitas; no exige cubrir todas las secciones de cada documento. |
+| `espacio_completo` | Todos los documentos propios, `ready` y vigentes al admitir. Admite una fuente y conserva este alcance; vacío devuelve **404**, más de cinco **422** con cantidad y máximo, sin truncar. |
+
+En `espacio_completo` pueden omitirse los IDs: la resolución corresponde al
+servidor. Los IDs declarados no convierten este alcance en una selección parcial.
+La lista resuelta y el primario se guardan junto con parámetros, relaciones y
+snapshot de cada `DocumentoFuente`: ID, título, hash, versión y procedencia.
+Chat y glosario usan su lista explícita de fuentes; sus cuerpos no tienen `alcance`.
+Ejemplos completos: [referencia de solicitudes](api_reference.md#selección-de-fuentes-y-alcances).
+
+El snapshot de admisión fija la procedencia esperada de la generación; no sustituye
+la autorización vigente. Básico y Multiagente contrastan la fuente completa al
+ejecutar, después del I/O pertinente y antes de publicar. Si cambia una fuente
+entre admisión y ejecución, se impide comenzar con proveedores sobre otra versión;
+si cambia o se retira después, no se continúa con un subconjunto silencioso.
+Los paquetes multidocumentales conservan `documento_fuente` primario y añaden
+`documentos_fuente`. Toda cita, también dentro del contenido, identifica su
+`document_id` y debe corresponder al chunk y versión autorizados. La cobertura
+se comprueba por documento/sección internamente, sin cambiar el formato público
+de `secciones_cubiertas` ni confundir secciones homónimas.
+
+Una síntesis multiagente debe acreditar contribuciones factuales utilizadas de
+cada fuente seleccionada. Recuperar evidencia de B, enumerarla o añadir una
+referencia decorativa no acredita esa contribución. Falta de respaldo/cobertura
+provoca revisión o solicitud de evidencia y, si no se resuelve, rechazo sin publicar.
+El presupuesto de evidencia serializada es compartido entre fuentes y rondas;
+la selección intenta una base pertinente por fuente antes de complementos MMR.
+No se impone al chat o al glosario una cuota de citas propia de una síntesis.
+
+**Idempotencia y compatibilidad:** la representación interna normalizada no se
+confunde con el cuerpo idempotente. Se mantienen las formas unidocumentales
+históricas y las formas exactas con `document_ids` ya guardadas por esta PR.
+Las alternativas se comparan estrictamente, sin reescribir hashes o intenciones.
+Misma clave y cambios reales de fuentes explícitas, pregunta, perfil, idioma,
+formato, detalle, nicho, sección, modo o alcance mantienen **409** cuando aplican.
+Un reintento reconocido no requiere proveedores ni cuotas para admitir otro trabajo,
+pero sí la autorización actual de sus fuentes.
+
+Para `espacio_completo`, la intención representa «todo el espacio» y las fuentes
+concretas quedan congeladas al admitirla. Un reintento equivalente se reconoce
+antes de expandir los documentos actuales; conserva ID, primario, relaciones,
+snapshot y hash, sin otra reserva ni ejecución, aunque se añadan más de cinco
+documentos. Una clave nueva resuelve el conjunto actual. Las formas históricas
+admitidas con `document_id` y sin IDs se contrastan contra parámetros y vínculos
+persistidos de la generación original, nunca contra el conjunto listo actual.
+Una fuente original retirada sigue denegando el acceso; el reintento no la resucita.
+
+Omitir `modo_generacion` conserva el paquete **1.0**; un modo explícito solicita
+**1.1** para una intención nueva. Explicitar `multiagente` en un reintento
+equivalente puede recuperar su paquete 1.0 previo. Básico siempre conserva sus
+métricas nulas y `no_evaluado`; no adquiere aprobación por reunir varias fuentes.
+No se reserializan paquetes ni exportaciones JSON históricas.
+
+**Retirada y cupos:** cualquier fuente retirada, primaria o secundaria, impide
+servir su generación. La plaza de generación retenida se libera una sola vez al
+quedar retirada lógicamente, igual que por retirada de la propia generación;
+no espera a borrar paquete, exports o referencias de progreso. Una limpieza
+pendiente/fallida mantiene los vínculos para reintentar. La admisión sigue siendo
+atómica por workspace; al alcanzar `WORKSPACE_MAX_GENERATIONS` devuelve **429**
+`RATE_LIMITED`, con `motivo=workspace_resource_limit`, recurso, usados y límite.
+Esto no modifica cuotas de proveedores ni elimina las otras fuentes vigentes.
+
+**Interfaz:** React selecciona fuentes explícitas (hasta cinco), con foco visual
+separado. Recuperar una generación activa restaura el conjunto; no se descartan
+selecciones porque una actualización documental llegue tarde. «Seleccionar todos»
+se deshabilita si hay más de cinco documentos listos, con explicación ES/EN/PT.
+La UI no ofrece el selector `espacio_completo` que admite la API.
+
 #### `POST /api/generate`
 
 ```json
@@ -387,7 +470,8 @@ Respuesta **202**:
 }
 ```
 
-`alcance` alternativo: `{ "tipo": "seccion", "seccion_id": "sec_3" }`.
+Otros alcances: `{ "tipo": "seccion", "seccion_id": "sec_3" }`,
+`multi_documento` y `espacio_completo`, según las reglas anteriores.
 
 #### `GET /api/generations/{id}`
 
@@ -573,19 +657,28 @@ Upload conserva document_id y agrega las URLs del trabajo de ingestión.
 
 | Método y ruta | Descripción |
 |---|---|
-| `POST /api/chat` | `{document_id, pregunta, perfil_destinatario, idioma_salida}` → 202 y URLs del trabajo; su result contiene respuesta revisada con citas o abstención explícita. |
+| `POST /api/chat` | `{document_id o document_ids, pregunta, perfil_destinatario, idioma_salida}` → 202 y URLs del trabajo; su result contiene respuesta revisada con citas o abstención explícita. |
 
 Precisión #37 (`contract-change`): el recibo es `TrabajoComunResponse`; consulta,
 SSE/reconexión y cancelación se realizan en `/api/jobs/{job_id}`. `result` es
-`ChatAnswer`: `document_id`, `document_hash`, `pregunta`, `perfil_destinatario`,
+`ChatAnswer`: `document_id`, `document_hash`, `document_ids`, `documentos_fuente`, `pregunta`, `perfil_destinatario`,
 `idioma_salida`, `estado`, `respuesta`, `referencias` y `evaluacion_calidad`.
 `estado=respondida` requiere revisión completa aprobada; `fuera_de_alcance` sólo
 entrega una abstención fija que pide precisar, con referencias vacías y evaluación
 nula. `rejected_quality` no entrega result. El historial usa únicamente turnos
-completed del mismo workspace/documento/hash, acotados por
+completed del mismo workspace y conjunto exacto de identidades, hashes y versiones,
+acotados por
 `CHAT_HISTORY_TURNS`/`CHAT_HISTORY_MAX_TOKENS`; no es evidencia ni se envía al Critic.
 El resultado usa SQLite común, sin crear artefactos/exportaciones en `outputs/`.
-Su fuente se revalida al entregar el resultado y su retirada purga el historial.
+Todas las fuentes del resultado se revalidan contra su snapshot al entregarlo,
+con token en HTTP y también en el camino interno de SSE. Una secundaria modificada
+o retirada impide acceder al resultado anterior; SSE sólo transporta progreso y
+errores, nunca la respuesta. Dos documentos distintos con igual hash no comparten
+historial; A+B/B+A comparten conjunto y A+B/A+C no. Los registros históricos
+unidocumentales se conservan cuando su ID/hash y vínculos acreditan la fuente;
+si no tenían snapshot completo, no se inventan versiones ni procedencia.
+No se reescriben filas ni hashes idempotentes para incorporarlos. La retirada
+documental purga los turnos vinculados, sin afectar conversaciones de otras fuentes.
 El adaptador interno conserva la pregunta original para Critic. Su rúbrica
 pedagógica evalúa la cobertura de esa pregunta, manteniendo los controles
 factuales y visuales del grafo compartido.
@@ -601,7 +694,7 @@ de los proveedores. Las fuentes conservan sus comprobaciones READY y de acceso.
 
 | Método y ruta | Descripción |
 |---|---|
-| `POST /api/glossaries` | `{document_id, perfil_destinatario, idioma_salida}` → 202 con glossary_id y URLs del trabajo, o 200 con resultado de caché verificado. |
+| `POST /api/glossaries` | `{document_id o document_ids, perfil_destinatario, idioma_salida}` → 202 con glossary_id y URLs del trabajo, o 200 con resultado de caché verificado. |
 | `GET /api/glossaries/{id}` | Glosario generado con definiciones citadas. |
 
 Precisión #39 (`contract-change`):
@@ -613,7 +706,7 @@ Precisión #39 (`contract-change`):
   títulos, texto destacado y expresiones de definición. Selecciona hasta 64
   términos y hasta 8 ubicaciones por término; los candidatos restantes se cuentan
   explícitamente. Documentos anteriores se detectan desde sus chunks autorizados.
-- `POST /api/glossaries` recibe `GlossaryRequest`, con documento READY autorizado,
+- `POST /api/glossaries` recibe `GlossaryRequest`, con una a cinco fuentes READY autorizadas,
   perfil e idioma. `Idempotency-Key` (1–128 caracteres) conserva la intención;
   mismo header con otro cuerpo devuelve **409 IDEMPOTENCY_CONFLICT**. Un trabajo
   activo de la misma combinación devuelve el mismo recibo. Un nuevo glosario
@@ -621,7 +714,7 @@ Precisión #39 (`contract-change`):
   `glossary_id` (el mismo ID que el trabajo común). Una caché verificada devuelve
   **200** con el mismo recibo y `result`, sin crear trabajos ni llamadas.
 - `GET /api/glossaries/{glossary_id}` devuelve **200 GlossaryOutput**:
-  `schema_version`, `glossary_id`, `documento_fuente`, `perfil_destinatario`,
+  `schema_version`, `glossary_id`, `documento_fuente`, `documentos_fuente`, `perfil_destinatario`,
   `idioma_salida`, `estado`, `terminos`, `candidatos_omitidos`,
   `evaluacion_calidad`, `trazabilidad`, `prompt_version` y `created_at`.
   Una consulta antes de completarse devuelve **409**; un recurso ajeno/retirado,
@@ -639,7 +732,7 @@ Precisión #39 (`contract-change`):
   Si no hay definiciones, el glosario declara `sin_definiciones` con evaluación
   nula; sin candidatos declara `sin_terminos`. Estas limitaciones no reciben
   un score ficticio. El estado `verificado` requiere definiciones y calidad aprobada.
-- La clave de caché incluye espacio, documento/hash/versión, configuración del
+- La clave de caché incluye espacio, conjunto de documentos/hashes/versiones, configuración del
   parser, modelos de generación/verificación/embeddings, perfil, idioma, versiones
   del prompt de glosario/base y detector. SQLite conserva trabajos y resultados
   verificados; fallos y cancelaciones no son caché reutilizable. Un reinicio

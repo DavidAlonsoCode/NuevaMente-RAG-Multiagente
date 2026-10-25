@@ -238,11 +238,13 @@ class RetrieverMMR:
         contexto: ContextoEjecucion,
         presupuesto_tokens: int | None = None,
         source_hashes: dict[str, str] | None = None,
+        evidencia_previa: list[EvidenciaRecuperada] | None = None,
     ) -> ResultadoRecuperacion:
-        """Recuperación con diversificación MMR y representación equitativa entre fuentes.
+        """Base pertinente por fuente, seguida de complementos MMR.
 
-        Distribuye el presupuesto global de 12k tokens evitando sobrerrepresentación de
-        una sola fuente y deduplica fragmentos preservando la procedencia documental.
+        El presupuesto limita el JSON conjunto de evidencia previa y nueva. El
+        resultado contiene solo incorporaciones y sus tokens, sin volver a contar
+        duplicados como plazas nuevas. La similitud orienta selección, no fidelidad.
         """
         contexto.chequear()
         if not document_ids:
@@ -252,28 +254,54 @@ class RetrieverMMR:
         presupuesto = self.max_tokens if presupuesto_tokens is None else presupuesto_tokens
         if type(presupuesto) is not int or not 0 <= presupuesto <= self.max_tokens:
             raise ValueError("El presupuesto debe estar entre cero y RETRIEVAL_MAX_TOKENS")
+
+        documentos = sorted(set(document_ids))
+        ids, textos_por_doc, previos = {}, {}, []
+        versiones = dict(source_hashes or {})
+
+        def registrar(chunk):
+            if chunk.workspace_id != workspace_id or chunk.document_id not in documentos:
+                raise IndiceInconsistenteError("La evidencia pertenece a otro documento o espacio")
+            esperado = versiones.setdefault(chunk.document_id, chunk.document_hash)
+            if not esperado or chunk.document_hash != esperado:
+                raise IndiceInconsistenteError("La evidencia pertenece a otra versión")
+            if chunk.chunk_id in ids and ids[chunk.chunk_id] != chunk:
+                raise IndiceInconsistenteError("Un chunk_id identifica contenidos diferentes")
+            nuevo = chunk.chunk_id not in ids
+            ids[chunk.chunk_id] = chunk
+            return nuevo
+
+        for item in evidencia_previa or []:
+            contexto.chequear()
+            nuevo = registrar(item.chunk)
+            textos_doc = textos_por_doc.setdefault(item.chunk.document_id, set())
+            clave = identidad_texto(item.chunk.texto)
+            if nuevo and clave not in textos_doc:
+                previos.append(item)
+                textos_doc.add(clave)
+        if tokens_evidencia(previos, self.tokenizador) > presupuesto:
+            raise ValueError("La evidencia previa excede el presupuesto compartido")
         if presupuesto == 0:
             return ResultadoRecuperacion(avisos=["Presupuesto de evidencia agotado; no se ejecutó una consulta."])
 
-        limite_fetch = min(100, max(self.configuracion.retrieval_fetch_k, 15 * len(document_ids)))
+        limite_fetch = min(100, max(self.configuracion.retrieval_fetch_k, 15 * len(documentos)))
         candidatos = self.indice.buscar_multidocumental(
             workspace_id,
-            document_ids,
+            documentos,
             consulta.strip(),
             contexto=contexto,
             limite=limite_fetch,
         )
         contexto.chequear()
 
-        ids, textos_por_doc, pendientes = {}, {}, []
+        pendientes = []
         dimensiones = None
-        for hit in sorted(candidatos, key=lambda h: (-h.similitud, h.chunk.indice, h.chunk.chunk_id)):
+        for hit in sorted(
+            candidatos, key=lambda h: (-h.similitud, h.chunk.document_id, h.chunk.indice, h.chunk.chunk_id)
+        ):
+            contexto.chequear()
             chunk = hit.chunk
-            if chunk.workspace_id != workspace_id or chunk.document_id not in document_ids:
-                raise IndiceInconsistenteError("La evidencia pertenece a otro documento o espacio")
-            esperado = (source_hashes or {}).get(chunk.document_id)
-            if esperado and chunk.document_hash != esperado:
-                raise IndiceInconsistenteError("La evidencia pertenece a otra versión")
+            nuevo = registrar(chunk)
             if dimensiones is None:
                 dimensiones = len(hit.vector)
             norma = math.hypot(*hit.vector)
@@ -286,48 +314,105 @@ class RetrieverMMR:
                 or norma == 0
             ):
                 raise IndiceInconsistenteError("El índice contiene vectores o distancias inválidos")
-            if chunk.chunk_id in ids and ids[chunk.chunk_id] != chunk:
-                raise IndiceInconsistenteError("Un chunk_id identifica contenidos diferentes")
-
-            textos_doc = textos_por_doc.setdefault(chunk.document_id, set())
-            clave = identidad_texto(chunk.texto)
-            if chunk.chunk_id not in ids and clave not in textos_doc:
+            # La afinidad positiva permite intentar representación; no certifica
+            # respaldo factual ni impone el antiguo umbral del bonus de equidad.
+            if (
+                nuevo
+                and identidad_texto(chunk.texto) not in textos_por_doc.get(chunk.document_id, set())
+                and hit.similitud > 0.0
+            ):
                 pendientes.append(hit)
-            ids[chunk.chunk_id] = chunk
-            textos_doc.add(clave)
 
-        elegidos, evidencia, omitidos = [], [], []
+        items = {
+            h.chunk.chunk_id: EvidenciaRecuperada(chunk=h.chunk, score=h.similitud, consulta=consulta.strip())
+            for h in pendientes
+        }
+        elegidos, omitidos = [], set()
         lam = self.configuracion.retrieval_lambda_mult
-        fuentes_cubiertas: set[str] = set()
-        k_efectivo = max(self.configuracion.retrieval_k, len(document_ids))
+        cubiertas = {e.chunk.document_id for e in previos}
+        grupos = {d: [h for h in pendientes if h.chunk.document_id == d] for d in documentos if d not in cubiertas}
+        sin_candidatos = [d for d, pool in grupos.items() if not pool]
+        grupos = {d: pool for d, pool in grupos.items() if pool}
+        k_efectivo = max(self.configuracion.retrieval_k, len(documentos))
 
-        while pendientes and len(evidencia) < k_efectivo:
+        def costo(hits):
+            contexto.chequear()
+            return tokens_evidencia([*previos, *(items[h.chunk.chunk_id] for h in hits)], self.tokenizador)
+
+        # Reservar primero una base económica permite representar B incluso si
+        # el candidato preferido de A necesita una alternativa más pequeña.
+        while grupos:
+            opciones = [(costo([*elegidos, h]), h) for pool in grupos.values() for h in pool]
+            tokens, hit = min(
+                opciones,
+                key=lambda par: (
+                    par[0],
+                    -par[1].similitud,
+                    par[1].chunk.document_id,
+                    par[1].chunk.indice,
+                    par[1].chunk.chunk_id,
+                ),
+            )
+            if tokens > presupuesto:
+                omitidos.update(h.chunk.chunk_id for pool in grupos.values() for h in pool)
+                break
+            elegidos.append(hit)
+            del grupos[hit.chunk.document_id]
+
+        # Con la representación reservada, preferir los candidatos más relevantes
+        # que caben sin desplazar ninguna otra fuente de la base.
+        for posicion, actual in enumerate(elegidos):
+            for hit in pendientes:
+                if hit.chunk.document_id != actual.chunk.document_id:
+                    continue
+                propuesta = [*elegidos[:posicion], hit, *elegidos[posicion + 1 :]]
+                if costo(propuesta) <= presupuesto:
+                    elegidos[posicion] = hit
+                    break
+                omitidos.add(hit.chunk.chunk_id)
+
+        fuentes_cubiertas = cubiertas | {h.chunk.document_id for h in elegidos}
+        faltantes = set(documentos) - fuentes_cubiertas
+
+        def sin_duplicados(hits):
+            claves = {(h.chunk.document_id, identidad_texto(h.chunk.texto)) for h in elegidos}
+            return [h for h in hits if (h.chunk.document_id, identidad_texto(h.chunk.texto)) not in claves]
+
+        # Las alternativas con texto equivalente siguen disponibles hasta saber
+        # cuál cabe con sus propios IDs y metadatos. Solo se sirve una por fuente.
+        pendientes = sin_duplicados(pendientes)
+        # Sin base completa no se gastan plazas ni tokens en complementos.
+        while not faltantes and pendientes and len(elegidos) < k_efectivo:
             contexto.chequear()
 
-            def score_candidato(h: CoincidenciaVectorial) -> float:
-                relevancia = lam * h.similitud
-                sim_max = max((_coseno(h.vector, el.vector) for el in elegidos), default=0.0)
-                novedad = (1 - lam) * sim_max
-                bonus_equidad = 0.2 if (h.chunk.document_id not in fuentes_cubiertas and h.similitud > 0.1) else 0.0
-                return relevancia - novedad + bonus_equidad
-
-            hit = max(pendientes, key=score_candidato)
+            hit = max(
+                pendientes,
+                key=lambda h: (
+                    lam * h.similitud - (1 - lam) * max((_coseno(h.vector, el.vector) for el in elegidos), default=0.0)
+                ),
+            )
             pendientes.remove(hit)
-            item = EvidenciaRecuperada(chunk=hit.chunk, score=hit.similitud, consulta=consulta.strip())
-            if tokens_evidencia([*evidencia, item], self.tokenizador) > presupuesto:
-                omitidos.append(hit.chunk.chunk_id)
+            if costo([*elegidos, hit]) > presupuesto:
+                omitidos.add(hit.chunk.chunk_id)
                 continue
             elegidos.append(hit)
-            evidencia.append(item)
-            fuentes_cubiertas.add(hit.chunk.document_id)
+            pendientes = sin_duplicados(pendientes)
 
+        evidencia = [items[h.chunk.chunk_id] for h in elegidos]
+        tokens = tokens_evidencia(evidencia, self.tokenizador)
         contexto.chequear()
+        omitidos.difference_update(h.chunk.chunk_id for h in elegidos)
         avisos = []
         if omitidos:
             avisos.append("Se omitieron chunks completos por el presupuesto de evidencia.")
+        if sin_candidatos:
+            avisos.append("No se encontró evidencia pertinente para las fuentes: " + ", ".join(sin_candidatos) + ".")
+        sin_presupuesto = sorted(faltantes - set(sin_candidatos))
+        if sin_presupuesto:
+            avisos.append("El presupuesto no permite representar las fuentes: " + ", ".join(sin_presupuesto) + ".")
         return ResultadoRecuperacion(
             evidencia=evidencia,
-            tokens=tokens_evidencia(evidencia, self.tokenizador),
-            chunks_omitidos=omitidos,
+            tokens=tokens,
+            chunks_omitidos=sorted(omitidos),
             avisos=avisos,
         )

@@ -1,3 +1,4 @@
+import { AsyncTestScope } from '../test/asyncScope';
 import React from 'react';
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -15,9 +16,10 @@ const progress: GenerationEvent = { kind: 'progress', id: 7,
 const params = { document_id: 'doc-one', perfil_destinatario: 'principiante' as const, formato_salida: 'flashcards' as const,
   nicho_sector: 'general' as const, nivel_detalle: 'didactico' as const, idioma_salida: 'es' as const,
   alcance: { tipo: 'documento_completo' as const } };
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
-const tick = async (ms = 0) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+let scope: AsyncTestScope;
+beforeEach(({ signal }) => { scope = new AsyncTestScope(signal); vi.useFakeTimers(); });
+afterEach(async () => { await scope.close(); cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
+const tick = async (ms = 0) => { await scope.act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
 
 it('reconecta con el último cursor y reconcilia el resultado sin otro POST', async () => {
   const stream = vi.fn().mockImplementationOnce(async function* () { yield progress; throw new APIError('SERVICE_UNAVAILABLE', '', 503); })
@@ -69,7 +71,7 @@ it('ignora un estado pendiente del espacio anterior al cambiar token', async () 
   await tick();
   hook.rerender({ token: 'new' });
   await tick();
-  await act(async () => resolve(running));
+  await scope.act(async () => resolve(running));
   expect(callback).toHaveBeenCalledTimes(1);
   expect(callback).toHaveBeenLastCalledWith(complete);
 });
@@ -94,7 +96,7 @@ it('un 401 tardío del espacio anterior no cierra la sesión recuperada', async 
   await tick();
   hook.rerender({ token: 'recovered' });
   await tick();
-  await act(async () => reject(new APIError('SESSION_INVALID', '', 401)));
+  await scope.act(async () => reject(new APIError('SESSION_INVALID', '', 401)));
   expect(invalid).not.toHaveBeenCalled();
 });
 
@@ -156,9 +158,9 @@ it('una lista de documentos tardía no cambia la fuente del trabajo recuperado',
     yield progress;
     await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true }));
   });
-  render(<App />);
+  await scope.render(<App />);
   await tick();
-  await act(async () => resolve(docs));
+  await scope.act(async () => resolve(docs));
   await tick();
   expect((screen.getByDisplayValue('Fuente seleccionada') as HTMLSelectElement).value).toBe('doc-one');
 });

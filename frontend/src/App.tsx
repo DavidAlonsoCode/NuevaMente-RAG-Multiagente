@@ -183,6 +183,7 @@ export const App: React.FC = () => {
     setRecoveryCode(null);
     setDocumentos([]);
     setTrabajosDoc({});
+    setDocsSeleccionados([]);
     setDocActivoId(null);
     setDocActivoDemo(false);
     setGeneracionActiva(null);
@@ -248,11 +249,12 @@ export const App: React.FC = () => {
         } }));
       }));
 
-      if (!selectionRef.current.demo) {
-        const actual = docs.find((d) => d.document_id === selectionRef.current.id && d.status === 'ready');
-        if (!actual) {
-          const primerReady = docs.find((d) => d.status === 'ready');
-          setDocActivoId(primerReady ? primerReady.document_id : null);
+      if (!selectionRef.current.demo && !selectionRef.current.id) {
+        const primerReady = docs.find((d) => d.status === 'ready');
+        if (primerReady) {
+          selectionRef.current = { id: primerReady.document_id, demo: false };
+          setDocActivoId(primerReady.document_id);
+          setDocsSeleccionados([primerReady.document_id]);
         }
       }
     } catch (err) {
@@ -321,6 +323,7 @@ export const App: React.FC = () => {
       selectionRef.current = { id: generation.parametros.document_id, demo: false };
       setDocActivoId(generation.parametros.document_id);
       setDocActivoDemo(false);
+      setDocsSeleccionados(generation.parametros.document_ids ?? [generation.parametros.document_id]);
       setGenPerfil(generation.parametros.perfil_destinatario);
       setGenFormato(generation.parametros.formato_salida);
       setGenNicho(generation.parametros.nicho_sector);
@@ -350,8 +353,7 @@ export const App: React.FC = () => {
     () => {
       if (docActivoDemo) return null;
       if (docActivoId) {
-        const found = docsReady.find((d) => d.document_id === docActivoId);
-        if (found) return found;
+        return docsReady.find((d) => d.document_id === docActivoId) ?? null;
       }
       if (docsSeleccionados.length > 0) {
         const found = docsReady.find((d) => d.document_id === docsSeleccionados[0]);
@@ -362,35 +364,19 @@ export const App: React.FC = () => {
     [docsReady, docActivoId, docActivoDemo, docsSeleccionados]
   );
 
+  const primarySelectedId = [...docsSeleccionados].sort()[0];
+  const seleccionLista = docsSeleccionados.length > 0 &&
+    docsSeleccionados.every(id => docsReady.some(doc => doc.document_id === id));
+  const fuentesNoDisponibles = docsSeleccionados.filter(id => !docsReady.some(doc => doc.document_id === id));
+  const fuentesSeleccionables = [
+    ...docsReady,
+    ...fuentesNoDisponibles.map(id => ({ document_id: id, titulo: documentos.find(doc => doc.document_id === id)?.titulo ?? id })),
+  ];
   const seccionesDisponibles: SeccionDocumental[] = useMemo(
-    () => (docsSeleccionados.length <= 1 ? docSeleccionado?.cobertura?.secciones_procesadas || [] : []),
-    [docSeleccionado, docsSeleccionados.length]
+    () => docsSeleccionados.length === 1
+      ? docsReady.find(doc => doc.document_id === docsSeleccionados[0])?.cobertura?.secciones_procesadas || [] : [],
+    [docsReady, docsSeleccionados]
   );
-
-  useEffect(() => {
-    if (docActivoId && !docActivoDemo) {
-      setDocsSeleccionados((prev) => {
-        if (prev.length <= 1) {
-          return [docActivoId];
-        }
-        if (!prev.includes(docActivoId)) {
-          return [docActivoId, ...prev].slice(0, 5);
-        }
-        return prev;
-      });
-    }
-  }, [docActivoId, docActivoDemo]);
-
-  useEffect(() => {
-    setDocsSeleccionados((prev) => {
-      const readyIds = new Set(docsReady.map((d) => d.document_id));
-      const filtrados = prev.filter((id) => readyIds.has(id));
-      if (filtrados.length !== prev.length) {
-        return filtrados;
-      }
-      return prev;
-    });
-  }, [docsReady]);
 
   const toggleDocSeleccionado = (docId: string) => {
     setDocsSeleccionados((prev) => {
@@ -414,7 +400,8 @@ export const App: React.FC = () => {
   };
 
   const seleccionarTodosDocs = () => {
-    const ids = docsReady.slice(0, 5).map((d) => d.document_id);
+    if (docsReady.length > 5) return;
+    const ids = docsReady.map((d) => d.document_id);
     setDocsSeleccionados(ids);
     if (ids.length > 0 && (!docActivoId || !ids.includes(docActivoId))) {
       setDocActivoId(ids[0]);
@@ -433,19 +420,18 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!seleccionLista) return;
     if (seccionesDisponibles.length === 0 || docsSeleccionados.length > 1) {
       setGenAlcance('documento_completo');
       setGenSeccionId('');
     } else if (genAlcance === 'seccion' && !seccionesDisponibles.some((s) => s.seccion_id === genSeccionId)) {
       setGenSeccionId(seccionesDisponibles[0].seccion_id);
     }
-  }, [seccionesDisponibles, genAlcance, genSeccionId, docsSeleccionados.length]);
+  }, [seccionesDisponibles, genAlcance, genSeccionId, docsSeleccionados.length, seleccionLista]);
 
   const prepararConfirmacionGenerar = () => {
-    const docIds = docsSeleccionados.length > 0
-      ? docsSeleccionados
-      : (docSeleccionado ? [docSeleccionado.document_id] : []);
-    if (docIds.length === 0) return;
+    if (!seleccionLista) return;
+    const docIds = docsSeleccionados;
 
     const sortedDocIds = [...docIds].sort();
     const esMulti = sortedDocIds.length > 1;
@@ -608,18 +594,16 @@ export const App: React.FC = () => {
               )}
 
               <div>
-                <label className="nm-label">{t('sidebar.documento', idiomaUi)}</label>
+                <label className="nm-label" htmlFor="document-focus">{t('sidebar.documento', idiomaUi)}</label>
                 {docsReady.length > 0 ? (
                   <select
+                    id="document-focus"
                     className="nm-select"
                     value={docSeleccionado?.document_id || ''}
                     onChange={(e) => {
                       const newId = e.target.value || null;
                       setDocActivoId(newId);
                       setDocActivoDemo(false);
-                      if (newId && docsSeleccionados.length <= 1) {
-                        setDocsSeleccionados([newId]);
-                      }
                     }}
                   >
                     <option value="" disabled>
@@ -638,7 +622,7 @@ export const App: React.FC = () => {
                 )}
               </div>
 
-              {docsReady.length > 1 && (
+              {fuentesSeleccionables.length > 0 && (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
                     <label className="nm-label" style={{ marginBottom: 0 }}>
@@ -648,6 +632,8 @@ export const App: React.FC = () => {
                       <button
                         type="button"
                         onClick={seleccionarTodosDocs}
+                        disabled={docsReady.length > 5}
+                        aria-describedby={docsReady.length > 5 ? 'all-sources-limit' : undefined}
                         style={{ padding: 0, fontSize: '0.72rem', color: 'var(--oracle-coral, #c74634)', cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline' }}
                       >
                         {t('sidebar.seleccionar_todos', idiomaUi)}
@@ -664,7 +650,7 @@ export const App: React.FC = () => {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '130px', overflowY: 'auto', padding: '0.35rem 0.5rem', background: 'var(--surface-sunken)', borderRadius: '4px', border: '1px solid var(--border-hairline)' }}>
-                    {docsReady.map((d) => {
+                    {fuentesSeleccionables.map((d) => {
                       const checked = docsSeleccionados.includes(d.document_id);
                       return (
                         <label
@@ -682,6 +668,8 @@ export const App: React.FC = () => {
                           <input
                             type="checkbox"
                             checked={checked}
+                            disabled={!checked && docsSeleccionados.length >= 5}
+                            aria-describedby={docsSeleccionados.length >= 5 ? 'source-limit' : undefined}
                             onChange={() => {
                               setDocActivoDemo(false);
                               toggleDocSeleccionado(d.document_id);
@@ -693,10 +681,19 @@ export const App: React.FC = () => {
                     })}
                   </div>
                   {docsSeleccionados.length >= 5 && (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--accent-warning, #d97706)', marginTop: '0.25rem' }}>
+                    <div id="source-limit" role="status" style={{ fontSize: '0.72rem', color: 'var(--accent-warning, #d97706)', marginTop: '0.25rem' }}>
                       {t('sidebar.limite_fuentes', idiomaUi)}
                     </div>
                   )}
+                  {docsReady.length > 5 && <p id="all-sources-limit" role="status" className="nm-alert nm-alert-info">
+                    {t('sidebar.todos_supera_limite', idiomaUi, { n: docsReady.length })}
+                  </p>}
+                  {docActivoId && !docActivoDemo && !docsSeleccionados.includes(docActivoId) && <p role="status" className="nm-alert nm-alert-info">
+                    {t('sidebar.foco_fuera_seleccion', idiomaUi)}
+                  </p>}
+                  {fuentesNoDisponibles.length > 0 && <p role="status" className="nm-alert nm-alert-warning">
+                    {t('sidebar.fuentes_no_disponibles', idiomaUi)}
+                  </p>}
                 </div>
               )}
 
@@ -850,7 +847,7 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className="nm-btn nm-btn-primary nm-btn-block"
-                disabled={docsSeleccionados.length === 0 || (docsSeleccionados.length === 1 && !docSeleccionado) || (docsSeleccionados.length === 1 && genAlcance === 'seccion' && !genSeccionId)}
+                disabled={!seleccionLista || (docsSeleccionados.length === 1 && genAlcance === 'seccion' && !genSeccionId)}
                 onClick={prepararConfirmacionGenerar}
               >
                 <Sparkles size={16} />
@@ -1393,6 +1390,8 @@ export const App: React.FC = () => {
                                       onClick={async () => {
                                         try {
                                           await api.deleteDocument(sessionToken, doc.document_id);
+                                          if (authRef.current !== sessionToken) return;
+                                          setDocsSeleccionados(prev => prev.filter(id => id !== doc.document_id));
                                           setConfirmDeleteDocId(null);
                                           setAvisoDocBorrado(true);
                                           sincronizarEspacio();
@@ -1423,7 +1422,7 @@ export const App: React.FC = () => {
                   {/* Herramientas de Estudio en Home */}
                   {sessionToken && workspaceId && (
                     <div style={{ marginTop: '1.25rem' }}>
-                      {docSeleccionado ? (
+                      {seleccionLista && !docActivoDemo ? (
                         <div className="nm-card">
                           <h3 style={{ marginTop: 0 }}>{t('estudio.herramientas', idiomaUi)}</h3>
                           <div className="nm-grid-2">
@@ -1431,7 +1430,7 @@ export const App: React.FC = () => {
                               apiClient={api}
                               token={sessionToken}
                               workspaceId={workspaceId}
-                              documentId={docSeleccionado.document_id}
+                              documentId={primarySelectedId}
                               documentIds={docsSeleccionados.length > 1 ? docsSeleccionados : undefined}
                               perfil={genPerfil}
                               idiomaSalida={genIdiomaSalida}
@@ -1441,7 +1440,7 @@ export const App: React.FC = () => {
                             <GlossaryView
                               apiClient={api}
                               token={sessionToken}
-                              documentId={docSeleccionado.document_id}
+                              documentId={primarySelectedId}
                               documentIds={docsSeleccionados.length > 1 ? docsSeleccionados : undefined}
                               perfil={genPerfil}
                               idiomaSalida={genIdiomaSalida}

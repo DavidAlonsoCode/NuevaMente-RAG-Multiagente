@@ -68,6 +68,14 @@ export const ChatTutorView: React.FC<{
   );
   const primaryDocId = effectiveDocIds[0] || documentId;
   const scopeKey = `chat:${workspaceId}:${JSON.stringify([effectiveDocIds, perfil, idiomaSalida])}`;
+  const contextRef = useRef({ token, scopeKey });
+  if (contextRef.current.token !== token || contextRef.current.scopeKey !== scopeKey) {
+    contextRef.current = { token, scopeKey };
+  }
+  const contexto = contextRef.current;
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const contextoVigente = () => mounted.current && contextRef.current === contexto;
   const [turnos, setTurnos] = useScopedState<TurnoChatUI[]>(scopeKey, []);
   const otroPendiente = useOtherPendingChat(workspaceId, scopeKey);
   const [input, setInput] = useState('');
@@ -76,6 +84,7 @@ export const ChatTutorView: React.FC<{
 
   useEffect(() => {
     let active = true;
+    setDocReady(null);
     setDocError(null);
     Promise.all(effectiveDocIds.map((id) => apiClient.getDocument(token, id)))
       .then((docs) => {
@@ -95,6 +104,8 @@ export const ChatTutorView: React.FC<{
     };
   }, [apiClient, token, JSON.stringify(effectiveDocIds), onSessionInvalid]);
 
+  useEffect(() => { setInput(''); }, [contexto]);
+
   const pendiente =
     turnos.length > 0 && ['admitting', 'queued', 'running'].includes(turnos[turnos.length - 1].status)
       ? turnos[turnos.length - 1]
@@ -104,28 +115,16 @@ export const ChatTutorView: React.FC<{
     if (!turno.jobId) return;
     try {
       const datos = await apiClient.getJob(token, turno.jobId);
-      validarTrabajoChat(datos, turno.jobId);
-      let resValida = turno.respuesta;
-      if (datos.status === 'completed') {
-        resValida = validarRespuestaChat(datos.result, {
-          document_id: primaryDocId,
-          pregunta: turno.pregunta,
-          perfil_destinatario: perfil,
-          idioma_salida: idiomaSalida,
-        });
-      }
+      if (!contextoVigente()) return;
+      const confirmado = recibirTurno(turno, datos);
       setTurnos((prev) =>
         prev.map((x) => {
           if (x.clave !== turno.clave) return x;
-          return {
-            ...x,
-            status: datos.status,
-            respuesta: resValida,
-            error: null,
-          };
+          return { ...x, ...confirmado };
         })
       );
     } catch (err) {
+      if (!contextoVigente()) return;
       if (err instanceof APIError) {
         if (err.statusCode === 401) onSessionInvalid();
         setTurnos((prev) =>
@@ -138,7 +137,7 @@ export const ChatTutorView: React.FC<{
   const recibirTurno = (turno: TurnoChatUI, datos: any): TurnoChatUI => {
     validarTrabajoChat(datos, turno.jobId);
     const respuesta = datos.status === 'completed' ? validarRespuestaChat(datos.result, {
-      document_id: documentId, pregunta: turno.pregunta,
+      document_id: primaryDocId, document_ids: effectiveDocIds, pregunta: turno.pregunta,
       perfil_destinatario: perfil, idioma_salida: idiomaSalida,
     }) : null;
     return { ...turno, jobId: datos.job_id, status: datos.status, respuesta, error: null };
@@ -150,7 +149,7 @@ export const ChatTutorView: React.FC<{
       consultarPendiente(pendiente);
     }, 5000);
     return () => clearInterval(timer);
-  }, [pendiente?.clave, pendiente?.jobId, pendiente?.status]);
+  }, [pendiente?.clave, pendiente?.jobId, pendiente?.status, contexto, apiClient]);
 
   const enviarPregunta = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,6 +181,7 @@ export const ChatTutorView: React.FC<{
         },
         clave
       );
+      if (!contextoVigente()) return;
       const confirmado = recibirTurno(nuevo, recibo);
       setTurnos((prev) =>
         prev.map((x) =>
@@ -191,6 +191,7 @@ export const ChatTutorView: React.FC<{
         )
       );
     } catch (err) {
+      if (!contextoVigente()) return;
       if (err instanceof APIError) {
         if (err.statusCode === 401) onSessionInvalid();
         setTurnos((prev) =>
@@ -213,6 +214,7 @@ export const ChatTutorView: React.FC<{
         },
         turno.clave
       );
+      if (!contextoVigente()) return;
       const confirmado = recibirTurno(turno, recibo);
       setTurnos((prev) =>
         prev.map((x) =>
@@ -222,7 +224,9 @@ export const ChatTutorView: React.FC<{
         )
       );
     } catch (err) {
+      if (!contextoVigente()) return;
       if (err instanceof APIError) {
+        if (err.statusCode === 401) onSessionInvalid();
         setTurnos((prev) =>
           prev.map((x) => (x.clave === turno.clave ? { ...x, error: err, status: [401, 404].includes(err.statusCode) ? 'unavailable' : x.status, respuesta: null } : x))
         );
@@ -234,6 +238,7 @@ export const ChatTutorView: React.FC<{
     if (!turno.jobId) return;
     try {
       const datos = await apiClient.cancelJob(token, turno.jobId);
+      if (!contextoVigente()) return;
       const confirmado = recibirTurno(turno, datos);
       setTurnos((prev) =>
         prev.map((x) =>
@@ -246,7 +251,9 @@ export const ChatTutorView: React.FC<{
         )
       );
     } catch (err) {
+      if (!contextoVigente()) return;
       if (err instanceof APIError) {
+        if (err.statusCode === 401) onSessionInvalid();
         setTurnos((prev) =>
           prev.map((x) => (x.clave === turno.clave ? { ...x, error: err, status: [401, 404].includes(err.statusCode) ? 'unavailable' : x.status, respuesta: null } : x))
         );
@@ -323,7 +330,7 @@ export const ChatTutorView: React.FC<{
                   <>
                     <div style={{ whiteSpace: 'pre-wrap' }}>{turno.respuesta.respuesta}</div>
                     <SourcesDrawer
-                      documentId={documentId}
+                      documentId={primaryDocId}
                       referencias={turno.respuesta.referencias}
                       idioma={idiomaUi}
                       apiClient={apiClient}

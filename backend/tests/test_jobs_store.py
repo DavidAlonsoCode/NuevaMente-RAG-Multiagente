@@ -25,12 +25,15 @@ marca `unit` indica que no hay red ni servicios externos: SQLite es un
 archivo local.
 """
 
+import hashlib
+import json
 import sqlite3
 from pathlib import Path
 
 import pytest
 from app.jobs.store import RegistroOperativo
 from app.schemas.enums import DocumentStatus, JobStatus
+from app.schemas.responses import DocumentoFuente
 
 pytestmark = pytest.mark.unit
 
@@ -302,6 +305,321 @@ def test_borrar_un_documento_retira_sus_derivados_del_listado(store):
     assert store.obtener_generacion("gen_1") is None  # la lápida del documento también protege la consulta directa
 
 
+@pytest.mark.parametrize(
+    "retirados",
+    [("doc_a",), ("doc_b",), ("doc_a", "doc_b")],
+    ids=["primaria", "secundaria", "ambas"],
+)
+def test_relacion_de_purga_multidocumental_conserva_fuentes_y_retiradas(store, retirados):
+    store.crear_workspace("ws_1", "codigo", dias_validez=30)
+    for document_id in ("doc_a", "doc_b"):
+        store.registrar_documento(document_id, "ws_1", document_id, DocumentStatus.READY, document_id * 8)
+    for document_id in retirados:
+        store.agendar_borrado("document", document_id, "ws_1")
+    documentos_previos = [tuple(fila) for fila in store._conn.execute("SELECT * FROM documents ORDER BY document_id")]
+    lapidas_previas = [tuple(fila) for fila in store._conn.execute("SELECT * FROM pending_deletes ORDER BY recurso_id")]
+
+    store.registrar_generacion_retirada("gen_purga", "ws_1", "doc_a", document_ids=["doc_a", "doc_b"])
+
+    assert set(store.documentos_generacion("gen_purga")) == {"doc_a", "doc_b"}
+    assert store._conn.execute("SELECT document_id FROM generations WHERE generation_id='gen_purga'").fetchone()[0] == (
+        "doc_a"
+    )
+    assert store.obtener_generacion("gen_purga") is None
+    assert store.listar_generaciones("ws_1") == []
+    for document_id in ("doc_a", "doc_b"):
+        assert store.recursos_documentales("ws_1", document_id)[0] == ["gen_purga"]
+        assert store.esta_borrado("document", document_id) is (document_id in retirados)
+        if document_id in retirados:
+            assert store.obtener_documento(document_id) is None
+        else:
+            assert store.obtener_documento(document_id)["estado"] == "ready"
+    assert [tuple(fila) for fila in store._conn.execute("SELECT * FROM documents ORDER BY document_id")] == (
+        documentos_previos
+    )
+    assert [tuple(fila) for fila in store._conn.execute("SELECT * FROM pending_deletes ORDER BY recurso_id")] == (
+        lapidas_previas
+    )
+
+
+@pytest.mark.parametrize("document_ids", [None, ["doc_a"]], ids=["legacy", "lista_explicita"])
+def test_relacion_de_purga_unidocumental_conserva_compatibilidad(store, document_ids):
+    store.crear_workspace("ws_1", "codigo", dias_validez=30)
+    store.registrar_documento("doc_a", "ws_1", "Fuente", DocumentStatus.READY)
+    store.agendar_borrado("document", "doc_a", "ws_1")
+
+    store.registrar_generacion_retirada("gen_purga", "ws_1", "doc_a", document_ids=document_ids)
+
+    assert store.documentos_generacion("gen_purga") == ["doc_a"]
+    assert store.recursos_documentales("ws_1", "doc_a")[0] == ["gen_purga"]
+    assert store.obtener_generacion("gen_purga") is None
+
+
+@pytest.mark.parametrize(
+    "fuentes,document_ids,lapida",
+    [
+        pytest.param(
+            {"doc_a": "ws_2", "doc_b": "ws_1"},
+            ["doc_a", "doc_b"],
+            ("document", "doc_b", "ws_1"),
+            id="primaria_ajena",
+        ),
+        pytest.param(
+            {"doc_a": "ws_1", "doc_b": "ws_2"},
+            ["doc_a", "doc_b"],
+            ("document", "doc_a", "ws_1"),
+            id="secundaria_ajena",
+        ),
+        pytest.param({"doc_b": "ws_1"}, ["doc_a", "doc_b"], ("document", "doc_b", "ws_1"), id="primaria_inexistente"),
+        pytest.param({"doc_a": "ws_1"}, ["doc_a", "doc_b"], ("document", "doc_a", "ws_1"), id="secundaria_inexistente"),
+        pytest.param(
+            {"doc_a": "ws_1", "doc_b": "ws_1"},
+            ["doc_b"],
+            ("document", "doc_b", "ws_1"),
+            id="primaria_fuera_del_conjunto",
+        ),
+        pytest.param({"doc_a": "ws_1"}, [], ("document", "doc_a", "ws_1"), id="conjunto_vacio"),
+        pytest.param({"doc_a": "ws_1", "doc_b": "ws_1"}, ["doc_a", "doc_b"], None, id="sin_lapida"),
+        pytest.param(
+            {"doc_a": "ws_1", "doc_b": "ws_1"},
+            ["doc_a", "doc_b"],
+            ("generation", "gen_purga", "ws_1"),
+            id="solo_lapida_de_generacion",
+        ),
+        pytest.param(
+            {"doc_a": "ws_1", "doc_b": "ws_1"},
+            ["doc_a", "doc_b"],
+            ("workspace", "ws_1", "ws_1"),
+            id="solo_lapida_de_workspace",
+        ),
+        pytest.param(
+            {"doc_a": "ws_1", "doc_b": "ws_1"},
+            ["doc_a", "doc_b"],
+            ("document", "doc_b", "ws_2"),
+            id="lapida_documental_de_otro_workspace",
+        ),
+    ],
+)
+def test_relacion_de_purga_rechaza_fuentes_o_lapidas_invalidas_sin_insertar(store, fuentes, document_ids, lapida):
+    store.crear_workspace("ws_1", "codigo_1", dias_validez=30)
+    store.crear_workspace("ws_2", "codigo_2", dias_validez=30)
+    for document_id, workspace_id in fuentes.items():
+        store.registrar_documento(document_id, workspace_id, document_id, DocumentStatus.READY)
+    if lapida is not None:
+        store.agendar_borrado(*lapida)
+
+    with pytest.raises(ValueError):
+        store.registrar_generacion_retirada("gen_purga", "ws_1", "doc_a", document_ids=document_ids)
+
+    assert store._conn.execute("SELECT COUNT(*) FROM generations").fetchone()[0] == 0
+    assert store._conn.execute("SELECT COUNT(*) FROM generation_documents").fetchone()[0] == 0
+
+
+def _preparar_control_recuperado(registro, workspace_id="ws_1", document_id_a="doc_a", document_id_b="doc_b"):
+    from app.core.rag.rebuild import ManifiestoDocumento
+
+    registro.crear_workspace(workspace_id, f"codigo_{workspace_id}", dias_validez=30)
+    fuentes = [
+        DocumentoFuente(
+            document_id=document_id,
+            titulo=f"Fuente {document_id}",
+            hash=hashlib.sha256(f"Contenido independiente de {document_id}".encode()).hexdigest(),
+            version="v1",
+        )
+        for document_id in (document_id_a, document_id_b)
+    ]
+    registro.registrar_documento(document_id_b, workspace_id, fuentes[1].titulo, DocumentStatus.READY, fuentes[1].hash)
+    registro.agendar_borrado("document", document_id_b, workspace_id)
+    manifest = ManifiestoDocumento(
+        workspace_id=workspace_id,
+        document_id=document_id_a,
+        source_name=f"{document_id_a}.md",
+        titulo=fuentes[0].titulo,
+        hash_sha256=fuentes[0].hash,
+        estado=DocumentStatus.READY,
+        admision_confirmada=True,
+        admision_sqlite_confirmada=True,
+        metadatos=None,
+    )
+    return fuentes, {document_id_a: {"etag": f"etag_{document_id_a}", "manifest": manifest.model_dump(mode="json")}}
+
+
+@pytest.mark.parametrize("snapshot_como_dict", [False, True], ids=["modelos", "diccionarios"])
+def test_control_retirado_sin_documento_persiste_procedencia_y_relaciones(ruta_db, snapshot_como_dict):
+    registro = RegistroOperativo(ruta_db)
+    fuentes, procedencia = _preparar_control_recuperado(registro)
+    snapshot = [fuente.model_dump(mode="json") for fuente in fuentes]
+    try:
+        registro.registrar_generacion_retirada(
+            "gen_control",
+            "ws_1",
+            "doc_a",
+            ["doc_a", "doc_b"],
+            snapshot=snapshot if snapshot_como_dict else fuentes,
+            procedencia=procedencia,
+        )
+    finally:
+        registro.cerrar()
+
+    registro = RegistroOperativo(ruta_db)
+    try:
+        fila = registro._conn.execute("SELECT * FROM retired_generation_controls").fetchone()
+        assert fila["generation_id"] == "gen_control"
+        assert fila["workspace_id"] == "ws_1"
+        assert fila["document_id"] == "doc_a"
+        assert json.loads(fila["snapshot_fuentes_json"]) == snapshot
+        assert json.loads(fila["procedencia_json"]) == procedencia
+        assert registro.snapshot_generacion("gen_control") == snapshot
+        assert set(registro.documentos_generacion("gen_control")) == {"doc_a", "doc_b"}
+        for document_id in ("doc_a", "doc_b"):
+            assert registro.recursos_documentales("ws_1", document_id) == (["gen_control"], [])
+            assert registro.recursos_documentales("ws_ajeno", document_id) == ([], [])
+        assert registro.obtener_generacion("gen_control") is None
+        assert registro.listar_generaciones("ws_1") == []
+        assert registro.obtener_documento("doc_a") is None
+        assert not registro.esta_borrado("document", "doc_a")
+        assert registro.esta_borrado("document", "doc_b")
+        for tabla in ("generations", "generation_documents", "document_admissions", "jobs", "document_cleanup"):
+            assert registro._conn.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0] == 0
+        assert registro._conn.execute("SELECT document_id FROM documents").fetchone()[0] == "doc_b"
+        assert registro._conn.execute("SELECT COUNT(*) FROM documents WHERE document_id='doc_a'").fetchone()[0] == 0
+        assert registro._conn.execute("SELECT COUNT(*) FROM pending_deletes").fetchone()[0] == 1
+    finally:
+        registro.cerrar()
+
+
+@pytest.mark.parametrize(
+    "caso",
+    [
+        "sin_procedencia",
+        "workspace_ajeno",
+        "identidad_ajena",
+        "no_confirmada",
+        "sqlite_no_confirmada",
+        "confirmacion_legacy",
+        "sin_etag",
+        "hash_manifiesto",
+        "hash_fuente_existente",
+        "snapshot_incompleto",
+        "sin_snapshot",
+        "primario_fuera",
+        "sin_lapida",
+        "fila_ajena",
+        "procedencia_extra",
+        "procedencia_existente",
+    ],
+)
+def test_control_retirado_rechaza_procedencia_invalida_sin_publicar_ni_insertar(store, caso):
+    fuentes, procedencia = _preparar_control_recuperado(store)
+    store.crear_workspace("ws_2", "codigo_ajeno", dias_validez=30)
+    snapshot = [fuente.model_dump(mode="json") for fuente in fuentes]
+    document_id = "doc_a"
+    if caso == "sin_procedencia":
+        procedencia = None
+    elif caso == "workspace_ajeno":
+        procedencia["doc_a"]["manifest"]["workspace_id"] = "ws_2"
+    elif caso == "identidad_ajena":
+        procedencia["doc_a"]["manifest"]["document_id"] = "doc_ajeno"
+    elif caso == "no_confirmada":
+        procedencia["doc_a"]["manifest"]["admision_confirmada"] = False
+    elif caso == "sqlite_no_confirmada":
+        procedencia["doc_a"]["manifest"]["admision_sqlite_confirmada"] = False
+    elif caso == "confirmacion_legacy":
+        procedencia["doc_a"]["manifest"]["admision_confirmada"] = None
+        procedencia["doc_a"]["manifest"]["admision_sqlite_confirmada"] = None
+    elif caso == "sin_etag":
+        procedencia["doc_a"].pop("etag")
+    elif caso == "hash_manifiesto":
+        procedencia["doc_a"]["manifest"]["hash_sha256"] = hashlib.sha256(b"Otro original de A").hexdigest()
+    elif caso == "hash_fuente_existente":
+        snapshot[1]["hash"] = hashlib.sha256(b"Otro original de B").hexdigest()
+    elif caso == "snapshot_incompleto":
+        snapshot = snapshot[:1]
+    elif caso == "sin_snapshot":
+        snapshot = None
+    elif caso == "primario_fuera":
+        document_id = "doc_ajeno"
+    elif caso == "sin_lapida":
+        store._conn.execute("DELETE FROM pending_deletes")
+    elif caso == "fila_ajena":
+        store.registrar_documento("doc_a", "ws_2", "Fuente ajena", DocumentStatus.READY, fuentes[0].hash)
+    elif caso == "procedencia_extra":
+        procedencia["doc_ajeno"] = procedencia["doc_a"]
+    else:
+        procedencia["doc_b"] = procedencia["doc_a"]
+    documentos_previos = [tuple(fila) for fila in store._conn.execute("SELECT * FROM documents ORDER BY document_id")]
+    lapidas_previas = [tuple(fila) for fila in store._conn.execute("SELECT * FROM pending_deletes ORDER BY recurso_id")]
+
+    with pytest.raises(ValueError):
+        store.registrar_generacion_retirada(
+            "gen_control", "ws_1", document_id, ["doc_a", "doc_b"], snapshot=snapshot, procedencia=procedencia
+        )
+
+    for tabla in ("retired_generation_controls", "generations", "generation_documents", "document_admissions", "jobs"):
+        assert store._conn.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0] == 0
+    assert [
+        tuple(fila) for fila in store._conn.execute("SELECT * FROM documents ORDER BY document_id")
+    ] == documentos_previos
+    assert [
+        tuple(fila) for fila in store._conn.execute("SELECT * FROM pending_deletes ORDER BY recurso_id")
+    ] == lapidas_previas
+
+
+@pytest.mark.parametrize("control_primero", [True, False], ids=["control_existe", "generacion_existe"])
+def test_control_retirado_y_generacion_publica_no_comparten_identidad(store, control_primero):
+    fuentes, procedencia = _preparar_control_recuperado(store)
+    hash_c = hashlib.sha256(b"Fuente C independiente y vigente").hexdigest()
+    store.registrar_documento("doc_c", "ws_1", "Fuente C", DocumentStatus.READY, hash_c)
+
+    def registrar_control():
+        store.registrar_generacion_retirada(
+            "gen_compartida", "ws_1", "doc_a", ["doc_a", "doc_b"], snapshot=fuentes, procedencia=procedencia
+        )
+
+    if control_primero:
+        registrar_control()
+        with pytest.raises(ValueError):
+            store.registrar_generacion("gen_compartida", "ws_1", "doc_c")
+        assert store.obtener_generacion("gen_compartida") is None
+        assert store._conn.execute("SELECT COUNT(*) FROM generations").fetchone()[0] == 0
+        assert store._conn.execute("SELECT COUNT(*) FROM retired_generation_controls").fetchone()[0] == 1
+    else:
+        store.registrar_generacion("gen_compartida", "ws_1", "doc_c")
+        with pytest.raises(ValueError):
+            registrar_control()
+        assert store.obtener_generacion("gen_compartida")["document_id"] == "doc_c"
+        assert store.documentos_generacion("gen_compartida") == ["doc_c"]
+        assert store._conn.execute("SELECT COUNT(*) FROM generations").fetchone()[0] == 1
+        assert store._conn.execute("SELECT COUNT(*) FROM retired_generation_controls").fetchone()[0] == 0
+
+
+def test_purga_workspace_elimina_solo_sus_controles_retirados(store):
+    for workspace_id, document_id_a, document_id_b, generation_id in (
+        ("ws_1", "doc_a", "doc_b", "gen_control"),
+        ("ws_2", "doc_otra_a", "doc_otra_b", "gen_otra"),
+    ):
+        fuentes, procedencia = _preparar_control_recuperado(store, workspace_id, document_id_a, document_id_b)
+        store.registrar_generacion_retirada(
+            generation_id,
+            workspace_id,
+            document_id_a,
+            [document_id_a, document_id_b],
+            snapshot=fuentes,
+            procedencia=procedencia,
+        )
+
+    store.purgar_datos_espacio("ws_1")
+
+    filas = store._conn.execute("SELECT generation_id, workspace_id FROM retired_generation_controls").fetchall()
+    assert [tuple(fila) for fila in filas] == [("gen_otra", "ws_2")]
+    assert store.documentos_generacion("gen_control") == []
+    assert store.snapshot_generacion("gen_control") is None
+    assert store.recursos_documentales("ws_1", "doc_b") == ([], [])
+    assert store.recursos_documentales("ws_2", "doc_otra_b") == (["gen_otra"], [])
+    assert not store.esta_borrado("document", "doc_a")
+    assert store._conn.execute("SELECT COUNT(*) FROM documents WHERE document_id='doc_a'").fetchone()[0] == 0
+
+
 # ---------------------------------------------------------------------------
 # Tombstones que sobreviven al reinicio (durables a nivel local)
 # ---------------------------------------------------------------------------
@@ -382,6 +700,92 @@ def test_migraciones_aplican_una_vez(ruta_db):
     assert segundo.version_esquema() == VERSION_ESQUEMA
     assert segundo.obtener_workspace("ws_1") is not None  # el estado sigue
     segundo.cerrar()
+
+
+def test_upgrade_12_a_13_preserva_documentos_generacion_y_snapshot(ruta_db, monkeypatch):
+    from app.jobs import store as modulo_store
+
+    snapshot = [
+        DocumentoFuente(
+            document_id=document_id,
+            titulo=f"Fuente histórica {document_id}",
+            hash=hashlib.sha256(f"Contenido histórico independiente de {document_id}".encode()).hexdigest(),
+            version="v1",
+        ).model_dump(mode="json")
+        for document_id in ("doc_legacy_a", "doc_legacy_b")
+    ]
+    with monkeypatch.context() as parche:
+        parche.setattr(modulo_store, "MIGRACIONES", [m for m in modulo_store.MIGRACIONES if m[0] <= 12])
+        parche.setattr(modulo_store, "VERSION_ESQUEMA", 12)
+        anterior = RegistroOperativo(ruta_db)
+        try:
+            assert anterior.version_esquema() == 12
+            assert (
+                anterior._conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE name='retired_generation_controls'"
+                ).fetchone()
+                is None
+            )
+            anterior.crear_workspace("ws_legacy", "codigo_historico", dias_validez=30)
+            for fuente in snapshot:
+                anterior.registrar_documento(
+                    fuente["document_id"], "ws_legacy", fuente["titulo"], DocumentStatus.READY, fuente["hash"]
+                )
+            # La API actual consulta la tabla de v13. Sembrar su representación
+            # histórica exacta permite probar una base v12 sin simular esa tabla.
+            fecha = "2026-10-01T12:00:00+00:00"
+            anterior._conn.execute(
+                """INSERT INTO generations
+                (generation_id, workspace_id, document_id, status, creado_en, actualizado_en, snapshot_fuentes_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                ("gen_legacy", "ws_legacy", "doc_legacy_a", "completed", fecha, fecha, json.dumps(snapshot)),
+            )
+            for fuente in snapshot:
+                anterior._conn.execute(
+                    """INSERT INTO generation_documents (generation_id, document_id, titulo, hash, version)
+                    VALUES (?, ?, ?, ?, ?)""",
+                    ("gen_legacy", fuente["document_id"], fuente["titulo"], fuente["hash"], fuente["version"]),
+                )
+            documentos_previos = [anterior.obtener_documento(fuente["document_id"]) for fuente in snapshot]
+            generacion_previa = anterior.obtener_generacion("gen_legacy")
+            migraciones_previas = [tuple(fila) for fila in anterior._conn.execute("SELECT * FROM schema_migrations")]
+        finally:
+            anterior.cerrar()
+
+    actualizado = RegistroOperativo(ruta_db)
+    try:
+        assert actualizado.version_esquema() == 13
+        assert [actualizado.obtener_documento(fuente["document_id"]) for fuente in snapshot] == documentos_previos
+        assert actualizado.obtener_generacion("gen_legacy") == generacion_previa
+        assert actualizado.snapshot_generacion("gen_legacy") == snapshot
+        assert set(actualizado.documentos_generacion("gen_legacy")) == {"doc_legacy_a", "doc_legacy_b"}
+        for fuente in snapshot:
+            assert actualizado.recursos_documentales("ws_legacy", fuente["document_id"]) == (["gen_legacy"], [])
+        assert actualizado._conn.execute("SELECT COUNT(*) FROM retired_generation_controls").fetchone()[0] == 0
+        migraciones_actuales = [tuple(fila) for fila in actualizado._conn.execute("SELECT * FROM schema_migrations")]
+        assert migraciones_actuales[:-1] == migraciones_previas
+        assert migraciones_actuales[-1][0] == 13
+        assert actualizado._conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert actualizado._conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        fuentes, procedencia = _preparar_control_recuperado(actualizado)
+        actualizado.registrar_generacion_retirada(
+            "gen_control", "ws_1", "doc_a", ["doc_a", "doc_b"], snapshot=fuentes, procedencia=procedencia
+        )
+    finally:
+        actualizado.cerrar()
+
+    reabierto = RegistroOperativo(ruta_db)
+    try:
+        assert reabierto.version_esquema() == 13
+        assert [
+            tuple(fila) for fila in reabierto._conn.execute("SELECT * FROM schema_migrations")
+        ] == migraciones_actuales
+        assert reabierto.obtener_generacion("gen_legacy") == generacion_previa
+        assert reabierto.snapshot_generacion("gen_legacy") == snapshot
+        assert reabierto.documentos_generacion("gen_control") == ["doc_a", "doc_b"]
+        assert reabierto.obtener_generacion("gen_control") is None
+    finally:
+        reabierto.cerrar()
 
 
 def test_registro_operativo_limites_defaults_y_personalizados(tmp_path):

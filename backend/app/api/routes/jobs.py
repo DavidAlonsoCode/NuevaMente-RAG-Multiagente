@@ -69,12 +69,9 @@ def _respuesta(trabajo: dict) -> TrabajoComunResponse:
 
 
 def _autorizar_chat(request, trabajo, token=None):
-    if (
-        trabajo["tipo"] == "chat"
-        and trabajo.get("document_id")
-        and trabajo["status"] == "completed"
-        and trabajo["resultado"] is not None
-    ):
+    if trabajo["tipo"] == "chat" and trabajo.get("document_id") and trabajo["status"] == "completed":
+        if trabajo["resultado"] is None:
+            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.")
         servicio = request.app.state.chat
         if servicio is None:
             raise ErrorAplicacion(ErrorCode.PROVIDER_UNAVAILABLE, "El tutor no está disponible.")

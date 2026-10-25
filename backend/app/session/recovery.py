@@ -14,7 +14,7 @@ from app.core.rag.rebuild import ManifiestoDocumento
 from app.core.rag.vectorstore import VectorStoreChroma
 from app.jobs.store import RegistroOperativo
 from app.schemas.enums import DocumentStatus, JobStatus
-from app.schemas.responses import cargar_paquete_json, modo_paquete
+from app.schemas.responses import DocumentoFuente, cargar_paquete_json, modo_paquete
 from app.session.manifests import ManifiestoEspacio
 from app.storage.object_keys import clave_documento, clave_original, clave_output, clave_progress, clave_workspace
 from app.storage.provider import StorageNotFound, StorageProvider
@@ -82,6 +82,8 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
         documentos, generaciones, progreso = [], [], None
         evidencias = {}
         manifiestos_retirados = {}
+        manifiestos_confirmados = {}
+        procedencias_control = {}
         generaciones_retiradas = []
         if vigente:
             for fuente in _objetos(storage, f"source_documents/{workspace_id}/"):
@@ -100,6 +102,10 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 if not doc.admision_recuperable:
                     continue
                 nueva = doc.admision_confirmada is True and doc.admision_sqlite_confirmada is True
+                if nueva:
+                    # Identidad durable para limpieza aunque el original o su
+                    # metadata no alcancen para autorizar la recuperación.
+                    manifiestos_confirmados[doc.document_id] = (fuente.etag, doc)
                 try:
                     original = storage.get(clave_original(workspace_id, doc.document_id))
                 except StorageNotFound:
@@ -129,7 +135,15 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                 if not salida.object_name.endswith("/content.json"):
                     continue
                 generation_id = salida.object_name.split("/")[-2]
-                paquete = cargar_paquete_json(storage.get(salida.object_name, if_match=salida.etag))
+                contenido = storage.get(salida.object_name, if_match=salida.etag)
+                paquete = cargar_paquete_json(contenido)
+                # El cargador compatible normaliza el primario; la recuperación
+                # debe comprobar también las fuentes declaradas originalmente.
+                fuentes_declaradas = json.loads(contenido).get("documentos_fuente")
+                if fuentes_declaradas and paquete.documento_fuente not in [
+                    DocumentoFuente.model_validate(f) for f in fuentes_declaradas
+                ]:
+                    raise ValueError("El documento primario no coincide con las fuentes del paquete")
                 if salida.object_name != clave_output(workspace_id, paquete.generation_id):
                     raise ValueError("Paquete con identidad ajena o no canónica")
                 if paquete.almacenamiento_oci.objeto_id != salida.object_name:
@@ -142,10 +156,24 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                             retirado = manifiestos_retirados.get(f.document_id)
                             if retirado is not None and (f.hash.removeprefix("sha256:") != retirado[1].hash_sha256):
                                 raise ValueError("Paquete de otra versión del documento retirado")
+                        else:
+                            doc = por_id.get(f.document_id)
+                            if doc is None:
+                                confirmado = manifiestos_confirmados.get(f.document_id)
+                                if confirmado is None:
+                                    raise ValueError("Fuente de la relación de purga ausente del espacio recuperado")
+                                etag, doc = confirmado
+                                procedencias_control[f.document_id] = {
+                                    "etag": etag,
+                                    "manifest": doc.model_dump(mode="json"),
+                                }
+                            if f.hash.removeprefix("sha256:") != doc.hash_sha256:
+                                raise ValueError("Paquete de otra versión del documento")
                     # Relación de control para purgar sus derivados; la lápida del
                     # documento impide servir el resultado. Se registra INCLUSO cuando
                     # la generación tiene lápida propia: sin esta relación la purga de
                     # la recuperación desconoce sus derivados y jamás los elimina.
+                    # Se conservan todas las fuentes, incluidas las vigentes.
                     generaciones_retiradas.append(paquete)
                     continue
 
@@ -185,6 +213,8 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
         storage.get(objeto.object_name, if_match=objeto.etag)
         for document_id, (etag, _) in manifiestos_retirados.items():
             storage.get(clave_documento(workspace_id, document_id), if_match=etag)
+        for document_id, evidencia in procedencias_control.items():
+            storage.get(clave_documento(workspace_id, document_id), if_match=evidencia["etag"])
         with db.transaccion():
             if not db.restaurar_workspace(datos):
                 continue
@@ -277,6 +307,8 @@ def restaurar_registro(db: RegistroOperativo, storage: StorageProvider) -> int:
                     workspace_id,
                     paquete.documento_fuente.document_id,
                     document_ids=doc_ids,
+                    snapshot=fuentes,
+                    procedencia={d_id: procedencias_control[d_id] for d_id in doc_ids if d_id in procedencias_control},
                 )
             if progreso is not None:
                 # Preservar el agregado; #42 implementará su consumo por la UI.

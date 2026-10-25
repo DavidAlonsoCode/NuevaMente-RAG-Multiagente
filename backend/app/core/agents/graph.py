@@ -98,6 +98,8 @@ def _finalizar(estado, deps):
     if autorizacion.get("error") is not None:
         return _terminal(autorizacion["error"].code, autorizacion["error"].message, autorizacion["status"])
     campos_a_verificar = [
+        "document_id",
+        "document_ids",
         "source_hash",
         "documento_fuente",
         "idioma_origen",
@@ -106,7 +108,7 @@ def _finalizar(estado, deps):
         "rubrica",
     ]
     if estado.documentos_fuente:
-        campos_a_verificar.extend(["documentos_fuente", "source_hashes"])
+        campos_a_verificar.extend(["documentos_fuente", "source_hashes", "secciones_por_documento", "idiomas_origen"])
     if any(autorizacion.get(c) != getattr(estado, c) for c in campos_a_verificar):
         return _terminal("INVALID_STATE", "La fuente cambió después de la revisión.")
     paquete = finalizer(estado, bucket=deps.bucket, created_at=deps.created_at)

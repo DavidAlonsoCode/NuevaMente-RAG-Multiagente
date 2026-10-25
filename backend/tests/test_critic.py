@@ -499,7 +499,14 @@ def test_critic_visual_multidocumental_soporta_fuentes_secundarias(entorno):
     }
     grafo_multi = DependenciasGrafo(deps.grafo.ejecucion, lambda ws, d_id: docs_map.get(d_id))
 
-    estado.parametros = estado.parametros.model_copy(update={"document_ids": ["doc_test", "doc_test_secundario"]})
+    estado.parametros = estado.parametros.model_copy(
+        update={
+            "document_ids": ["doc_test", "doc_test_secundario"],
+            "alcance": estado.parametros.alcance.model_copy(
+                update={"tipo": "multi_documento", "document_ids": ["doc_test", "doc_test_secundario"]}
+            ),
+        }
+    )
     estado.document_ids = ["doc_test", "doc_test_secundario"]
     estado.source_hashes = {"doc_test": "sha256:test", "doc_test_secundario": "sha256:secundario"}
     estado.documentos_fuente = [entorno[2].fuente, doc_sec.fuente]
@@ -509,9 +516,40 @@ def test_critic_visual_multidocumental_soporta_fuentes_secundarias(entorno):
     }
     estado.idiomas_origen = {"doc_test": "en", "doc_test_secundario": "en"}
 
-    chunk_visual = estado.evidencia[0].chunk
+    evidencia_primaria = estado.evidencia[0]
+    evidencia_primaria.chunk.seccion_id = "sec_1"
+    evidencia_primaria.chunk.es_diagrama = False
+    evidencia_secundaria = evidencia_primaria.model_copy(deep=True)
+    chunk_visual = evidencia_secundaria.chunk
+    chunk_visual.chunk_id = "ch_2"
     chunk_visual.document_id = "doc_test_secundario"
     chunk_visual.document_hash = "sha256:secundario"
+    chunk_visual.seccion_id = "sec_2"
+    chunk_visual.seccion = "Diagrama secundario"
+    chunk_visual.texto = "El diagrama secundario muestra dos servicios conectados."
+    chunk_visual.es_diagrama = True
+    estado.evidencia.append(evidencia_secundaria)
+    estado.secciones_cubiertas = ["sec_1", "sec_2"]
+    estado.borrador.metadatos.alcance = estado.borrador.metadatos.alcance.model_copy(
+        update={
+            "tipo": "multi_documento",
+            "document_ids": list(estado.document_ids),
+            "secciones_cubiertas": list(estado.secciones_cubiertas),
+        }
+    )
+    tarjeta_primaria = estado.borrador.contenido_adaptado.items[0]
+    tarjeta_primaria.dorso = evidencia_primaria.chunk.texto
+    tarjeta_primaria.referencias = [evidencia_primaria.como_referencia()]
+    tarjeta_secundaria = tarjeta_primaria.model_copy(
+        update={
+            "id": "item_secundario",
+            "dorso": chunk_visual.texto,
+            "referencias": [evidencia_secundaria.como_referencia()],
+        },
+        deep=True,
+    )
+    estado.borrador.contenido_adaptado.items = [tarjeta_primaria, tarjeta_secundaria]
+    estado.referencias = [evidencia_primaria.como_referencia(), evidencia_secundaria.como_referencia()]
 
     llamadas_loader = []
 
@@ -528,7 +566,21 @@ def test_critic_visual_multidocumental_soporta_fuentes_secundarias(entorno):
         )
 
     deps_multi = DependenciasCritic(grafo_multi, deps.proveedor, deps.configuracion, loader_visual)
-    juez(deps.proveedor)
+
+    def extraer_contribuciones(fase, salida, datos, entrada):
+        if fase == "descomponer":
+            return {
+                "afirmaciones": [
+                    {
+                        "texto": datos["segmentos"][f"/contenido_adaptado/items/{indice}/dorso"]["texto"],
+                        "ubicacion": f"/contenido_adaptado/items/{indice}/dorso",
+                    }
+                    for indice in range(2)
+                ]
+            }
+        return salida
+
+    juez(deps.proveedor, modificar=extraer_contribuciones)
     nuevo = aplicar(estado, critic(estado, deps_multi))
     assert nuevo.destino_revision == "finalizer"
     assert nuevo.evaluacion_visual[0].estado == "aprobada"

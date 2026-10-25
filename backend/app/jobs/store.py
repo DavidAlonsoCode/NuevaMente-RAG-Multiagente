@@ -64,7 +64,7 @@ from app.schemas.errors import ErrorAplicacion, ErrorCode
 # Versión actual del esquema. Cada cambio de esquema agrega una entrada a
 # MIGRACIONES y sube este número; NUNCA se edita una migración ya aplicada
 # (las bases reales de los usuarios quedaron con la vieja).
-VERSION_ESQUEMA = 12
+VERSION_ESQUEMA = 13
 
 # Cada migración: (versión, SQL). Se aplican en orden ascendente dentro de
 # una transacción cada una. La v1 crea todas las tablas del issue #08.
@@ -370,6 +370,26 @@ JOIN generation_documents gd ON j.generation_id = gd.generation_id;
 
 UPDATE jobs SET scope_hash = json_extract(resultado, '$.document_hash')
 WHERE tipo = 'chat' AND resultado IS NOT NULL AND json_extract(resultado, '$.document_hash') IS NOT NULL;
+""",
+    )
+)
+
+
+MIGRACIONES.append(
+    (
+        13,
+        """
+-- Procedencia exclusiva de purga. No autoriza fuentes ni generaciones y no
+-- exige crear documentos para fuentes cuyo original no puede restaurarse.
+CREATE TABLE retired_generation_controls (
+    generation_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id),
+    document_id TEXT NOT NULL,
+    snapshot_fuentes_json TEXT NOT NULL,
+    procedencia_json TEXT NOT NULL,
+    creado_en TEXT NOT NULL
+);
+CREATE INDEX idx_retired_generation_controls_workspace ON retired_generation_controls(workspace_id);
 """,
     )
 )
@@ -1364,8 +1384,13 @@ class RegistroOperativo:
             for r in self._conn.execute(
                 """SELECT DISTINCT g.generation_id FROM generations g
                    LEFT JOIN generation_documents gd ON gd.generation_id = g.generation_id
-                   WHERE g.workspace_id=? AND (g.document_id=? OR gd.document_id=?)""",
-                (workspace_id, document_id, document_id),
+                   WHERE g.workspace_id=? AND (g.document_id=? OR gd.document_id=?)
+                   UNION
+                   SELECT c.generation_id FROM retired_generation_controls c
+                   WHERE c.workspace_id=? AND EXISTS (
+                       SELECT 1 FROM json_each(c.snapshot_fuentes_json) f
+                       WHERE json_extract(f.value, '$.document_id')=?)""",
+                (workspace_id, document_id, document_id, workspace_id, document_id),
             )
         ]
         trabajos = [
@@ -1454,6 +1479,10 @@ class RegistroOperativo:
     ) -> None:
         ahora = _iso(_ahora())
         with self._lock:
+            if self._conn.execute(
+                "SELECT 1 FROM retired_generation_controls WHERE generation_id=?", (generation_id,)
+            ).fetchone():
+                raise ValueError("La generación tiene un control de purga y no puede autorizarse")
             doc_ids = sorted(list(set(document_ids))) if document_ids else [document_id]
             if document_id not in doc_ids:
                 doc_ids.insert(0, document_id)
@@ -1488,19 +1517,104 @@ class RegistroOperativo:
 
     @_sincronizado
     def registrar_generacion_retirada(
-        self, generation_id: str, workspace_id: str, document_id: str, document_ids: list[str] | None = None
+        self,
+        generation_id: str,
+        workspace_id: str,
+        document_id: str,
+        document_ids: list[str] | None = None,
+        *,
+        snapshot: list[object] | None = None,
+        procedencia: dict[str, dict] | None = None,
     ) -> None:
-        """Relación interna de purga; exige la lápida y nunca autoriza el resultado."""
-        doc_ids = document_ids or [document_id]
+        """Control de purga: fuentes propias y al menos una retirada.
+
+        Recovery aporta manifiesto y ETag revalidados por cada fuente sin fila
+        documental. Esa procedencia solo acredita limpieza; nunca disponibilidad.
+        """
+        doc_ids = list(dict.fromkeys(document_ids)) if document_ids is not None else [document_id]
+        if document_id not in doc_ids:
+            raise ValueError("El documento primario debe pertenecer a las fuentes de la generación")
+        fuentes = {}
+        if snapshot is not None:
+            from app.schemas.responses import DocumentoFuente
+
+            for fuente in snapshot:
+                fuente = DocumentoFuente.model_validate(
+                    fuente.model_dump(mode="json") if hasattr(fuente, "model_dump") else fuente
+                )
+                if fuente.document_id in fuentes:
+                    raise ValueError("El snapshot de purga contiene fuentes duplicadas")
+                fuentes[fuente.document_id] = fuente
+            if set(fuentes) != set(doc_ids):
+                raise ValueError("El snapshot de purga no coincide con las fuentes de la generación")
+        documentos = {}
+        no_restaurados = {}
+        alguna_retirada = False
         for d_id in doc_ids:
-            documento = self._conn.execute("SELECT workspace_id FROM documents WHERE document_id=?", (d_id,)).fetchone()
-            if (
-                documento is None
-                or documento["workspace_id"] != workspace_id
-                or not self.esta_borrado("document", d_id)
-            ):
-                raise ValueError("La relación de purga requiere un documento retirado del mismo espacio")
+            documento = self._conn.execute(
+                "SELECT workspace_id, titulo, hash FROM documents WHERE document_id=?", (d_id,)
+            ).fetchone()
+            if documento is None:
+                from app.core.rag.rebuild import ManifiestoDocumento
+
+                evidencia = (procedencia or {}).get(d_id)
+                if not evidencia or not isinstance(evidencia.get("etag"), str) or not evidencia["etag"] or not fuentes:
+                    raise ValueError("La fuente de purga sin documento requiere procedencia verificable")
+                manifest = ManifiestoDocumento.model_validate_json(json.dumps(evidencia.get("manifest")))
+                if (
+                    (manifest.workspace_id, manifest.document_id, manifest.hash_sha256)
+                    != (workspace_id, d_id, fuentes[d_id].hash.removeprefix("sha256:"))
+                    or manifest.borrado
+                    or manifest.admision_confirmada is not True
+                    or manifest.admision_sqlite_confirmada is not True
+                ):
+                    raise ValueError("El manifiesto de purga no acredita la procedencia de la fuente")
+                no_restaurados[d_id] = {"etag": evidencia["etag"], "manifest": manifest.model_dump(mode="json")}
+            else:
+                if documento["workspace_id"] != workspace_id:
+                    raise ValueError("Las fuentes de la relación de purga deben pertenecer al mismo espacio")
+                if (
+                    fuentes
+                    and documento["hash"] is not None
+                    and (fuentes[d_id].hash.removeprefix("sha256:") != documento["hash"].removeprefix("sha256:"))
+                ):
+                    raise ValueError("El snapshot de purga no coincide con el hash del documento")
+                documentos[d_id] = documento
+            lapida = self._conn.execute(
+                "SELECT workspace_id FROM pending_deletes WHERE recurso_tipo='document' AND recurso_id=?", (d_id,)
+            ).fetchone()
+            if lapida is not None:
+                if documento is None:
+                    raise ValueError("La fuente retirada requiere una fila de control documental")
+                if lapida["workspace_id"] != workspace_id:
+                    raise ValueError("La lápida documental no pertenece al espacio de la generación")
+                alguna_retirada = True
+        if not alguna_retirada:
+            raise ValueError("La relación de purga requiere al menos un documento retirado del mismo espacio")
+        if set(procedencia or {}) != set(no_restaurados):
+            raise ValueError("La procedencia de purga debe corresponder solo a las fuentes sin documento")
         ahora = _iso(_ahora())
+        if self._conn.execute(
+            "SELECT 1 FROM retired_generation_controls WHERE generation_id=?", (generation_id,)
+        ).fetchone():
+            raise ValueError("Ya existe un control de purga para la generación")
+        if no_restaurados:
+            if self._conn.execute("SELECT 1 FROM generations WHERE generation_id=?", (generation_id,)).fetchone():
+                raise ValueError("La generación ya tiene un registro operativo")
+            self._conn.execute(
+                """INSERT INTO retired_generation_controls
+                (generation_id, workspace_id, document_id, snapshot_fuentes_json, procedencia_json, creado_en)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    generation_id,
+                    workspace_id,
+                    document_id,
+                    json.dumps([fuentes[d_id].model_dump(mode="json") for d_id in doc_ids], ensure_ascii=False),
+                    json.dumps(no_restaurados, ensure_ascii=False),
+                    ahora,
+                ),
+            )
+            return
         self._conn.execute(
             """INSERT INTO generations (generation_id, workspace_id, document_id, status, creado_en, actualizado_en)
             VALUES (?, ?, ?, ?, ?, ?)""",
@@ -1508,9 +1622,9 @@ class RegistroOperativo:
         )
         for d_id in doc_ids:
             self._conn.execute(
-                """INSERT OR IGNORE INTO generation_documents (generation_id, document_id, titulo, hash, version)
+                """INSERT INTO generation_documents (generation_id, document_id, titulo, hash, version)
                 VALUES (?, ?, ?, ?, ?)""",
-                (generation_id, d_id, "Documento retirado", None, "v1"),
+                (generation_id, d_id, documentos[d_id]["titulo"], documentos[d_id]["hash"], "v1"),
             )
 
     def actualizar_generacion(
@@ -1536,10 +1650,26 @@ class RegistroOperativo:
         ).fetchall()
         if filas:
             return [r[0] for r in filas]
+        control = self._conn.execute(
+            "SELECT snapshot_fuentes_json FROM retired_generation_controls WHERE generation_id=?", (generation_id,)
+        ).fetchone()
+        if control:
+            return [fuente["document_id"] for fuente in json.loads(control[0])]
         gen = self._conn.execute(
             "SELECT document_id FROM generations WHERE generation_id=?", (generation_id,)
         ).fetchone()
         return [gen[0]] if gen and gen[0] else []
+
+    @_sincronizado
+    def fuentes_vinculadas_generacion(self, generation_id: str) -> list[dict]:
+        """Identidad y metadata guardadas en los vínculos; no consulta documentos actuales."""
+        return [
+            dict(fila)
+            for fila in self._conn.execute(
+                "SELECT document_id, titulo, hash FROM generation_documents WHERE generation_id=? ORDER BY rowid",
+                (generation_id,),
+            ).fetchall()
+        ]
 
     @_sincronizado
     def snapshot_generacion(self, generation_id: str) -> list[dict] | None:
@@ -1549,6 +1679,11 @@ class RegistroOperativo:
         ).fetchone()
         if fila and fila[0]:
             return json.loads(fila[0])
+        control = self._conn.execute(
+            "SELECT snapshot_fuentes_json FROM retired_generation_controls WHERE generation_id=?", (generation_id,)
+        ).fetchone()
+        if control:
+            return json.loads(control[0])
         return None
 
     @_sincronizado
@@ -1648,21 +1783,77 @@ class RegistroOperativo:
         document_hash: str,
         limite: int,
         scope_hash: str | None = None,
+        *,
+        fuentes=None,
     ):
+        from app.chat.identity import fuentes_respuesta, scope_historial, scope_historial_anterior
+        from app.schemas.chat import ChatAnswer
+
         if not 0 <= limite <= 50:
             raise ValueError("Límite de turnos inválido")
-        target_scope = scope_hash or document_hash
+        if limite == 0:
+            return []
+        esperadas = {f.document_id: f for f in fuentes} if fuentes is not None else {}
+        if fuentes is not None and (
+            not esperadas
+            or len(esperadas) != len(fuentes)
+            or document_id not in esperadas
+            or esperadas[document_id].hash != document_hash
+        ):
+            raise ValueError("Las fuentes no corresponden al historial solicitado")
+        ids = set(esperadas) if esperadas else {document_id}
+        for d_id in ids:
+            actual = self.obtener_documento(d_id)
+            hash_esperado = esperadas[d_id].hash if esperadas else document_hash
+            if (
+                actual is None
+                or actual["workspace_id"] != workspace_id
+                or actual["estado"] != "ready"
+                or actual["hash"] != hash_esperado
+            ):
+                return []
+        scopes = {scope_hash or document_hash}
+        if esperadas:
+            scopes.update((scope_historial(esperadas.values()), scope_historial_anterior(esperadas.values())))
+        marcadores = ",".join("?" for _ in scopes)
         filas = self._conn.execute(
-            """SELECT resultado FROM jobs WHERE workspace_id=?
-               AND tipo='chat' AND status='completed' AND resultado IS NOT NULL
-               AND (
-                   scope_hash=?
-                   OR (scope_hash IS NULL AND document_id=? AND json_extract(resultado, '$.document_hash')=?)
-               )
-               ORDER BY creado_en DESC, job_id DESC LIMIT ?""",
-            (workspace_id, target_scope, document_id, document_hash, limite),
-        ).fetchall()
-        return [json.loads(fila[0]) for fila in reversed(filas)]
+            f"""SELECT j.resultado,
+                       (SELECT json_group_array(document_id) FROM job_documents jd
+                        WHERE jd.job_id=j.job_id) AS documentos
+                FROM jobs j
+                WHERE j.workspace_id=? AND j.document_id=?
+                  AND j.tipo='chat' AND j.status='completed' AND j.resultado IS NOT NULL
+                  AND (j.scope_hash IN ({marcadores}) OR j.scope_hash IS NULL)
+                ORDER BY j.creado_en DESC, j.job_id DESC""",
+            (workspace_id, document_id, *sorted(scopes)),
+        )
+        turnos = []
+        for fila in filas:
+            try:
+                datos = json.loads(fila["resultado"])
+                respuesta = ChatAnswer.model_validate(datos)
+                guardadas = fuentes_respuesta(respuesta)
+                vinculadas = set(json.loads(fila["documentos"]))
+            except (ValueError, TypeError):
+                # Datos sin procedencia verificable no son memoria autorizada.
+                # Se conservan las filas originales y sus hashes idempotentes.
+                continue
+            if (
+                respuesta.document_id != document_id
+                or respuesta.document_hash != document_hash
+                or set(respuesta.document_ids) != ids
+                or (vinculadas != ids and not (len(ids) == 1 and not vinculadas))
+            ):
+                continue
+            if guardadas:
+                if esperadas and guardadas != esperadas:
+                    continue
+            elif len(ids) != 1:
+                continue
+            turnos.append(datos)
+            if len(turnos) == limite:
+                break
+        return list(reversed(turnos))
 
     @_sincronizado
     def guardar_aprobado(self, generation_id: str, paquete_json: str, expira_en: str):
@@ -2138,6 +2329,34 @@ class RegistroOperativo:
     # ------------------------------------------------------------------
 
     @_sincronizado
+    def intencion_generacion(self, workspace_id: str, clave: str) -> dict | None:
+        """Procedencia local de una intención; no autoriza acceso al material.
+
+        Incluye fuentes retiradas para contrastar fingerprints históricos sin
+        resolver otra vez el espacio. El servicio debe comprobar el acceso.
+        """
+        fila = self._conn.execute(
+            """SELECT i.hash_cuerpo,i.recurso_id,g.document_id,g.parametros_json
+               FROM idempotency_keys i
+               LEFT JOIN generations g ON g.generation_id=i.recurso_id AND g.workspace_id=i.workspace_id
+               WHERE i.workspace_id=? AND i.operacion='generate' AND i.clave=?""",
+            (workspace_id, clave),
+        ).fetchone()
+        if fila is None:
+            return None
+        fuentes = self._conn.execute(
+            """SELECT gd.document_id,d.workspace_id FROM generation_documents gd
+               LEFT JOIN documents d ON d.document_id=gd.document_id
+               WHERE gd.generation_id=? ORDER BY gd.document_id""",
+            (fila["recurso_id"],),
+        ).fetchall()
+        return {
+            **dict(fila),
+            "document_ids": [f["document_id"] for f in fuentes],
+            "fuentes_propias": bool(fuentes) and all(f["workspace_id"] == workspace_id for f in fuentes),
+        }
+
+    @_sincronizado
     def idempotencia_consultar(self, workspace_id, operacion, clave, cuerpo):
         """Consulta una intención ya admitida sin crear reservas ni requerir IA."""
         fila = self._conn.execute(
@@ -2297,10 +2516,20 @@ class RegistroOperativo:
             else (self.limite_documentos if tabla == "documents" else self.limite_generaciones)
         )
         tipo, identificador = ("document", "document_id") if tabla == "documents" else ("generation", "generation_id")
+        fuentes_vigentes = (
+            """AND NOT EXISTS (
+                SELECT 1 FROM generation_documents gd
+                JOIN pending_deletes pd ON pd.recurso_tipo='document' AND pd.recurso_id=gd.document_id
+                WHERE gd.generation_id=r.generation_id
+            )"""
+            if tabla == "generations"
+            else ""
+        )
         usados = self._conn.execute(
             f"""SELECT COUNT(*) FROM {tabla} r WHERE workspace_id=?
             AND NOT EXISTS(SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo=? AND p.recurso_id=r.{identificador})
-            AND NOT EXISTS(SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo='document' AND p.recurso_id=r.document_id)""",
+            AND NOT EXISTS(SELECT 1 FROM pending_deletes p WHERE p.recurso_tipo='document' AND p.recurso_id=r.document_id)
+            {fuentes_vigentes}""",
             (workspace_id, tipo),
         ).fetchone()[0]
         if usados >= limite_efectivo:
@@ -2387,7 +2616,13 @@ class RegistroOperativo:
                 "DELETE FROM approved_outputs WHERE generation_id IN (SELECT generation_id FROM generations WHERE workspace_id=?)",
                 (ws,),
             )
-            for tabla in ("generations", "document_cleanup", "document_admissions", "documents"):
+            for tabla in (
+                "generations",
+                "retired_generation_controls",
+                "document_cleanup",
+                "document_admissions",
+                "documents",
+            ):
                 self._conn.execute(f"DELETE FROM {tabla} WHERE workspace_id=?", (ws,))
 
     def agendar_borrado(self, recurso_tipo: str, recurso_id: str, workspace_id: str) -> None:

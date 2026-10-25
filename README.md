@@ -20,6 +20,8 @@ consultables en el mismo espacio.
   ejecutivo y guion de clase), cuatro sectores y contenido en español, inglés o portugués.
 - Generar en modo **Multiagente**, con revisión factual, pedagógica y visual cuando
   corresponde, o **Básico**, con RAG y una redacción sin evaluación independiente.
+- Seleccionar hasta cinco fuentes propias listas para una adaptación conjunta,
+  chat o glosario; el foco visual del documento no cambia esa selección.
 - Estudiar flashcards, responder quizzes con feedback, consultar fuentes, chat y
   glosario, y conservar el progreso del espacio.
 - Recuperar el historial mediante un código, comparar adaptaciones y descargar
@@ -53,6 +55,9 @@ y revisión final del equipo. Sus entradas se documentan como reconstrucciones
 trazables de los parámetros registrados, sin presentarlas como capturas originales.
 Las contradicciones de #58/#133 y #60 se registran en
 [trazabilidad del #57](docs/verificacion-issue-57.md); no se atribuyen revisiones humanas pendientes.
+También falta la ejecución real multidocumental D: el JSON histórico disponible
+es simulado y no demuestra contribución de ambas fuentes. Este pendiente es
+independiente de la aceptación pública de #133.
 
 ## React actual con proveedores simulados
 
@@ -379,6 +384,9 @@ Conservar el volumen y el nombre de proyecto; no usar opciones de eliminación d
    simulado PDF/MD/TXT, o texto pegado con título. Para el helper usar texto breve,
    por ejemplo: «Una red privada agrupa recursos. Una subred divide su rango de direcciones».
 3. Esperar **ready**. `processing` o visión pendiente todavía no habilitan generación.
+   Marcar las fuentes participantes (máximo cinco); enfocar otro documento no
+   sustituye las marcadas. «Seleccionar todos» sólo está disponible si hay hasta
+   cinco documentos listos; con más, la UI pide elegirlos explícitamente.
 4. Elegir perfil, formato, sector, detalle, idioma y modo. Pulsar Generar y seguir
    las etapas; Básico no lleva Critic ni score. Cambiar de modo crea otro material,
    reutilizando el documento preparado.
@@ -390,6 +398,46 @@ Conservar el volumen y el nombre de proyecto; no usar opciones de eliminación d
    historial del espacio y sus materiales. La biblioteca compartida permite
    consultar ejemplos previos; generar directamente desde esas fuentes sigue pendiente.
 
+### Selección, versiones y reintentos
+
+La selección se normaliza por ID, ordenada y sin duplicados. El primer ID es el
+**primario canónico**, incluso si la UI enfoca otra fuente. La UI ofrece documento
+completo o sección para una fuente y `multi_documento` al marcar varias. Recuperar
+una generación activa restaura su conjunto original; una actualización documental
+no lo reduce al primario. Si falta una fuente lista, se conserva la selección
+visible y se bloquea generar hasta actualizarla o desmarcarla explícitamente.
+
+La API también acepta `espacio_completo`: resuelve una vez todos los documentos
+propios, listos y vigentes al admitir, incluso si sólo hay uno; rechaza el conjunto
+vacío o mayor que cinco, sin truncarlo. **La UI no ofrece ese selector**:
+«Seleccionar todos» envía una lista explícita. El máximo de cinco fuentes por
+solicitud es distinto de los cupos configurables de documentos y generaciones
+conservados (`WORKSPACE_MAX_DOCUMENTS` y `WORKSPACE_MAX_GENERATIONS`).
+
+La admisión guarda relaciones y un snapshot de ID, título, hash, versión y
+procedencia de cada fuente. Ese snapshot fija qué se admitió y sigue contrastándose
+con la autorización actual: no permite usar otra versión ni resucitar una retirada.
+Una clave idempotente equivalente conserva ID, fuentes y snapshot sin otro trabajo;
+en `espacio_completo`, añadir documentos después no amplía el reintento. Una clave
+nueva resuelve el estado actual. Cambiar parámetros o alcance con la misma clave
+mantiene el conflicto. Se reconocen las representaciones unidocumentales históricas
+y las ya guardadas por esta PR, sin reescribir sus hashes.
+
+Resultados, exportaciones e historial requieren fuentes autorizadas. El chat
+comprueba todas sus fuentes guardadas, también al consultar o seguir por SSE;
+su historial distingue identidad y versiones del conjunto, aunque dos documentos
+tengan igual contenido. Retirar cualquiera de las fuentes hace inaccesible la
+generación y libera su plaza de retención una sola vez, antes de terminar la limpieza
+física. Los vínculos necesarios para esa limpieza se conservan; las demás fuentes
+siguen disponibles según su propio estado.
+
+Omitir `modo_generacion` conserva 1.0; un modo explícito solicita 1.1 para una
+intención nueva. Un reintento equivalente puede devolver su paquete anterior.
+Básico sigue sin evaluación independiente. Detalles y ejemplos:
+[contrato multidocumental](docs/contratos-api.md#fuentes-alcances-y-procedencia-multidocumental-pr-146),
+[referencia de solicitudes](docs/api_reference.md#selección-de-fuentes-y-alcances) y
+[compatibilidad de modos](docs/modos-generacion.md).
+
 ## Escenarios de evidencia: A/B/C unidocumentales y D multidocumental
 
 La [evidencia real local de #55 v2](docs/evidencia/issue-55/v2/README.md) registra
@@ -398,24 +446,41 @@ ID de documento y SHA-256 verificado:
 `fd57e3548ca593f167c297e2ad9bbcf2297bdb87985d003037d4afc5b5cc4d2e`.
 En las tres, detalle `didactico` y alcance `documento_completo`.
 
-A ellos se incorpora el **Escenario D** para verificar la síntesis multidocumental (§8.2 del plan correctivo).
-Ilustra la resolución simultánea de múltiples fuentes con procedencia por cita (`document_id`), pero su
-JSON proviene de una **simulación con dobles de prueba** sobre fuentes sintéticas: la ejecución real con
-proveedores exigida por §8.2 sigue pendiente y no se presenta como realizada:
+Los archivos enlazados tienen alcances distintos. A/B/C son **entradas reconstruidas**;
+sus salidas originales no están disponibles. D es un **artefacto histórico simulado**,
+insuficiente para acreditar la ejecución real exigida por §8.2 del plan correctivo.
 
-| Escenario | Alcance · Perfil · formato · sector · idioma | Fuentes utilizadas | JSON canónico de salida | SHA-256 verificado |
+| Escenario | Alcance · Perfil · formato · sector · idioma | Fuentes registradas | Archivo disponible y estado | SHA-256 de los bytes enlazados, verificado localmente |
 |---|---|---|---|---|
-| A | 1 doc · Principiante · flashcards · general · ES | `redes_vcn_oci.pdf` | [Reconstrucción A](docs/evidencia/issue-57/entrada-vcn-a.reconstruida.json) | `83c654ea...` (esperado) |
-| B | 1 doc · Junior/Semi Senior · tutorial · e-commerce · EN | `redes_vcn_oci.pdf` | [Reconstrucción B](docs/evidencia/issue-57/entrada-vcn-b.reconstruida.json) | `6528583a...` (esperado) |
-| C | 1 doc · Ejecutivo · resumen ejecutivo · fintech · PT | `redes_vcn_oci.pdf` | [Reconstrucción C](docs/evidencia/issue-57/entrada-vcn-c.reconstruida.json) | `ea0ec80d...` (esperado) |
-| D | 2 docs · Principiante · flashcards · general · ES | Arquitectura A + Arquitectura B (simuladas) | [Salida D](docs/evidencia/salida-multidocumental-d.json) | `9806ff5ddec0e919cb4f10213cfa92cdfe53575700183d8bc296585341c77107` (simulación con dobles; ejecución real pendiente) |
+| A | 1 doc · Principiante · flashcards · general · ES | `redes_vcn_oci.pdf` | [Entrada A reconstruida](docs/evidencia/issue-57/entrada-vcn-a.reconstruida.json); salida original ausente | `107059cfe89c4b8e5667c58044537fe1742cbb14fe8dae57a81e6ca5622ac267` |
+| B | 1 doc · Junior/Semi Senior · tutorial · e-commerce · EN | `redes_vcn_oci.pdf` | [Entrada B reconstruida](docs/evidencia/issue-57/entrada-vcn-b.reconstruida.json); salida original ausente | `cf789d8000dac786a39d6a400cd2a3a228376ff5d5988064bbf782f24ad0897d` |
+| C | 1 doc · Ejecutivo · resumen ejecutivo · fintech · PT | `redes_vcn_oci.pdf` | [Entrada C reconstruida](docs/evidencia/issue-57/entrada-vcn-c.reconstruida.json); salida original ausente | `f3b61fad1d22ff5cf4b61d0a74598de53747e01eebd625eae0fed514cb5ab00e` |
+| D | 2 docs declarados · Principiante · flashcards · general · ES | Arquitectura A + B sintéticas; sólo B citada | [JSON histórico D](docs/evidencia/salida-multidocumental-d.json); ejecución real pendiente | `0c1f0d62a4090bdef4ffaacfa6db2a50421ffae81c5108a8143465b15b2527dc` |
 
-Las entradas de A/B/C copian los parámetros históricos del catálogo, validados contra el
-contrato actual; **no son capturas HTTP originales**.
-El Escenario D demuestra la mecánica de síntesis cruzada multidocumental y citas referenciadas
-por fuente; su evidencia es simulada y su huella identifica los bytes exactos conservados en el
-repositorio (los tests nunca la regeneran).
-[Inventario y huellas esperadas](docs/evidencia/issue-57/README.md#escenarios-reales-abc-vcn-v2).
+Las entradas A/B/C copian los parámetros del catálogo y validan contra el esquema
+actual; **no son capturas HTTP ni ejecuciones nuevas**. Las huellas históricas
+esperadas de sus salidas son distintas de las anteriores y no se verificaron contra
+salidas ausentes: [inventario y SHA-256 esperados completos](docs/evidencia/issue-57/README.md#entradas-reconstruidas-y-salidas-que-faltan).
+Los informes históricos se conservan con su fecha y alcance.
+Las entradas disponibles usan LF. Las huellas de entrada registradas en el
+inventario histórico coinciden con la variante CRLF de esos mismos textos;
+la tabla informa los bytes LF presentes, sin modificar ni normalizar los archivos.
+Esta distinción no permite verificar las salidas originales ausentes.
+
+D contiene `[SOURCE_TITLE]`, `[SOURCE_CONCEPT]` y otros placeholders. Enumerar dos
+fuentes y guardar score 1.0 no demuestra síntesis: las referencias superiores y
+las de la única tarjeta señalan sólo Arquitectura B. Su huella identifica los bytes
+conservados, sin acreditar respaldo factual, proveedores reales ni persistencia OCI.
+[Inspección y límites de D](docs/evidencia/multidocumental-d.md).
+
+La cobertura automatizada aprobada se consulta en las pruebas de
+[integración multidocumental](backend/tests/test_multidocument_generation.py),
+[contribuciones y citas de Critic](backend/tests/test_critic_multidocument.py),
+[selección de evidencia](backend/tests/test_multidocument_retrieval.py) y
+[rondas de Researcher](backend/tests/test_researcher_multidocument.py).
+Usan dobles explícitos y datos sintéticos; no sustituyen D real ni regeneran el
+archivo histórico. Obtener y revisar esa ejecución sigue pendiente, sin atribuirla
+automáticamente a #133.
 
 ## Cumplimiento y evidencia disponible
 

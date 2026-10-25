@@ -360,6 +360,7 @@ export function validarRespuestaChat(
   datos: any,
   payloadEsperado: {
     document_id: string;
+    document_ids?: string[];
     pregunta: string;
     perfil_destinatario: string;
     idioma_salida: string;
@@ -374,6 +375,13 @@ export function validarRespuestaChat(
     datos.perfil_destinatario !== payloadEsperado.perfil_destinatario ||
     datos.idioma_salida !== payloadEsperado.idioma_salida
   ) {
+    throw invalida();
+  }
+  const esperados = payloadEsperado.document_ids ?? [payloadEsperado.document_id];
+  const declarados = datos.document_ids ?? [datos.document_id];
+  if (!Array.isArray(declarados) || declarados.length !== esperados.length ||
+      new Set(declarados).size !== declarados.length ||
+      declarados.some((id: unknown) => typeof id !== 'string' || !esperados.includes(id))) {
     throw invalida();
   }
   if (typeof datos.document_hash !== 'string' || !/^[0-9a-f]{64}$/.test(datos.document_hash)) {

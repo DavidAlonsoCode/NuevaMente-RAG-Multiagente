@@ -59,6 +59,17 @@ class ChatRequest(BaseModel):
 
         return self
 
+    def parametros_persistidos(self):
+        datos = self.model_dump(mode="json")
+        if len(self.document_ids) == 1:
+            datos.pop("document_ids")
+        return datos
+
+    def parametros_idempotentes(self) -> tuple[dict, ...]:
+        principal = self.parametros_persistidos()
+        anterior = self.model_dump(mode="json")
+        return (principal,) if principal == anterior else (principal, anterior)
+
 
 class BorradorChat(BaseModel):
     model_config = ConfigDict(extra="forbid")

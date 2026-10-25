@@ -1,10 +1,10 @@
 """Chat grounded: recuperación fresca y el mismo StateGraph de revisión #29."""
 
-import hashlib
 import json
 import time
 from datetime import datetime, timezone
 
+from app.chat.identity import fuentes_respuesta, scope_historial
 from app.core.agents.critic import DependenciasCritic
 from app.core.agents.draft_validation import parsear_json_estricto
 from app.core.agents.finalizer import finalizer
@@ -149,34 +149,33 @@ class ServicioChat:
     # con este metodo verifico que la respuesta guardada corresponda a la misma fuente documental y espacio de trabajo
     # si el documento original cambio o fue retirado bloqueo la entrega de la respuesta para evitar inconsistencias
     def autorizar_resultado(self, workspace_id, resultado, token=None):
-        respuesta = ChatAnswer.model_validate(resultado)
-        doc_ids = respuesta.document_ids or [respuesta.document_id]
+        try:
+            respuesta = ChatAnswer.model_validate(resultado)
+            esperadas = fuentes_respuesta(respuesta)
+        except (ValueError, TypeError):
+            raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.") from None
+
+        def verificar(fuente, document_id):
+            if (
+                fuente is None
+                or fuente.document_id != document_id
+                or (esperadas and fuente != esperadas[document_id])
+                or (not esperadas and fuente.hash != respuesta.document_hash)
+            ):
+                raise ErrorAplicacion(ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible.")
+
         if token is not None:
             if self.consulta._sesion(token)["workspace_id"] != workspace_id:
                 raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.")
-            for d_id in doc_ids:
-                fuente = self.consulta.fuente_aprobada(token, d_id)
-                if fuente is None:
-                    raise ErrorAplicacion(
-                        ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible."
-                    )
-                if d_id == respuesta.document_id and fuente.hash != respuesta.document_hash:
-                    raise ErrorAplicacion(
-                        ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible."
-                    )
+            for d_id in respuesta.document_ids:
+                verificar(self.consulta.fuente_aprobada(token, d_id), d_id)
         else:
             ctx = ContextoEjecucion("consulta_chat", workspace_id, "consulta", time.monotonic() + 30)
-            for d_id in doc_ids:
+            for d_id in respuesta.document_ids:
                 doc = self.consulta.documento_grafo(ctx, d_id)
-                fuente = doc.fuente if doc is not None else None
-                if fuente is None:
-                    raise ErrorAplicacion(
-                        ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible."
-                    )
-                if d_id == respuesta.document_id and fuente.hash != respuesta.document_hash:
-                    raise ErrorAplicacion(
-                        ErrorCode.NOT_FOUND, "La respuesta ya no corresponde a una fuente disponible."
-                    )
+                if doc is not None and doc.workspace_id != workspace_id:
+                    raise ErrorAplicacion(ErrorCode.NOT_FOUND, "Respuesta no disponible.")
+                verificar(doc.fuente if doc is not None else None, d_id)
         return respuesta
 
     # aqui recibo la consulta del usuario y registro la intencion en la cola de tareas en segundo plano
@@ -192,12 +191,7 @@ class ServicioChat:
                 raise ErrorAplicacion(ErrorCode.NOT_FOUND, f"Documento {d_id} no disponible.")
             fuentes.append(f)
 
-        if len(fuentes) == 1:
-            scope_hash = fuentes[0].hash
-        else:
-            scope_hash = hashlib.sha256(
-                ";".join(f"{f.document_id}:{f.hash}" for f in sorted(fuentes, key=lambda x: x.document_id)).encode()
-            ).hexdigest()
+        scope_hash = scope_historial(fuentes)
 
         def preparar():
             self.consulta._sesion(token)
@@ -210,14 +204,16 @@ class ServicioChat:
                 if actual is None or actual["estado"] != "ready":
                     raise ErrorAplicacion(ErrorCode.INVALID_STATE, "Una de las fuentes cambió durante la admisión.")
 
+        cuerpo, *alternativos = solicitud.parametros_idempotentes()
         job = admitir_trabajo(
             self.gestor,
             doc["workspace_id"],
             solicitud.document_id,
             "chat",
-            solicitud.model_dump(mode="json"),
+            cuerpo,
             lambda ctx: self.ejecutar(solicitud, ctx),
             clave=clave,
+            cuerpos_alternativos=alternativos,
             document_ids=doc_ids,
             scope_hash=scope_hash,
             preparar=preparar,
@@ -232,14 +228,8 @@ class ServicioChat:
         if any(d is None for d in docs):
             raise TrabajoCanceladoError()
         doc = docs[0]
-        if len(docs) == 1:
-            scope_hash = doc.fuente.hash
-        else:
-            scope_hash = hashlib.sha256(
-                ";".join(
-                    f"{d.fuente.document_id}:{d.fuente.hash}" for d in sorted(docs, key=lambda x: x.fuente.document_id)
-                ).encode()
-            ).hexdigest()
+        fuentes = [d.fuente for d in docs]
+        scope_hash = scope_historial(fuentes)
 
         historial = acotar_historial(
             self.db.historial_chat(
@@ -248,6 +238,7 @@ class ServicioChat:
                 doc.fuente.hash,
                 self.cfg.chat_history_turns,
                 scope_hash=scope_hash,
+                fuentes=fuentes,
             ),
             self.cfg.chat_history_max_tokens,
         )

@@ -93,12 +93,21 @@ class GenerateRequest(ModeloContenido):
         # Mantener la identidad idempotente de solicitudes anteriores al selector.
         if self.modo_generacion == "multiagente":
             datos.pop("modo_generacion")
-        # Conservar hash_cuerpo para peticiones históricas unidocumentales sin document_ids explícito:
-        if "document_ids" not in self.model_fields_set and len(self.document_ids) <= 1:
+        # La lista normalizada es interna, incluso si el cliente la proporcionó.
+        # No usar model_fields_set: el validador también asigna document_ids.
+        if len(self.document_ids) == 1 and self.alcance.tipo in ("documento_completo", "seccion"):
             datos.pop("document_ids", None)
-            if "alcance" in datos and "document_ids" in datos["alcance"]:
-                datos["alcance"].pop("document_ids", None)
+            if datos["alcance"].get("document_ids") == self.document_ids:
+                datos["alcance"].pop("document_ids")
         return datos
+
+    def parametros_idempotentes(self) -> tuple[dict, ...]:
+        """Forma histórica y representación exacta ya persistida por la PR."""
+        principal = self.parametros_persistidos()
+        anterior = self.model_dump(mode="json")
+        if self.modo_generacion == "multiagente":
+            anterior.pop("modo_generacion")
+        return (principal,) if principal == anterior else (principal, anterior)
 
 
 class UploadRequest(ModeloContenido):
@@ -184,6 +193,17 @@ class GlossaryRequest(ModeloContenido):
             raise ValueError("Debe especificarse document_id o document_ids")
 
         return self
+
+    def parametros_persistidos(self):
+        datos = self.model_dump(mode="json")
+        if len(self.document_ids) == 1:
+            datos.pop("document_ids")
+        return datos
+
+    def parametros_idempotentes(self) -> tuple[dict, ...]:
+        principal = self.parametros_persistidos()
+        anterior = self.model_dump(mode="json")
+        return (principal,) if principal == anterior else (principal, anterior)
 
 
 class QuizAnswerRequest(ModeloContenido):

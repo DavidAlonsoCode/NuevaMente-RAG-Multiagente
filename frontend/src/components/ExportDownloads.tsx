@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
   ChevronDown,
@@ -66,21 +66,32 @@ export const ExportDownloads: React.FC<{
   const [detallesAbiertos, setDetallesAbiertos] = useState(false);
   const compatibles = formatosExportables(paquete);
   const generationId = paquete.generation_id;
+  const contexto = useRef<object | null>(null);
+  useEffect(() => {
+    contexto.current = {};
+    setDescargando(null);
+    return () => { contexto.current = null; };
+  }, [api, token, generationId]);
   const ayudaId = `export-incompatible-${generationId}`;
   const guardadoOci = persistencia?.provider === 'oci' && persistencia.status_upload === 'completado';
   const hayIncompatibles = compatibles.length < FORMATOS_EXPORTACION.length;
 
   const descargar = async (fmt: ExportFormat) => {
+    const origen = contexto.current;
+    const vigente = () => origen !== null && contexto.current === origen;
     setDescargando(fmt);
     try {
       if (verificarAntes && !(await verificarAntes())) return;
+      if (!vigente()) return;
       const bytes = await api.downloadExport(token, generationId, fmt);
+      if (!vigente()) return;
       guardarArchivo(bytes, `${generationId}.${fmt}`, fmt);
     } catch (e) {
+      if (!vigente()) return;
       if (e instanceof APIError && e.statusCode === 401) onSessionInvalid();
       else if (e instanceof APIError) onError(e);
     } finally {
-      setDescargando(null);
+      if (vigente()) setDescargando(null);
     }
   };
 

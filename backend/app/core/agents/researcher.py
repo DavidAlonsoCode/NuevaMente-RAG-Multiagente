@@ -279,8 +279,6 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
                     if ronda < len(pool):
                         agregar(pool[ronda])
         else:
-            # Flujo multi-documental: investigación equitativa entre fuentes autorizadas
-            pools = {d_id: [] for d_id in doc_ids}
             titulos = {
                 d_id: next((f.titulo for f in estado.documentos_fuente if f.document_id == d_id), d_id)
                 for d_id in doc_ids
@@ -288,79 +286,87 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
 
             def validar_multi(item):
                 original = originales.get(item.chunk.chunk_id)
-                if original is None or original != item.chunk or item.chunk.document_id not in pools:
+                if original is None or original != item.chunk or item.chunk.document_id not in doc_ids:
                     raise IndiceInconsistenteError("Evidencia ajena al inventario o alcance autorizados")
                 return item
 
-            def consultar_multi(consulta, presupuesto):
+            def consultar_multi(consulta):
                 revalidar()
                 resultado = recuperador.recuperar_multidocumental(
                     ctx.workspace_id,
                     doc_ids,
                     consulta,
                     contexto=ctx,
-                    presupuesto_tokens=presupuesto,
+                    presupuesto_tokens=max_tokens,
                     source_hashes=estado.source_hashes,
+                    evidencia_previa=list(evidencia),
                 )
                 revalidar()
                 omitidos.update(resultado.chunks_omitidos)
-                return [validar_multi(item) for item in resultado.evidencia]
+                return [validar_multi(item) for item in resultado.evidencia], set(resultado.chunks_omitidos)
 
+            # Las ampliaciones conservan toda la evidencia ya autorizada. Su
+            # presupuesto es el de la unión serializada, no una suma por ronda.
             for item in estado.evidencia:
                 item = validar_multi(item)
-                pools[item.chunk.document_id].append(item)
+                clave = (item.chunk.document_id, identidad_texto(item.chunk.texto))
+                if item.chunk.chunk_id in ids or clave in textos:
+                    continue
+                if not agregar(item):
+                    raise _Bloqueo(
+                        "EVIDENCE_BUDGET",
+                        "La evidencia previa excede el presupuesto compartido.",
+                        JobStatus.REJECTED_QUALITY,
+                    )
 
-            idioma_idx = {"es": 0, "en": 1, "pt": 2}.get(estado.idioma_origen, 0)
-            solicitud = estado.parametros
-            formato = _FORMATOS[solicitud.formato_salida.value][idioma_idx]
-            perfil = _PERFILES[solicitud.perfil_destinatario.value][idioma_idx]
-
-            faltantes = []
-            for d_id in doc_ids:
-                if not pools[d_id]:
-                    restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
-                    if restante > 0:
-                        consulta_doc = f"{titulos[d_id][:300]} | {formato} | {perfil}"[:2000]
-                        if dependencias.pregunta:
-                            consulta_doc = f"{dependencias.pregunta} | {consulta_doc}"[:2000]
-                        res = consultar_multi(consulta_doc, restante)
-                        for r in res:
-                            pools[r.chunk.document_id].append(r)
-                elegido = next((item for item in pools[d_id] if agregar(item)), None)
-                if elegido is None:
-                    faltantes.append(d_id)
-
+            faltantes = [d_id for d_id in doc_ids if not any(e.chunk.document_id == d_id for e in evidencia)]
             if faltantes:
-                code = "EVIDENCE_BUDGET" if omitidos else "COVERAGE_INCOMPLETE"
-                raise _Bloqueo(
-                    code,
-                    "No se pudo reunir evidencia para todas las fuentes autorizadas: " + ", ".join(faltantes) + ".",
-                    JobStatus.REJECTED_QUALITY,
-                )
+                sin_espacio = tokens_evidencia(evidencia, recuperador.tokenizador) >= max_tokens
+                omitidos_consulta = set()
+                if not sin_espacio:
+                    idioma_idx = {"es": 0, "en": 1, "pt": 2}.get(estado.idioma_origen, 0)
+                    solicitud = estado.parametros
+                    formato = _FORMATOS[solicitud.formato_salida.value][idioma_idx]
+                    perfil = _PERFILES[solicitud.perfil_destinatario.value][idioma_idx]
+                    consulta = " | ".join([*(titulos[d_id][:300] for d_id in doc_ids), formato, perfil])
+                    if dependencias.pregunta:
+                        consulta = f"{dependencias.pregunta} | {consulta}"
+                    nuevos, omitidos_consulta = consultar_multi(consulta[:2000])
+                    for item in nuevos:
+                        agregar(item)
+                else:
+                    omitidos.update(c.chunk_id for c in chunks if c.document_id in faltantes)
+                faltantes = [d_id for d_id in doc_ids if not any(e.chunk.document_id == d_id for e in evidencia)]
+                if faltantes:
+                    presupuesto_faltante = sin_espacio or any(
+                        originales[chunk_id].document_id in faltantes
+                        for chunk_id in omitidos_consulta
+                        if chunk_id in originales
+                    )
+                    code = "EVIDENCE_BUDGET" if presupuesto_faltante else "COVERAGE_INCOMPLETE"
+                    raise _Bloqueo(
+                        code,
+                        "No se pudo reunir evidencia para todas las fuentes autorizadas: " + ", ".join(faltantes) + ".",
+                        JobStatus.REJECTED_QUALITY,
+                    )
 
             for consulta in dict.fromkeys(estado.solicitudes_evidencia):
-                restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
-                if restante <= 0:
+                if tokens_evidencia(evidencia, recuperador.tokenizador) >= max_tokens:
                     raise _Bloqueo(
                         "EVIDENCE_BUDGET",
                         "No queda presupuesto para ampliar la evidencia solicitada.",
                         JobStatus.REJECTED_QUALITY,
                     )
-                nuevos = consultar_multi(consulta, restante)
+                nuevos, omitidos_consulta = consultar_multi(consulta)
                 if not nuevos:
+                    code = "EVIDENCE_BUDGET" if omitidos_consulta else "COVERAGE_INCOMPLETE"
                     raise _Bloqueo(
-                        "COVERAGE_INCOMPLETE",
+                        code,
                         "No se encontró evidencia para una ampliación solicitada por Critic.",
                         JobStatus.REJECTED_QUALITY,
                     )
                 for item in nuevos:
                     agregar(item)
-
-            for ronda in range(max((len(p) for p in pools.values()), default=0)):
-                for pool in pools.values():
-                    ctx.chequear()
-                    if ronda < len(pool):
-                        agregar(pool[ronda])
 
             objetivo = list(dict.fromkeys(seccion_del_chunk(e.chunk) for e in evidencia))
         revalidar()
