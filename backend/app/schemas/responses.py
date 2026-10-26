@@ -143,11 +143,9 @@ class EvaluacionCalidad(ModeloContenido):
             raise ValueError("La evaluación requiere afirmaciones y score")
         if not isclose(self.anclaje_fuente_score, self.cantidad_respaldadas / self.cantidad_afirmaciones, abs_tol=1e-6):
             raise ValueError("El score debe ser respaldadas / cantidad_afirmaciones")
-        # Aprobar exige superar el umbral de fidelidad y todas las comprobaciones;
-        # el respaldo del 100% de las afirmaciones NO es requisito (el score >= 0.85
-        # ya fija el piso de respaldo, §19.3).
         if self.estado_evaluacion == "aprobada" and (
             self.anclaje_fuente_score < 0.85
+            or self.cantidad_respaldadas != self.cantidad_afirmaciones
             or self.razones_bloqueo
             or self.verificacion_visual == "insuficiente"
             or self.cobertura_objetivos != "completa"

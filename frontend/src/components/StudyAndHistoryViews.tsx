@@ -62,12 +62,13 @@ export const ChatTutorView: React.FC<{
   idiomaUi,
   onSessionInvalid,
 }) => {
+  const [modo, setModo] = useState<'multiagente' | 'basico'>('multiagente');
   const effectiveDocIds = useMemo(
     () => Array.from(new Set(documentIds && documentIds.length > 0 ? documentIds : [documentId])).sort(),
     [documentId, JSON.stringify(documentIds)]
   );
   const primaryDocId = effectiveDocIds[0] || documentId;
-  const scopeKey = `chat:${workspaceId}:${JSON.stringify([effectiveDocIds, perfil, idiomaSalida])}`;
+  const scopeKey = `chat:${workspaceId}:${JSON.stringify([effectiveDocIds, perfil, idiomaSalida, modo])}`;
   const contextRef = useRef({ token, scopeKey });
   if (contextRef.current.token !== token || contextRef.current.scopeKey !== scopeKey) {
     contextRef.current = { token, scopeKey };
@@ -138,7 +139,7 @@ export const ChatTutorView: React.FC<{
     validarTrabajoChat(datos, turno.jobId);
     const respuesta = datos.status === 'completed' ? validarRespuestaChat(datos.result, {
       document_id: primaryDocId, document_ids: effectiveDocIds, pregunta: turno.pregunta,
-      perfil_destinatario: perfil, idioma_salida: idiomaSalida,
+      perfil_destinatario: perfil, idioma_salida: idiomaSalida, modo_generacion: modo,
     }) : null;
     return { ...turno, jobId: datos.job_id, status: datos.status, respuesta, error: null };
   };
@@ -178,6 +179,7 @@ export const ChatTutorView: React.FC<{
           pregunta: q,
           perfil_destinatario: perfil,
           idioma_salida: idiomaSalida,
+          ...(modo === 'basico' ? { modo_generacion: modo } : {}),
         },
         clave
       );
@@ -211,6 +213,7 @@ export const ChatTutorView: React.FC<{
           pregunta: turno.pregunta,
           perfil_destinatario: perfil,
           idioma_salida: idiomaSalida,
+          ...(modo === 'basico' ? { modo_generacion: modo } : {}),
         },
         turno.clave
       );
@@ -328,6 +331,7 @@ export const ChatTutorView: React.FC<{
                   </div>
                 ) : (
                   <>
+                    {turno.respuesta.estado === 'no_evaluado' && <p className="nm-alert nm-alert-warning">{t('modo.aviso', idiomaUi)}</p>}
                     <div style={{ whiteSpace: 'pre-wrap' }}>{turno.respuesta.respuesta}</div>
                     <SourcesDrawer
                       documentId={primaryDocId}
@@ -388,6 +392,15 @@ export const ChatTutorView: React.FC<{
         </div>
       )}
 
+      <label className="nm-label">
+        {t('modo.selector', idiomaUi)}
+        <select className="nm-select" value={modo} disabled={Boolean(pendiente || otroPendiente)}
+          onChange={(e) => setModo(e.target.value as 'multiagente' | 'basico')}>
+          <option value="multiagente">{t('modo.multiagente', idiomaUi)}</option>
+          <option value="basico">{t('modo.basico', idiomaUi)}</option>
+        </select>
+      </label>
+      {modo === 'basico' && <p className="nm-alert nm-alert-warning">{t('modo.aviso', idiomaUi)}</p>}
       <form onSubmit={enviarPregunta} style={{ display: 'flex', gap: '0.6rem' }}>
         <input
           type="text"
@@ -424,12 +437,13 @@ export const GlossaryView: React.FC<{
   idiomaUi: OutputLanguage;
   onSessionInvalid: () => void;
 }> = ({ apiClient, token, documentId, documentIds, perfil, idiomaSalida, idiomaUi, onSessionInvalid }) => {
+  const [modo, setModo] = useState<'multiagente' | 'basico'>('multiagente');
   const effectiveDocIds = useMemo(
     () => Array.from(new Set(documentIds && documentIds.length > 0 ? documentIds : [documentId])).sort(),
     [documentId, JSON.stringify(documentIds)]
   );
   const primaryDocId = effectiveDocIds[0] || documentId;
-  const scope = `glossary:${JSON.stringify([token, effectiveDocIds, perfil, idiomaSalida])}`;
+  const scope = `glossary:${JSON.stringify([token, effectiveDocIds, perfil, idiomaSalida, modo])}`;
   const [jobId, setJobId] = useScopedState<string | null>(scope + ':job', null);
   const [status, setStatus] = useScopedState<string | null>(scope + ':status', null);
   const [pendingKey, setPendingKey] = useScopedState<string | null>(scope + ':key', null);
@@ -455,6 +469,7 @@ export const GlossaryView: React.FC<{
           document_id: primaryDocId,
           perfil_destinatario: perfil,
           idioma_salida: idiomaSalida,
+          ...(modo === 'basico' ? { modo_generacion: modo } : {}),
         });
         setSalida(glosario);
       } else {
@@ -494,6 +509,7 @@ export const GlossaryView: React.FC<{
           document_ids: effectiveDocIds.length > 1 ? effectiveDocIds : undefined,
           perfil_destinatario: perfil,
           idioma_salida: idiomaSalida,
+          ...(modo === 'basico' ? { modo_generacion: modo } : {}),
         },
         key
       );
@@ -530,6 +546,16 @@ export const GlossaryView: React.FC<{
 
   return (
     <div className="nm-card">
+      <label className="nm-label">
+        {t('modo.selector', idiomaUi)}
+        <select className="nm-select" value={modo} disabled={Boolean(pendingKey || (status && !terminales.has(status)))}
+          onChange={(e) => setModo(e.target.value as 'multiagente' | 'basico')}>
+          <option value="multiagente">{t('modo.multiagente', idiomaUi)}</option>
+          <option value="basico">{t('modo.basico', idiomaUi)}</option>
+        </select>
+      </label>
+      {modo === 'basico' && <p className="nm-alert nm-alert-warning">{t('modo.aviso', idiomaUi)}</p>}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.85rem' }}>
         <div>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -588,6 +614,7 @@ export const GlossaryView: React.FC<{
 
       {salida && (
         <div>
+          {salida.estado === 'no_evaluado' && <p className="nm-alert nm-alert-warning">{t('modo.aviso', idiomaUi)}</p>}
           {salida.candidatos_omitidos > 0 && (
             <div className="nm-alert nm-alert-warning">
               {t('glosario.omitidos', idiomaUi, { cantidad: salida.candidatos_omitidos })}

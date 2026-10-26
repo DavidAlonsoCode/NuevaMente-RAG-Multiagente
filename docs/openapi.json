@@ -446,6 +446,7 @@
           "estado": {
             "enum": [
               "respondida",
+              "no_evaluado",
               "fuera_de_alcance"
             ],
             "title": "Estado",
@@ -1906,6 +1907,7 @@
           "estado": {
             "enum": [
               "verificado",
+              "no_evaluado",
               "sin_definiciones",
               "sin_terminos"
             ],

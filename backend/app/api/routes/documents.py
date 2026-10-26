@@ -76,7 +76,7 @@ def get_consulta(request: Request) -> ServicioConsultaDocumental:
 
 # aqui transformo el registro crudo de la base de datos en el modelo de respuesta formal (DocumentoResponse)
 # valido la estructura de los metadatos y la cobertura en formato json para no exponer datos internos sensibles
-def _documento(fila: dict) -> DocumentoResponse:
+def _documento(fila: dict, db=None) -> DocumentoResponse:
     # Proyección explícita; ninguna fila operativa se serializa al cliente.
     try:
         metadata = MetadatosDocumento.model_validate_json(fila["metadatos_json"]) if fila["metadatos_json"] else None
@@ -100,10 +100,10 @@ def _documento(fila: dict) -> DocumentoResponse:
         )
         if cobertura is not None
         else None,
-        # Transmitir detalle_error y codigo si existen
+        # Código del trabajo autorizado; nunca publicar diagnósticos legacy sin validar.
         error=ErrorDocumentoResponse(
-            code=fila.get("codigo_error"),
-            message=fila.get("detalle_error") or "El procesamiento no se completó; consultar el trabajo vinculado.",
+            code=db.ultimo_error_ingestion(fila["workspace_id"], fila["document_id"]) if db is not None else None,
+            message="El procesamiento no se completó; consultar el trabajo vinculado.",
         )
         if fila["estado"] == "failed"
         else None,
@@ -268,7 +268,9 @@ def listar(
     except (DeadlineExcedidoError, TrabajoCanceladoError):
         consulta._sesion(sesion["token"])
         raise ErrorAplicacion(ErrorCode.STORAGE_UNAVAILABLE, "La lectura documental no pudo completarse.") from None
-    return DocumentosResponse(items=[_documento(d) for d in pagina.documentos], next_cursor=pagina.siguiente_id)
+    return DocumentosResponse(
+        items=[_documento(d, consulta.db) for d in pagina.documentos], next_cursor=pagina.siguiente_id
+    )
 
 
 @router.get(
@@ -287,7 +289,7 @@ def detalle(
     consulta: ServicioConsultaDocumental = Depends(get_consulta),
 ) -> DocumentoResponse:
     try:
-        return _documento(consulta.detalle(sesion["token"], document_id))
+        return _documento(consulta.detalle(sesion["token"], document_id), consulta.db)
     except DeadlineExcedidoError:
         raise ErrorAplicacion(ErrorCode.STORAGE_UNAVAILABLE, "La lectura documental no pudo completarse.") from None
 

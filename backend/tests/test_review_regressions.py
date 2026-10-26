@@ -141,17 +141,11 @@ def test_evaluacion_no_aprueba_comprobaciones_fallidas(cambio):
         EvaluacionCalidad.model_validate(evaluacion_valida(**cambio))
 
 
-def test_evaluacion_aprueba_superando_umbral_sin_exigir_respaldo_total():
-    """El score >= 0.85 sin contradicciones aprueba aunque no respalde el 100%.
-
-    Contrato vigente desde el fix del Problema 4: el piso de respaldo lo fija el
-    score, no la igualdad cantidad_respaldadas == cantidad_afirmaciones.
-    """
-    evaluacion = EvaluacionCalidad.model_validate(
-        evaluacion_valida(cantidad_afirmaciones=20, cantidad_respaldadas=19, anclaje_fuente_score=0.95)
-    )
-    assert evaluacion.estado_evaluacion == "aprobada"
-    assert evaluacion.cantidad_respaldadas < evaluacion.cantidad_afirmaciones
+def test_evaluacion_no_aprueba_errores_conocidos_aunque_supere_el_umbral():
+    with pytest.raises(ValidationError):
+        EvaluacionCalidad.model_validate(
+            evaluacion_valida(cantidad_afirmaciones=20, cantidad_respaldadas=19, anclaje_fuente_score=0.95)
+        )
 
 
 def test_diagnostico_sin_afirmaciones_no_inventa_score():
@@ -266,3 +260,35 @@ def test_idempotencia_no_reserva_sin_id_ni_permite_cambiarlo(registro):
     registro.idempotencia_iniciar("ws_1", "generate", "clave", "{}", "gen_1")
     with pytest.raises(ValueError):
         registro.idempotencia_completar("ws_1", "generate", "clave", "gen_2")
+
+
+def test_motivos_de_rechazo_publicos_no_filtran_feedback():
+    from app.jobs.manager import RechazoCalidadError
+
+    error = RechazoCalidadError(["cobertura_incompleta", "dato privado del modelo", "afirmacion_sin_respaldo"])
+    assert "Falta cubrir" in str(error)
+    assert "respaldo" in str(error)
+    assert "dato privado" not in str(error)
+
+
+def test_documento_fallido_expone_codigo_del_trabajo_y_no_texto_legacy():
+    from unittest.mock import Mock
+
+    from app.api.routes.documents import _documento
+
+    db = Mock()
+    db.ultimo_error_ingestion.return_value = "PARSER_LIMITE_PAGINAS_VISUALES"
+    fila = dict(
+        workspace_id="ws",
+        document_id="doc",
+        titulo="Presentación.pdf",
+        estado="failed",
+        metadatos_json=None,
+        cobertura_json=None,
+        detalle_error="secreto en ruta del proveedor",
+    )
+    salida = _documento(fila, db)
+    assert salida.titulo == "Presentación.pdf"
+    assert salida.error.code == "PARSER_LIMITE_PAGINAS_VISUALES"
+    assert "secreto" not in salida.model_dump_json()
+    db.ultimo_error_ingestion.assert_called_once_with("ws", "doc")

@@ -999,3 +999,24 @@ def test_revocacion_durante_storage_devuelve401_sin_contenido(entorno, monkeypat
     if ruta == "fuente":
         url += "/sources/c"
     error(e.cliente.get(url, headers=e.headers), 401, "SESSION_INVALID")
+
+
+def test_fallo_parser_conserva_titulo_y_publica_codigo_sin_diagnostico_privado(entorno):
+    e = entorno
+    e.admision.limites = replace(e.admision.limites, max_tokens_extraidos=5)
+    respuesta = subir(e, titulo="Documento de prueba")
+    assert respuesta.status_code == 202
+    datos = respuesta.json()
+    terminado(e, datos, "failed")
+    doc_id = datos["document_id"]
+    e.db.actualizar_documento(doc_id, DocumentStatus.FAILED, detalle_error="secreto en ruta del proveedor")
+    detalle = e.cliente.get(f"/api/documents/{doc_id}", headers=e.headers)
+    assert detalle.status_code == 200, detalle.text
+    documento = detalle.json()
+    assert documento["titulo"] == "Documento de prueba"
+    assert documento["error"]["code"] == "PARSER_LIMITE_TOKENS"
+    assert "secreto" not in detalle.text
+    lista = e.cliente.get("/api/documents", headers=e.headers)
+    assert lista.status_code == 200, lista.text
+    assert lista.json()["items"][0]["error"]["code"] == "PARSER_LIMITE_TOKENS"
+    assert "secreto" not in lista.text

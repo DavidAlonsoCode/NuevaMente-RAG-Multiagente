@@ -374,7 +374,16 @@ class ServicioGlosario:
             revalidar()
             if estado_b.status == JobStatus.CANCELLED:
                 raise TrabajoCanceladoError()
-            if estado_b.error is not None or estado_b.borrador is None or adaptador.ultimo is None:
+            sin_definiciones_b = (
+                adaptador.sin_definiciones
+                and estado_b.error is not None
+                and estado_b.error.code == "PROVIDER_UNAVAILABLE"
+            )
+            if estado_b.status == JobStatus.REJECTED_QUALITY:
+                raise RechazoCalidadError()
+            if not sin_definiciones_b and (
+                estado_b.error is not None or estado_b.borrador is None or adaptador.ultimo is None
+            ):
                 raise FalloTrabajoError(
                     estado_b.error.code if estado_b.error else "INVALID_RESPONSE",
                     estado_b.error.message if estado_b.error else "No se pudo redactar el glosario.",
@@ -393,7 +402,7 @@ class ServicioGlosario:
                 aprobado = None
             else:
                 if revisado.status == JobStatus.REJECTED_QUALITY:
-                    raise RechazoCalidadError()
+                    raise RechazoCalidadError(revisado.error.razones_bloqueo if revisado.error else ())
                 if revisado.error is not None:
                     raise FalloTrabajoError(revisado.error.code, revisado.error.message)
                 autorizacion = supervisor(revisado, grafo)
@@ -412,6 +421,7 @@ class ServicioGlosario:
                 aprobado = finalizer(revisado, bucket=self.cfg.oci_bucket_name, created_at=base["created_at"])
         else:
             aprobado = None
+        referencias_canonicas = {r.chunk_id: r for r in revisado.referencias}
         chunk_a_doc = {c.chunk_id: c.document_id for c in chunks}
         originales = {t.id: t for t in candidatos}
         terminos = []
@@ -423,6 +433,7 @@ class ServicioGlosario:
             else:
                 nuevas_refs = []
                 for r in termino.referencias:
+                    r = referencias_canonicas[r.chunk_id]
                     doc_ref = r.document_id or chunk_a_doc.get(r.chunk_id)
                     nuevas_refs.append(
                         Referencia(
@@ -441,7 +452,11 @@ class ServicioGlosario:
         revalidar()
         return GlossaryOutput(
             **base,
-            estado="sin_definiciones" if sin_definiciones else "verificado",
+            estado="sin_definiciones"
+            if sin_definiciones
+            else "no_evaluado"
+            if solicitud.modo_generacion == "basico"
+            else "verificado",
             terminos=terminos,
             evaluacion_calidad=aprobado.evaluacion_calidad if aprobado else None,
             trazabilidad=aprobado.trazabilidad if aprobado else None,

@@ -657,14 +657,8 @@ export const App: React.FC = () => {
                       return (
                         <label
                           key={d.document_id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            fontSize: '0.8rem',
-                            cursor: 'pointer',
-                            color: checked ? 'var(--ink)' : 'var(--ink-muted)',
-                          }}
+                          className="nm-source-choice"
+                          data-selected={checked}
                           title={d.titulo}
                         >
                           <input
@@ -677,7 +671,7 @@ export const App: React.FC = () => {
                               toggleDocSeleccionado(d.document_id);
                             }}
                           />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.titulo}</span>
+                          <span>{d.titulo}</span>
                         </label>
                       );
                     })}

@@ -1,5 +1,7 @@
 # Referencia de API — NuevaMente (#59)
 
+> Revisión PR #150 (26/10/2026): `cantidad_items` es opcional (1–25) en generación de flashcards, quiz y tutorial; el Writer debe cumplir la cantidad y conserva el límite de tres redacciones. Chat y glosario admiten `modo_generacion=multiagente|basico`, con multiagente predeterminado. En básico devuelven `estado=no_evaluado`, citas y `evaluacion_calidad=null` (glosario también `trazabilidad=null`); las abstenciones siguen siendo `fuera_de_alcance`, `sin_definiciones` o `sin_terminos`. No se presentan como revisados. Idempotencia y caché separan los modos. [Detalle](revision-pr-150.md).
+
 Referencia del runtime actual, basada en el [OpenAPI versionado](openapi.json), las
 [rutas FastAPI](../backend/app/api/routes/) y sus servicios. Cubre 37 operaciones.
 No aprueba las precisiones `contract-change` pendientes en [contratos-api.md](contratos-api.md).
@@ -210,8 +212,9 @@ debe usar esa descarga como vista estudiante.
 
 `TrabajoComunResponse` conserva `result: dict|null` y `error: dict|null`:
 ingestión devuelve identidad, hash, estado, chunks, reutilización, metadata y
-cobertura; chat devuelve `ChatAnswer` (respuesta citada o abstención
-`fuera_de_alcance`); glosario devuelve `GlossaryOutput`. `result` sólo tiene valor
+cobertura; chat devuelve `ChatAnswer` (respuesta citada `respondida`, básico
+`no_evaluado` o abstención `fuera_de_alcance`); glosario devuelve
+`GlossaryOutput` (`verificado`, básico `no_evaluado` o ausencia explícita de definiciones). `result` sólo tiene valor
 en `completed`. Un job de ingestión `completed` puede dejar un documento
 `processing` por visión pendiente: consultar además el documento y exigir `ready`.
 Los jobs de generación no se consultan por `/api/jobs`.

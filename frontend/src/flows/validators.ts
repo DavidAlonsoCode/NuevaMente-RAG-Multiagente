@@ -118,7 +118,7 @@ function exigir(condicion: boolean, msg = 'Contrato incompatible'): void {
   if (!condicion) throw new Error(msg);
 }
 
-function validarCalidadAprobada(calidad: any, exigirIgualdadRespaldadas = false): boolean {
+function validarCalidadAprobada(calidad: any): boolean {
   if (typeof calidad !== 'object' || calidad === null) return false;
   const score = calidad.anclaje_fuente_score;
   const total = calidad.cantidad_afirmaciones;
@@ -129,7 +129,7 @@ function validarCalidadAprobada(calidad: any, exigirIgualdadRespaldadas = false)
   if (!Number.isInteger(total) || !Number.isInteger(respaldadas) || total <= 0) {
     return false;
   }
-  if (exigirIgualdadRespaldadas ? respaldadas !== total : respaldadas > total || respaldadas < 0) {
+  if (respaldadas !== total) {
     return false;
   }
   if (Math.abs(score - respaldadas / total) > 1e-6) return false;
@@ -363,6 +363,7 @@ export function validarRespuestaChat(
     document_id: string;
     document_ids?: string[];
     pregunta: string;
+    modo_generacion?: 'multiagente' | 'basico';
     perfil_destinatario: string;
     idioma_salida: string;
   }
@@ -397,14 +398,16 @@ export function validarRespuestaChat(
     if (!Array.isArray(refs) || refs.length !== 0 || calidad !== null) {
       throw invalida();
     }
-  } else if (datos.estado === 'respondida') {
+  } else if (datos.estado === 'respondida' || datos.estado === 'no_evaluado') {
     if (
       !datos.respuesta.trim() ||
       !Array.isArray(refs) ||
       refs.length === 0 ||
       refs.length > 100 ||
       refs.some((r) => typeof r !== 'object' || r === null || !esTexto(r.chunk_id)) ||
-      !validarCalidadAprobada(calidad)
+      !(datos.estado === 'no_evaluado'
+        ? payloadEsperado.modo_generacion === 'basico' && calidad === null
+        : payloadEsperado.modo_generacion !== 'basico' && validarCalidadAprobada(calidad))
     ) {
       throw invalida();
     }
@@ -417,7 +420,7 @@ export function validarRespuestaChat(
 export function validarGlosario(
   salida: any,
   expectedJobId: string,
-  payloadEsperado: { document_id: string; perfil_destinatario: string; idioma_salida: string }
+  payloadEsperado: { document_id: string; perfil_destinatario: string; idioma_salida: string; modo_generacion?: 'multiagente' | 'basico' }
 ): void {
   try {
     exigir(typeof salida === 'object' && salida !== null);
@@ -431,9 +434,11 @@ export function validarGlosario(
     exigir(Number.isInteger(salida.candidatos_omitidos) && salida.candidatos_omitidos >= 0);
 
     const definidos = terminos.filter((t: any) => t.estado === 'definido');
-    exigir(['verificado', 'sin_definiciones', 'sin_terminos'].includes(salida.estado));
+    exigir(['verificado', 'no_evaluado', 'sin_definiciones', 'sin_terminos'].includes(salida.estado));
     exigir((salida.estado === 'sin_terminos') === (terminos.length === 0));
-    exigir((salida.estado === 'verificado') === (definidos.length > 0));
+    exigir(['verificado', 'no_evaluado'].includes(salida.estado) === (definidos.length > 0));
+    if (salida.estado === 'no_evaluado') exigir(payloadEsperado.modo_generacion === 'basico');
+    if (salida.estado === 'verificado') exigir(payloadEsperado.modo_generacion !== 'basico');
 
     for (const term of terminos) {
       exigir(esTexto(term.termino_original));
@@ -452,7 +457,9 @@ export function validarGlosario(
       }
     }
 
-    if (definidos.length > 0) {
+    if (salida.estado === 'no_evaluado') {
+      exigir(salida.evaluacion_calidad === null && salida.trazabilidad === null);
+    } else if (definidos.length > 0) {
       exigir(validarCalidadAprobada(salida.evaluacion_calidad));
       exigir(typeof salida.trazabilidad === 'object' && salida.trazabilidad !== null);
     } else {

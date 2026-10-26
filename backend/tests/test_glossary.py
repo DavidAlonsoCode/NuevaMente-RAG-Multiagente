@@ -351,3 +351,20 @@ def test_pdf_vcn_principiante_es_con_fuente_y_citas_validas(entorno, documento_d
         for ref in termino["referencias"]:
             c = chunks[ref["chunk_id"]]
             assert ref["pagina"] == c.pagina and ref["seccion"] == c.seccion
+
+
+@pytest.mark.parametrize("sin_definiciones", [False, True])
+def test_basico_no_simula_glosario_verificado_y_separa_cache(entorno, sin_definiciones):
+    e = entorno
+    if sin_definiciones:
+        e.insuficientes = {"VCN"}
+    recibo = glosario(e, modo_generacion="basico").json()
+    trabajo = esperar(e, recibo)
+    assert trabajo["status"] == "completed", trabajo
+    resultado = e.cliente.get(f"/api/glossaries/{recibo['job_id']}", headers=e.headers).json()
+    assert resultado["estado"] == ("sin_definiciones" if sin_definiciones else "no_evaluado")
+    assert resultado["evaluacion_calidad"] is None
+    assert resultado["trazabilidad"] is None
+    assert not e.revisiones_glosario
+    nuevo = glosario(e, modo_generacion="multiagente").json()
+    assert nuevo["job_id"] != recibo["job_id"]

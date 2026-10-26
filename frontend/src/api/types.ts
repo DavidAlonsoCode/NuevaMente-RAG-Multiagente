@@ -384,7 +384,7 @@ export interface ChatAnswer {
   pregunta: string;
   perfil_destinatario: RecipientProfile;
   idioma_salida: OutputLanguage;
-  estado: 'respondida' | 'fuera_de_alcance';
+  estado: 'respondida' | 'no_evaluado' | 'fuera_de_alcance';
   respuesta: string;
   referencias: Referencia[];
   evaluacion_calidad: EvaluacionCalidad | null;
@@ -416,7 +416,7 @@ export interface GlossaryOutput {
   documentos_fuente?: DocumentoFuente[];
   perfil_destinatario: RecipientProfile;
   idioma_salida: OutputLanguage;
-  estado: 'verificado' | 'sin_definiciones' | 'sin_terminos';
+  estado: 'verificado' | 'no_evaluado' | 'sin_definiciones' | 'sin_terminos';
   terminos: TerminoGlosario[];
   candidatos_omitidos: number;
   evaluacion_calidad: EvaluacionCalidad | null;

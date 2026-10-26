@@ -21,7 +21,7 @@ from app.exports.router import ServicioExportaciones
 from app.generations.catalog import CatalogoGeneraciones
 from app.generations.provenance import leer_declaracion, validar_procedencia
 from app.jobs.admission import consultar_intencion
-from app.jobs.manager import ContextoEjecucion, FalloTrabajoError, TrabajoCanceladoError
+from app.jobs.manager import ContextoEjecucion, FalloTrabajoError, RechazoCalidadError, TrabajoCanceladoError
 from app.schemas.enums import JobStatus
 from app.schemas.errors import ErrorAplicacion, ErrorBody, ErrorCode
 from app.schemas.requests import GenerateRequest
@@ -136,7 +136,16 @@ class ServicioGeneraciones:
                 codigo = ErrorCode.RATE_LIMITED
             elif causa == "PROVIDER_UNAVAILABLE":
                 codigo = ErrorCode.PROVIDER_UNAVAILABLE
-            error = ErrorBody(code=codigo, message="El trabajo no se completó.", details={"causa": causa})
+            mensaje = "El trabajo no se completó."
+            detalles = {"causa": causa}
+            if fila["status"] == "rejected_quality":
+                # Reproyectar sólo el catálogo público, nunca el diagnóstico persistido completo.
+                motivos = [
+                    c for c, texto in RechazoCalidadError.MOTIVOS.items() if texto in (fila["error_message"] or "")
+                ]
+                mensaje = str(RechazoCalidadError(motivos))
+                detalles["razones_bloqueo"] = motivos
+            error = ErrorBody(code=codigo, message=mensaje, details=detalles)
         activo = fila["status"] in {"queued", "running"}
         posicion = self.gestor.estado(job["job_id"]).get("posicion_cola") if activo and job else None
         return GenerationJobResponse(

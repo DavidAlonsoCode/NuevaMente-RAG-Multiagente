@@ -86,3 +86,17 @@ adicional debe identificar el modo. #46/#58 pueden continuar en paralelo.
 La comprobación comparativa con Gemini/OCI reales, consumo y latencia se realiza
 en #133 con autorización específica. Esta implementación y sus pruebas simuladas
 no acreditan ese resultado ni el despliegue público.
+
+
+## Extensión a chat y glosario — 26/10/2026
+
+`POST /api/chat` y `POST /api/glossaries` aceptan `modo_generacion` opcional,
+con `multiagente` predeterminado. El selector de cada panel permite elegirlo.
+El básico ejecuta Supervisor → Researcher → Writer, valida estructura y citas,
+y revalida las fuentes antes de entregar. Una respuesta o definición con contenido
+usa `estado=no_evaluado` y `evaluacion_calidad=null`; el glosario además conserva
+`trazabilidad=null`. La UI muestra el aviso de ausencia de revisión independiente.
+Las abstenciones conservan sus estados anteriores. No se atribuye aprobación ni
+score al básico. La caché del glosario e idempotencia incluyen el modo; cambiarlo
+crea otra solicitud. El contrato de paquetes pedagógicos 1.0/1.1 no cambia por
+esta extensión. [Revisión y validación](revision-pr-150.md).

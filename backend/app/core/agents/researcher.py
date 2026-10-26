@@ -102,7 +102,7 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
     if estado.status != JobStatus.RUNNING:
         return {}
     ctx, recuperador = dependencias.grafo.ejecucion, dependencias.retriever
-    tipo_ejecucion = getattr(ctx, "tipo", None) or getattr(dependencias.grafo.ejecucion, "tipo", None)
+    tipo_ejecucion = ctx.tipo
     es_chat_o_glosario = dependencias.pregunta is not None or tipo_ejecucion in ("chat", "glosario")
 
     def update(**campos):

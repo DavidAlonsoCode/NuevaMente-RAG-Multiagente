@@ -20,8 +20,9 @@ def finalizer(estado: EstadoGrafo, *, bucket: str, created_at: datetime) -> Peda
         or estado.error is not None
         or factual is None
         or factual.score is None
-        or factual.score < 0.60
+        or factual.score < 0.85
         or factual.total == 0
+        or factual.total != factual.respaldadas
         or estado.afirmaciones_fallidas
         or estado.solicitudes_evidencia
         or calidad is None

@@ -1,162 +1,143 @@
-"""Caminos del Critic con proveedor real (es_mock=False).
+"""Misma política de revisión con dobles y proveedor real, sin llamadas externas."""
 
-Los tests con dobles fijan el contrato estricto de EvaluadorInvalidoError, pero no
-pueden ejercitar la tolerancia del proveedor real. Estos casos cubren los fixes:
-- A.1: citas cruzadas del juez (chunk válido de otra tarjeta) no tumban la ejecución.
-- A.2: chat con síntesis no contradicha y generación real >= umbral sin exigir 100%.
-Cada caso conserva su contraparte con mock para demostrar que el contrato de tests
-no cambió.
-"""
+from dataclasses import replace
 
 import pytest
 import test_critic as critic_cases
 import test_writer as writer_cases
-from app.core.agents.critic import DependenciasCritic, critic
-from test_critic import borrador, juez, rubrica
+from app.core.agents.critic import critic
+from test_critic import borrador, juez
 
-# Mismo mecanismo que test_critic: exponer las fixtures importadas en el
-# namespace del módulo para que pytest resuelva la cadena de dependencias.
 entorno_writer = writer_cases.entorno
 entorno_base = critic_cases.entorno
 pytestmark = pytest.mark.unit
 
 
-@pytest.fixture
-def entorno_real(entorno_base):
-    deps_writer, deps_critic, documento = entorno_base
-    doble = deps_writer.proveedor
-    assert doble.es_mock
-    doble.es_mock = False  # el proveedor se comporta como Gemini real ante los filtros
-    cfg = deps_critic.configuracion.model_copy(update={"mock_gemini": False})
-    return deps_writer, DependenciasCritic(deps_critic.grafo, doble, cfg), documento
+@pytest.fixture(params=[True, False], ids=["mock", "real"])
+def entorno_revision(entorno_base, request):
+    escritor, deps, documento = entorno_base
+    escritor.proveedor.es_mock = request.param
+    deps = replace(deps, configuracion=deps.configuracion.model_copy(update={"mock_gemini": request.param}))
+    return escritor, deps, documento
 
 
-def con_segunda_evidencia(estado):
-    """Agrega un chunk real a la evidencia para simular una cita cruzada válida."""
-    duplicado = estado.evidencia[0].model_copy(deep=True)
-    duplicado = duplicado.model_copy(update={"chunk": duplicado.chunk.model_copy(update={"chunk_id": "ch_2"})})
-    estado.evidencia.append(duplicado)
-    return estado
+def programar(entorno, *, total=2, modificar=None):
+    def ajustar(fase, salida, datos, entrada):
+        if fase == "descomponer":
+            for afirmacion in salida["afirmaciones"]:
+                afirmacion["ubicacion"] = "/contenido_adaptado/items/0/dorso"
+        return modificar(fase, salida, datos, entrada) if modificar else salida
+
+    juez(entorno[0].proveedor, total=total, respaldadas=total, modificar=ajustar)
 
 
-def cita_cruzada(doble):
-    """El juez cita ch_2 (evidencia real, fuera de las citas de la tarjeta)."""
+@pytest.mark.parametrize("tipo", ["generation", "chat", "glosario"])
+def test_no_inventa_respaldo_ni_descarta_fallidas_con_score_alto(entorno_revision, tipo):
+    entorno = entorno_revision
+    entorno[1].grafo.ejecucion.tipo = tipo
+    estado = borrador(entorno)
 
-    def modificar(fase, salida, datos, entrada):
+    def modificar(fase, salida, *_):
         if fase == "juzgar":
-            salida["juicios"] = [
-                {
-                    "id_afirmacion": a["id"],
-                    "estado": "respaldada",
-                    "motivo": "Comprobación con un chunk válido de otra sección",
-                    "referencias": ["ch_2"],
-                }
-                for a in datos["afirmaciones"]
-            ]
+            salida["juicios"][-1].update(estado="sin_evidencia", referencias=[])
         return salida
 
-    juez(doble, total=1, respaldadas=1, modificar=modificar)
+    programar(entorno, total=10, modificar=modificar)
+    resultado = critic(estado, entorno[1])
+    assert resultado["error"] is None
+    assert resultado["evaluacion_factual"].score == 0.9
+    assert len(resultado["afirmaciones_fallidas"]) == 1
+    assert resultado["destino_revision"] == "researcher"
 
 
-def test_citas_cruzadas_no_tumban_generacion_con_proveedor_real(entorno_real):
-    deps_writer, deps, _ = entorno_real
-    estado = con_segunda_evidencia(borrador(entorno_real))
-    cita_cruzada(deps_writer.proveedor)
-    resultado = critic(estado, deps)
+@pytest.mark.parametrize("tipo", ["chat", "glosario"])
+def test_consulta_general_no_exige_todas_las_secciones(entorno_revision, tipo):
+    entorno = entorno_revision
+    entorno[1].grafo.ejecucion.tipo = tipo
+    entorno[2].secciones = tuple(f"sec_{i}" for i in range(1, 16))
+    estado = borrador(entorno)
+    programar(entorno)
+    resultado = critic(estado, entorno[1])
     assert resultado["error"] is None
     assert resultado["destino_revision"] == "finalizer"
-    assert resultado["afirmaciones_fallidas"] == []
+    assert resultado["evaluacion_factual"].score == 1
+    segmentos = entorno[0].proveedor.entradas_verificacion[0]["prompt"]
+    assert "/metadatos/" not in segmentos and "/frente" not in segmentos
 
 
-def test_citas_cruzadas_siguen_siendo_evaluador_invalido_con_mock(entorno_base):
-    deps_writer, deps, _ = entorno_base
-    estado = con_segunda_evidencia(borrador(entorno_base))
-    cita_cruzada(deps_writer.proveedor)
-    resultado = critic(estado, deps)
-    assert resultado["error"] is not None
-    assert resultado["error"].code == "INVALID_EVALUATION"
+@pytest.mark.parametrize("tipo", ["chat", "glosario"])
+@pytest.mark.parametrize(
+    "campo", ["contradicciones", "afirmaciones_omitidas", "solicitudes_evidencia", "cobertura_objetivos"]
+)
+def test_consultas_conservan_hallazgos_sustantivos(entorno_revision, tipo, campo):
+    entorno = entorno_revision
+    entorno[1].grafo.ejecucion.tipo = tipo
+    estado = borrador(entorno)
 
-
-def sintesis_no_contradicha(doble):
-    """Una afirmación respaldada y una síntesis general sin_evidencia no contradicha."""
-
-    def modificar(fase, salida, datos, entrada):
-        if fase == "juzgar":
-            afirmaciones = datos["afirmaciones"]
-            salida["juicios"] = [
-                {
-                    "id_afirmacion": afirmaciones[0]["id"],
-                    "estado": "respaldada",
-                    "motivo": "Respaldada con la cita de la tarjeta",
-                    "referencias": ["ch_1"],
-                },
-                {
-                    "id_afirmacion": afirmaciones[1]["id"],
-                    "estado": "sin_evidencia",
-                    "motivo": "Síntesis conversacional general",
-                    "referencias": [],
-                },
-            ]
+    def modificar(fase, salida, *_):
         if fase == "pedagogia":
-            return rubrica()
+            salida[campo] = "parcial" if campo == "cobertura_objetivos" else ["Falta evidencia pertinente"]
         return salida
 
-    juez(doble, total=2, respaldadas=2, modificar=modificar)
-
-
-def test_chat_real_acepta_sintesis_no_contradicha(entorno_real):
-    deps_writer, deps, _ = entorno_real
-    deps.grafo.ejecucion.tipo = "chat"
-    estado = borrador(entorno_real)
-    sintesis_no_contradicha(deps_writer.proveedor)
-    resultado = critic(estado, deps)
+    programar(entorno, modificar=modificar)
+    resultado = critic(estado, entorno[1])
     assert resultado["error"] is None
-    assert resultado["destino_revision"] == "finalizer"
-
-
-def test_chat_mock_conserva_el_contrato_estricto(entorno_base):
-    deps_writer, deps, _ = entorno_base
-    deps.grafo.ejecucion.tipo = "chat"
-    estado = borrador(entorno_base)
-    sintesis_no_contradicha(deps_writer.proveedor)
-    resultado = critic(estado, deps)
     assert resultado["destino_revision"] != "finalizer"
     assert resultado["evaluacion_pedagogica"].razones_bloqueo
 
 
-def con_una_sin_evidencia(doble):
-    """Nueve afirmaciones respaldadas y una menor sin_evidencia (sin contradicciones)."""
+@pytest.mark.parametrize("citas", [["ch_2"], ["ch_2", "ch_1"]])
+def test_cita_cruzada_filtra_sin_inventar_respaldo(entorno_revision, citas):
+    entorno = entorno_revision
+    estado = borrador(entorno)
+    extra = estado.evidencia[0].model_copy(deep=True)
+    extra.chunk = extra.chunk.model_copy(update={"chunk_id": "ch_2"})
+    estado.evidencia.append(extra)
 
-    def modificar(fase, salida, datos, entrada):
+    def modificar(fase, salida, *_):
         if fase == "juzgar":
-            salida["juicios"] = [
-                {
-                    "id_afirmacion": a["id"],
-                    "estado": "respaldada" if i < 9 else "sin_evidencia",
-                    "motivo": "Afirmación menor sin respaldo directo",
-                    "referencias": ["ch_1"] if i < 9 else [],
-                }
-                for i, a in enumerate(datos["afirmaciones"])
-            ]
+            for juicio in salida["juicios"]:
+                juicio["referencias"] = citas
         return salida
 
-    juez(doble, total=10, respaldadas=10, modificar=modificar)
-
-
-def test_generacion_real_aprueba_al_canzar_umbral_sin_exigir_cien_por_ciento(entorno_real):
-    deps_writer, deps, _ = entorno_real
-    estado = borrador(entorno_real)
-    con_una_sin_evidencia(deps_writer.proveedor)
-    resultado = critic(estado, deps)
+    programar(entorno, modificar=modificar)
+    resultado = critic(estado, entorno[1])
     assert resultado["error"] is None
-    assert resultado["destino_revision"] == "finalizer"
-    assert resultado["afirmaciones_fallidas"] == []
+    assert resultado["evaluacion_factual"].score == (1 if "ch_1" in citas else 0)
+    assert resultado["destino_revision"] == ("finalizer" if "ch_1" in citas else "researcher")
+    assert all(set(j.referencias) <= {"ch_1"} for j in resultado["evaluacion_factual"].juicios)
 
 
-def test_generacion_mock_conserva_exigencia_del_contrato(entorno_base):
-    deps_writer, deps, _ = entorno_base
-    estado = borrador(entorno_base)
-    con_una_sin_evidencia(deps_writer.proveedor)
-    resultado = critic(estado, deps)
-    assert resultado["destino_revision"] != "finalizer"
-    assert resultado["afirmaciones_fallidas"]
+@pytest.mark.parametrize("referencias", [[], ["ajena"]])
+def test_quiz_sin_citas_validas_pide_correccion(entorno_revision, referencias):
+    entorno = entorno_revision
+    estado = borrador(entorno, "quiz")
+
+    def modificar(fase, salida, *_):
+        if fase == "quiz":
+            for opcion in salida["opciones"]:
+                opcion["referencias"] = referencias
+        return salida
+
+    juez(entorno[0].proveedor, modificar=modificar)
+    resultado = critic(estado, entorno[1])
+    assert resultado["error"] is None
+    assert "quiz_invalido" in resultado["evaluacion_pedagogica"].razones_bloqueo
+    assert resultado["destino_revision"] == "writer"
+
+
+@pytest.mark.parametrize("tipo", ["chat", "glosario", "generation"])
+def test_ubicacion_inventada_sigue_siendo_error_tecnico(entorno_revision, tipo):
+    entorno = entorno_revision
+    entorno[1].grafo.ejecucion.tipo = tipo
+    estado = borrador(entorno)
+
+    def modificar(fase, salida, *_):
+        if fase == "descomponer":
+            salida["afirmaciones"][0]["ubicacion"] = "/inventada"
+        return salida
+
+    programar(entorno, modificar=modificar)
+    resultado = critic(estado, entorno[1])
+    assert resultado["error"].code == "INVALID_EVALUATION"
+    assert resultado["evaluacion_factual"] is None

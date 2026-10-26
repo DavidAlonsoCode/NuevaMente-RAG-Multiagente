@@ -162,8 +162,6 @@ def _segmentos(borrador, referencias, *, es_sintesis=False, ignorar_metadatos=Fa
     if ignorar_metadatos:
         omitidos.update({"metadatos", "titulo", "frente"})
     res = _extraer(omitidos)
-    if not res and ignorar_metadatos:
-        res = _extraer(omitidos - {"titulo", "frente"})
     return res
 
 
@@ -181,6 +179,7 @@ _TAREAS = {
     "juzgar": "Juzgar cada ID original exactamente una vez. Para respaldada/contradicha citar chunks que prueben "
     "el veredicto y estén entre las citas_permitidas de esa afirmación. Sin prueba usar sin_evidencia. "
     "Citar únicamente los chunks realmente utilizados para probar el hecho, no enumerar todas las citas permitidas. "
+    "Aceptar paráfrasis y síntesis inferibles de las citas, sin exigir coincidencia literal. "
     "Conservar números, unidades, negaciones y condiciones. No usar conocimiento externo.",
     "pedagogia": "Revisar el borrador COMPLETO y metadatos: claridad, perfil, objetivos, coherencia, conceptos, "
     "prerrequisitos, estimación didáctica, alcance y nivel_detalle solicitado. No aceptar que Writer rebaje "
@@ -248,15 +247,15 @@ class _SesionRevision:
         if ctx.tipo in ("chat", "glosario"):
             if tarea == "descomponer":
                 sistema += (
-                    "\nContexto conversacional/glosario: Extraer únicamente las afirmaciones técnicas centrales. "
-                    "Ignorar frases introductorias, conectores conversacionales ('El documento presenta...', "
-                    "'En resumen...') o resúmenes generales de estructura."
+                    "\nContexto conversacional/glosario: Extraer todos los hechos de la respuesta o definiciones, "
+                    "incluidas síntesis sobre los temas del documento. Excluir cortesías y conectores sin hechos. "
+                    "La pregunta del usuario y los metadatos administrativos no son afirmaciones de la respuesta."
                 )
             elif tarea == "juzgar":
                 sistema += (
                     "\nContexto conversacional/glosario: Ser flexible con paráfrasis, síntesis y resúmenes "
-                    "generales. Si una afirmación resume o deduce razonablemente el tema a partir de los "
-                    "fragmentos disponibles en las citas permitidas, marcarla como 'respaldada'."
+                    "generales: no exigir coincidencia literal. Marcar respaldada una síntesis que se desprende "
+                    "de las citas permitidas; si agrega hechos no demostrados, conservar sin_evidencia o contradicha."
                 )
             elif tarea == "pedagogia":
                 sistema += (
@@ -264,8 +263,9 @@ class _SesionRevision:
                     "Evaluar la cobertura EXCLUSIVAMENTE respecto de la pregunta puntual del usuario o los "
                     "términos extraídos; JAMÁS exigir cubrir todas las secciones del documento ni marcar "
                     "cobertura_objetivos='parcial' por omitir secciones no consultadas. Si la respuesta "
-                    "contesta de forma útil con la evidencia recuperada, marcar cobertura_objetivos='completa' "
-                    "y dejar solicitudes_evidencia=[]."
+                    "contesta de forma útil con la evidencia recuperada, la cobertura puede ser completa. "
+                    "Conservar hallazgos de contradicciones, hechos omitidos y solicitudes de evidencia "
+                    "necesarias para responder la pregunta o definir los términos."
                 )
         schema = modelo_salida.model_json_schema()
         if modelo_salida is Descomposicion:
@@ -331,34 +331,17 @@ class _SesionRevision:
             respuesta = self.llamar("descomponer", Descomposicion, {"segmentos": self.segmentos})
             afirmaciones = []
             duplicados = set()
-            es_flexible = self.dependencias.grafo.ejecucion.tipo in ("chat", "glosario")
-            es_mock = self.dependencias.proveedor.es_mock
-            todos_los_chunks = [e.chunk.chunk_id for e in self.estado.evidencia]
-            primera_ubicacion = next(iter(self.segmentos), "")
             for indice, dato in enumerate(respuesta.afirmaciones):
-                ubicacion = dato.ubicacion if dato.ubicacion in self.segmentos else primera_ubicacion
-                # Con mocks se preserva el contrato estricto que fijan los tests; con el
-                # proveedor real una ubicación inventada o un duplicado se tolera usando la
-                # primera ubicación o descartando el duplicado, sin tumbar la ejecución.
-                if not ubicacion:
-                    if es_mock and not es_flexible:
-                        raise EvaluadorInvalidoError("El extractor inventó una ubicación del borrador")
-                    continue
-                clave = (ubicacion, dato.texto.strip())
+                clave = (dato.ubicacion, dato.texto.strip())
                 if clave in duplicados:
-                    if es_mock and not es_flexible:
-                        raise EvaluadorInvalidoError("El extractor duplicó una afirmación")
-                    continue
+                    raise EvaluadorInvalidoError("El extractor duplicó una afirmación")
                 duplicados.add(clave)
-                if es_mock and not es_flexible and dato.ubicacion not in self.segmentos:
+                if dato.ubicacion not in self.segmentos:
                     raise EvaluadorInvalidoError("El extractor inventó una ubicación del borrador")
-                identidad = hashlib.sha256(f"{ubicacion}\0{dato.texto}\0{indice}".encode()).hexdigest()[:24]
+                identidad = hashlib.sha256(f"{dato.ubicacion}\0{dato.texto}\0{indice}".encode()).hexdigest()[:24]
                 identificador = "af_" + identidad
-                citas_locales = self.segmentos[ubicacion]["referencias"]
-                self.citas[identificador] = (
-                    list(dict.fromkeys([*citas_locales, *todos_los_chunks])) if es_flexible else citas_locales
-                )
-                self.ubicaciones[identificador] = ubicacion
+                self.citas[identificador] = self.segmentos[dato.ubicacion]["referencias"]
+                self.ubicaciones[identificador] = dato.ubicacion
                 afirmaciones.append(Afirmacion(identificador, dato.texto))
             if self.dependencias.exigir_afirmacion_por_tarjeta:
                 requeridas = {
@@ -387,41 +370,14 @@ class _SesionRevision:
             ids = [j.id_afirmacion for j in respuesta.juicios]
             if len(ids) != len(afirmaciones) or set(ids) != {a.id for a in afirmaciones}:
                 raise EvaluadorInvalidoError("El juez no cubrió exactamente todas las afirmaciones")
-            es_flexible = self.dependencias.grafo.ejecucion.tipo in ("chat", "glosario")
-            es_mock = self.dependencias.proveedor.es_mock
-            todos_los_chunks = {e.chunk.chunk_id for e in self.estado.evidencia}
             juicios = []
             for juicio in respuesta.juicios:
-                permitidas_locales = set(self.citas[juicio.id_afirmacion])
-                fuera = set(juicio.referencias) - permitidas_locales
-                if fuera:
-                    # El schema del juez acota las citas a la UNIÓN de las permitidas de
-                    # todas las afirmaciones: con el proveedor real puede citar un chunk
-                    # válido de otra tarjeta. Sólo con mocks (contrato de tests) o ante una
-                    # cita ajena a TODA la evidencia se trata como evaluador inválido.
-                    if (es_mock and not es_flexible) or (fuera - todos_los_chunks):
-                        raise EvaluadorInvalidoError("El juicio usó citas fuera de las declaradas para la afirmación")
-                if juicio.estado != "sin_evidencia" and not juicio.referencias:
-                    if es_mock and not es_flexible:
-                        raise EvaluadorInvalidoError("El juicio afirmó respaldo o contradicción sin citar evidencia")
-
-                permitidas = permitidas_locales | todos_los_chunks if es_flexible else permitidas_locales
+                permitidas = set(self.citas[juicio.id_afirmacion])
                 citas_validas = [r for r in juicio.referencias if r in permitidas]
-                if juicio.estado == "respaldada" and not citas_validas and self.citas[juicio.id_afirmacion]:
-                    citas_validas = list(self.citas[juicio.id_afirmacion][:1])
+                # Una cita cruzada o ausente pide corrección; nunca se inventa respaldo.
                 estado_efectivo = juicio.estado
-                if estado_efectivo != "sin_evidencia" and not citas_validas:
+                if not citas_validas:
                     estado_efectivo = "sin_evidencia"
-                # Modo conversacional con proveedor real: una síntesis no contradicha con
-                # citas recuperadas no se trata como alucinación.
-                if (
-                    es_flexible
-                    and not es_mock
-                    and estado_efectivo == "sin_evidencia"
-                    and self.citas[juicio.id_afirmacion]
-                ):
-                    estado_efectivo = "respaldada"
-                    citas_validas = list(self.citas[juicio.id_afirmacion][:1])
                 if estado_efectivo == "sin_evidencia":
                     self.solicitudes.append(f"Ampliar evidencia para {juicio.id_afirmacion}: {juicio.motivo}")
                 juicios.append(
@@ -453,7 +409,9 @@ class _SesionRevision:
             pregunta = esperadas[(opcion.pregunta_id, opcion.option_id)]
             citas_pregunta = {r.chunk_id for r in pregunta.referencias}
             citas_validas = [r for r in opcion.referencias if r in citas_pregunta]
-            if (opcion.defendible or opcion.refutada_por_explicacion) and not citas_validas and not citas_pregunta:
+            if set(opcion.referencias) - citas_pregunta or (
+                (opcion.defendible or opcion.refutada_por_explicacion) and not citas_validas
+            ):
                 fallos.append(
                     f"Quiz {pregunta.id}, opción {opcion.option_id}: falta respaldo documental en las referencias de la pregunta."
                 )
@@ -557,12 +515,15 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
     def fallo(code, message, status=JobStatus.FAILED):
         return update(status=status, error=DiagnosticoGrafo(code=code, message=message))
 
-    def devolver_revision(motivos, **campos):
+    def devolver_revision(motivos, *, razones_bloqueo=(), **campos):
         if estado.intento >= min(3, dependencias.configuracion.max_generation_attempts):
-            return fallo(
-                "QUALITY_REJECTED",
-                "Se agotaron las redacciones sin superar la revisión de calidad.",
-                JobStatus.REJECTED_QUALITY,
+            return update(
+                status=JobStatus.REJECTED_QUALITY,
+                error=DiagnosticoGrafo(
+                    code="QUALITY_REJECTED",
+                    message="Se agotaron las redacciones sin superar la revisión de calidad.",
+                    razones_bloqueo=list(razones_bloqueo),
+                ),
             )
         return update(
             borrador=estado.borrador,
@@ -608,46 +569,20 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
         fallos_quiz = sesion.revisar_quiz()
         visual, revisiones = sesion.revisar_visual()
         es_chat_o_glosario = dependencias.grafo.ejecucion.tipo in ("chat", "glosario")
-        es_mock = dependencias.proveedor.es_mock
-        umbral_aprobacion = 0.60 if es_chat_o_glosario else 0.85
-        umbral_bajo = 0.45 if es_chat_o_glosario else 0.70
-
         fallidas = [j for j in factual.juicios if not j.respaldada]
-        contradichas = [j for j in fallidas if j.motivo.startswith("contradicha:")]
         razones = []
         feedback = list(rubrica.feedback)
         textos_afirmaciones = {a.id: a.texto for a in factual.afirmaciones}
-
-        if es_chat_o_glosario:
-            if contradichas or factual.score < umbral_aprobacion:
-                for juicio in fallidas:
-                    razones.append("afirmacion_sin_respaldo")
-                    feedback.append(
-                        f"Corregir {juicio.id_afirmacion} ({textos_afirmaciones[juicio.id_afirmacion]}) "
-                        f"en {sesion.ubicaciones[juicio.id_afirmacion]}: {juicio.motivo}; citas {list(juicio.referencias)}"
-                    )
-            else:
-                fallidas = []
-                sesion.solicitudes.clear()
-        else:
-            if not es_mock and not contradichas and factual.score >= umbral_aprobacion:
-                # Con el proveedor real no se exige el 100% de afirmaciones respaldadas:
-                # alcanzar el umbral sin contradicciones aprueba sin bloquear por las
-                # afirmaciones menores no respaldadas (Problema 4).
-                fallidas = []
-                sesion.solicitudes.clear()
-            else:
-                for juicio in fallidas:
-                    razones.append("afirmacion_sin_respaldo")
-                    feedback.append(
-                        f"Corregir {juicio.id_afirmacion} ({textos_afirmaciones[juicio.id_afirmacion]}) "
-                        f"en {sesion.ubicaciones[juicio.id_afirmacion]}: {juicio.motivo}; citas {list(juicio.referencias)}"
-                    )
-
-        if factual.score < umbral_bajo:
+        for juicio in fallidas:
+            razones.append("afirmacion_sin_respaldo")
+            feedback.append(
+                f"Corregir {juicio.id_afirmacion} ({textos_afirmaciones[juicio.id_afirmacion]}) "
+                f"en {sesion.ubicaciones[juicio.id_afirmacion]}: {juicio.motivo}; citas {list(juicio.referencias)}"
+            )
+        if factual.score < 0.70:
             razones.append("fidelidad_baja")
             feedback.append("Rehacer el borrador usando solo hechos respaldados y restricciones solicitadas.")
-        elif factual.score < umbral_aprobacion:
+        elif factual.score < 0.85:
             razones.append("fidelidad_requiere_revision")
 
         for dimension in ("claridad_pedagogica", "adecuacion_perfil", "coherencia_didactica"):
@@ -658,7 +593,7 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
         if es_chat_o_glosario:
             necesarias = set(estado.secciones_cubiertas)
             faltantes = []
-            solicitudes = []
+            solicitudes = [*sesion.solicitudes, *rubrica.solicitudes_evidencia]
         else:
             necesarias = (
                 set(estado.secciones_disponibles)
@@ -697,17 +632,14 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
                 if document_id not in cubiertas:
                     solicitudes.append(f"Recuperar evidencia pertinente de la fuente {document_id}.")
 
-        if es_chat_o_glosario:
-            cobertura = "completa"
-        else:
-            cobertura = "parcial" if faltantes or fuentes_sin_aporte else rubrica.cobertura_objetivos
+        cobertura = "parcial" if faltantes or fuentes_sin_aporte else rubrica.cobertura_objetivos
 
         if cobertura == "parcial":
             razones.append("cobertura_incompleta")
             feedback.append("Cubrir el alcance y objetivos pendientes con evidencia del documento.")
         if solicitudes:
             razones.append("evidencia_insuficiente")
-        if not es_chat_o_glosario and (rubrica.contradicciones or rubrica.afirmaciones_omitidas):
+        if rubrica.contradicciones or rubrica.afirmaciones_omitidas:
             razones.append("contradiccion_o_evaluacion_incompleta")
             feedback.extend(rubrica.contradicciones + rubrica.afirmaciones_omitidas)
         if fallos_quiz:
@@ -736,7 +668,7 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
         )
         _revalidar(estado, dependencias)
         if not aprobada and estado.intento >= min(3, dependencias.configuracion.max_generation_attempts):
-            return devolver_revision(feedback or razones)
+            return devolver_revision(feedback or razones, razones_bloqueo=razones)
         return update(
             borrador=borrador,
             referencias=referencias,

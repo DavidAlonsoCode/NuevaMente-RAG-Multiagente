@@ -341,7 +341,7 @@ export const CATALOGO_PT: Record<string, string> = {
   "upload.parser_binario": "O arquivo de texto contém dados binários. Salve como texto UTF-8.",
   "upload.parser_limite_paginas": "O PDF ultrapassa 100 páginas. Divida em documentos menores.",
   "upload.parser_limite_tokens": "O documento ultrapassa 100.000 tokens extraídos. Divida em partes.",
-  "upload.parser_limite_paginas_visuales": "O PDF ultrapassa o limite de 20 páginas visuais. Divida em partes.",
+  "upload.parser_limite_paginas_visuales": "O PDF ultrapassa o limite de 100 páginas visuais. Divida em partes.",
   "upload.parser_timeout_extraccion": "A extração ultrapassou o tempo permitido. Tente um PDF mais simples.",
   "upload.parser_demasiado_grande": "O arquivo ultrapassa 20 MiB para PDF ou 5 MiB para texto.",
   "material.tarjeta": "Cartão {numero} de {total}",
