@@ -605,7 +605,8 @@ download() {
     json) jq -e --arg gid "$gid" '.generation_id==$gid and .status=="aprobado" and .schema_version=="1.0"' "$RUN_DIR/$name.part" >/dev/null ;;
     md) grep -q '^# ' "$RUN_DIR/$name.part" ;;
     pdf) [[ "$(head -c 5 "$RUN_DIR/$name.part")" == '%PDF-' ]] ;;
-    csv) grep -q '^#separator:Comma' "$RUN_DIR/$name.part"; grep -q '^"<span>' "$RUN_DIR/$name.part" ;;
+    csv) local sin_bom; sin_bom=$(sed '1s/^\xef\xbb\xbf//' "$RUN_DIR/$name.part")
+         grep -q '^#separator:Comma' <<<"$sin_bom"; grep -q '^"<span>' <<<"$sin_bom" ;;
     tsv) grep -q '^#separator:Tab' "$RUN_DIR/$name.part"; grep -q '^"<span>' "$RUN_DIR/$name.part" ;;
     apkg) unzip -t "$RUN_DIR/$name.part" >/dev/null; unzip -Z1 "$RUN_DIR/$name.part" | grep -qx 'collection.anki2' ;;
     *) return 1 ;;
@@ -640,7 +641,10 @@ download "$FLASHCARDS_ID" apkg application/octet-stream flashcards-apkg
 ```
 
 CSV/TSV contienen directivas de importación Anki, campos HTML escapados,
-etiquetas, GUID y mazo. APKG es un ZIP con colección y media; esta comprobación
+etiquetas, GUID y mazo. El CSV comienza con BOM UTF-8 (`U+FEFF`) para que
+Excel en Windows no corrompa acentos y eñes; los consumidores deben tolerarlo
+(p. ej. decodificando con `utf-8-sig` o descartando el BOM de la primera línea).
+APKG es un ZIP con colección y media; esta comprobación
 no acredita importación en Anki Desktop, cubierta separadamente por #45.
 
 ### 7. Variante multipart del documento
