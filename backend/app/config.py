@@ -99,8 +99,8 @@ class Configuracion(BaseSettings):
     verification_quota_rpd: int | None = Field(default=None, gt=0)
     generation_max_output_tokens: int = Field(default=8192, gt=0)
     generation_thinking_level: Literal["low", "medium", "high"] | None = None
-    retrieval_k: int = Field(default=5, ge=1, le=100)
-    retrieval_fetch_k: int = Field(default=15, ge=1, le=100)
+    retrieval_k: int = Field(default=10, ge=1, le=100)
+    retrieval_fetch_k: int = Field(default=25, ge=1, le=100)
     retrieval_lambda_mult: float = Field(default=0.7, ge=0, le=1)
     retrieval_max_tokens: int = Field(default=12000, gt=0, le=12000)
 

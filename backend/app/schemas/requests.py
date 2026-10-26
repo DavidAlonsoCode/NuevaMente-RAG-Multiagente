@@ -42,6 +42,12 @@ class GenerateRequest(ModeloContenido):
     nivel_detalle: DetailLevel
     idioma_salida: OutputLanguage
     modo_generacion: Literal["multiagente", "basico"] = "multiagente"
+    cantidad_items: int | None = Field(
+        default=None,
+        ge=1,
+        le=25,
+        description="Cantidad deseada de tarjetas (flashcards), preguntas (quiz) o pasos (tutorial).",
+    )
     alcance: AlcanceSolicitud = Field(
         default_factory=AlcanceSolicitud, description="Documento completo, sección explícita o multi_documento."
     )
@@ -93,6 +99,8 @@ class GenerateRequest(ModeloContenido):
         # Mantener la identidad idempotente de solicitudes anteriores al selector.
         if self.modo_generacion == "multiagente":
             datos.pop("modo_generacion")
+        if self.cantidad_items is None:
+            datos.pop("cantidad_items", None)
         # La lista normalizada es interna, incluso si el cliente la proporcionó.
         # No usar model_fields_set: el validador también asigna document_ids.
         if len(self.document_ids) == 1 and self.alcance.tipo in ("documento_completo", "seccion"):
@@ -160,6 +168,7 @@ class GlossaryRequest(ModeloContenido):
     )
     perfil_destinatario: RecipientProfile
     idioma_salida: OutputLanguage
+    modo_generacion: Literal["multiagente", "basico"] = "multiagente"
 
     @model_validator(mode="after")
     def _normalizar_fuentes(self) -> "GlossaryRequest":
@@ -196,6 +205,8 @@ class GlossaryRequest(ModeloContenido):
 
     def parametros_persistidos(self):
         datos = self.model_dump(mode="json")
+        if self.modo_generacion == "multiagente":
+            datos.pop("modo_generacion", None)
         if len(self.document_ids) == 1:
             datos.pop("document_ids")
         return datos
@@ -203,7 +214,13 @@ class GlossaryRequest(ModeloContenido):
     def parametros_idempotentes(self) -> tuple[dict, ...]:
         principal = self.parametros_persistidos()
         anterior = self.model_dump(mode="json")
-        return (principal,) if principal == anterior else (principal, anterior)
+        sin_modo = {k: v for k, v in principal.items() if k != "modo_generacion"}
+        res = [principal]
+        if anterior != principal:
+            res.append(anterior)
+        if sin_modo != principal and sin_modo not in res:
+            res.append(sin_modo)
+        return tuple(res)
 
 
 class QuizAnswerRequest(ModeloContenido):

@@ -100,8 +100,11 @@ def _documento(fila: dict) -> DocumentoResponse:
         )
         if cobertura is not None
         else None,
-        # Un diagnóstico legacy no validado puede contener datos privados.
-        error=ErrorDocumentoResponse(message="El procesamiento no se completó; consultar el trabajo vinculado.")
+        # Transmitir detalle_error y codigo si existen
+        error=ErrorDocumentoResponse(
+            code=fila.get("codigo_error"),
+            message=fila.get("detalle_error") or "El procesamiento no se completó; consultar el trabajo vinculado.",
+        )
         if fila["estado"] == "failed"
         else None,
     )

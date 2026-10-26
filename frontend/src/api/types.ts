@@ -158,6 +158,7 @@ export interface GenerateRequest {
   nicho_sector: IndustryNiche;
   nivel_detalle: DetailLevel;
   idioma_salida: OutputLanguage;
+  cantidad_items?: number;
   alcance: AlcanceSolicitud;
 }
 
@@ -367,6 +368,7 @@ export interface QuizAnswerResponse {
 }
 
 export interface ChatRequest {
+  modo_generacion?: 'multiagente' | 'basico';
   document_id?: string;
   document_ids?: string[];
   pregunta: string;
@@ -389,6 +391,7 @@ export interface ChatAnswer {
 }
 
 export interface GlossaryRequest {
+  modo_generacion?: 'multiagente' | 'basico';
   document_id?: string;
   document_ids?: string[];
   perfil_destinatario: RecipientProfile;

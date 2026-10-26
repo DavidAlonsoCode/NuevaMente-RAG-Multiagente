@@ -16,7 +16,7 @@ from app.core.agents.graph_state import DependenciasGrafo, EstadoGrafo
 from app.core.agents.prompts import PROMPT_VERSION
 from app.core.agents.researcher import DependenciasResearcher, researcher
 from app.core.agents.supervisor import supervisor
-from app.core.agents.writer import DependenciasWriter
+from app.core.agents.writer import DependenciasWriter, writer
 from app.core.rag.retriever import RetrieverMMR
 from app.glossary.candidates import DETECTOR_VERSION, detectar_candidatos
 from app.jobs.admission import admitir_trabajo
@@ -348,17 +348,38 @@ class ServicioGlosario:
             nicho_sector="general",
             nivel_detalle="didactico",
         )
-        revisado = revisar_sin_publicar(
-            EstadoGrafo(
-                workspace_id=ctx.workspace_id,
-                generation_id=ctx.job_id,
-                document_id=solicitud.document_id,
-                document_ids=doc_ids,
-                parametros=parametros,
-                deadline=ctx.deadline,
-            ),
-            deps,
+        estado_inicial = EstadoGrafo(
+            workspace_id=ctx.workspace_id,
+            generation_id=ctx.job_id,
+            document_id=solicitud.document_id,
+            document_ids=doc_ids,
+            parametros=parametros,
+            deadline=ctx.deadline,
         )
+        if getattr(solicitud, "modo_generacion", "multiagente") == "basico":
+            estado_b = estado_inicial
+            for nombre, paso in (
+                ("supervisor", lambda s: supervisor(s, grafo)),
+                ("researcher", lambda s: researcher(s, investigador)),
+                ("writer", lambda s: writer(s, deps.escritor)),
+            ):
+                ctx.chequear()
+                if nombre != "writer":
+                    ctx.registrar_paso(nombre, 1)
+                estado_b = EstadoGrafo.model_validate({**estado_b.model_dump(), **paso(estado_b)})
+                if estado_b.status != JobStatus.RUNNING:
+                    break
+            revalidar()
+            if estado_b.status == JobStatus.CANCELLED:
+                raise TrabajoCanceladoError()
+            if estado_b.error is not None or estado_b.borrador is None or adaptador.ultimo is None:
+                raise FalloTrabajoError(
+                    estado_b.error.code if estado_b.error else "INVALID_RESPONSE",
+                    estado_b.error.message if estado_b.error else "No se pudo redactar el glosario.",
+                )
+            revisado = estado_b
+        else:
+            revisado = revisar_sin_publicar(estado_inicial, deps)
         revalidar()
         sin_definiciones = (
             adaptador.sin_definiciones and revisado.error is not None and revisado.error.code == "PROVIDER_UNAVAILABLE"
@@ -366,24 +387,27 @@ class ServicioGlosario:
         if revisado.status == JobStatus.CANCELLED:
             raise TrabajoCanceladoError()
         if not sin_definiciones:
-            if revisado.status == JobStatus.REJECTED_QUALITY:
-                raise RechazoCalidadError()
-            if revisado.error is not None:
-                raise FalloTrabajoError(revisado.error.code, revisado.error.message)
-            autorizacion = supervisor(revisado, grafo)
-            if autorizacion.get("error") or any(
-                autorizacion[c] != getattr(revisado, c)
-                for c in (
-                    "source_hash",
-                    "documento_fuente",
-                    "idioma_origen",
-                    "secciones_disponibles",
-                    "restricciones",
-                    "rubrica",
-                )
-            ):
-                raise FalloTrabajoError("INVALID_STATE", "La fuente cambió después de la revisión.")
-            aprobado = finalizer(revisado, bucket=self.cfg.oci_bucket_name, created_at=base["created_at"])
+            if getattr(solicitud, "modo_generacion", "multiagente") == "basico":
+                aprobado = None
+            else:
+                if revisado.status == JobStatus.REJECTED_QUALITY:
+                    raise RechazoCalidadError()
+                if revisado.error is not None:
+                    raise FalloTrabajoError(revisado.error.code, revisado.error.message)
+                autorizacion = supervisor(revisado, grafo)
+                if autorizacion.get("error") or any(
+                    autorizacion[c] != getattr(revisado, c)
+                    for c in (
+                        "source_hash",
+                        "documento_fuente",
+                        "idioma_origen",
+                        "secciones_disponibles",
+                        "restricciones",
+                        "rubrica",
+                    )
+                ):
+                    raise FalloTrabajoError("INVALID_STATE", "La fuente cambió después de la revisión.")
+                aprobado = finalizer(revisado, bucket=self.cfg.oci_bucket_name, created_at=base["created_at"])
         else:
             aprobado = None
         chunk_a_doc = {c.chunk_id: c.document_id for c in chunks}

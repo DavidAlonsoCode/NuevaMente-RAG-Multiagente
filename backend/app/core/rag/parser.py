@@ -78,7 +78,7 @@ class LimitesIngesta:
     max_bytes_texto: int = 5 * 1024 * 1024  # 5 MB (MD y TXT)
     max_paginas: int = 100
     max_tokens_extraidos: int = 100_000
-    max_paginas_visuales: int = 20
+    max_paginas_visuales: int = 100
     # Presupuesto de reloj para la extracción completa (§11.3: "timeout").
     presupuesto_extraccion_segundos: float = 30.0
     max_memoria_pdf_bytes: int = 512 * 1024 * 1024

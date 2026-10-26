@@ -47,7 +47,7 @@ def coleccion(tmp_path):
 
 @pytest.mark.parametrize("formato,separador", [("csv", ","), ("tsv", "\t")])
 def test_utf8_separadores_comillas_formula_html_y_columnas(paquete, formato, separador):
-    texto = exportar_texto(paquete, formato).decode("utf-8")
+    texto = exportar_texto(paquete, formato).decode("utf-8-sig")
     assert "#html:true\n#tags column:3\n#guid column:4\n#deck column:5" in texto
     filas = list(csv.reader([linea for linea in texto.splitlines() if not linea.startswith("#")], delimiter=separador))
     assert len(filas) == 3 and all(len(f) == 5 for f in filas)

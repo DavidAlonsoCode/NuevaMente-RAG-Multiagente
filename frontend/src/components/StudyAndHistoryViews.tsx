@@ -362,7 +362,8 @@ export const ChatTutorView: React.FC<{
             </div>
           ) : (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <span>
+              <span className="nm-chat-loading" role="status" aria-live="polite">
+                <span className="nm-spinner" aria-hidden="true" />
                 {t(pendiente.cancelacionSolicitada ? 'chat.cancelando' : 'chat.pensando', idiomaUi)}
               </span>
               <div style={{ display: 'flex', gap: '0.45rem' }}>
@@ -402,6 +403,7 @@ export const ChatTutorView: React.FC<{
           className="nm-btn nm-btn-primary"
           disabled={Boolean(pendiente) || !input.trim()}
         >
+          {Boolean(pendiente) && <span className="nm-spinner" aria-hidden="true" />}
           {t('chat.enviar', idiomaUi)}
         </button>
       </form>
@@ -543,7 +545,8 @@ export const GlossaryView: React.FC<{
         </div>
 
         {(!jobId || (status && terminales.has(status))) && (
-          <button type="button" className="nm-btn nm-btn-primary" onClick={admitir}>
+          <button type="button" className="nm-btn nm-btn-primary" onClick={admitir} disabled={Boolean(pendingKey)}>
+            {pendingKey && <span className="nm-spinner" aria-hidden="true" />}
             {t(pendingKey ? 'glosario.reintentar' : 'glosario.generar', idiomaUi)}
           </button>
         )}
@@ -557,7 +560,10 @@ export const GlossaryView: React.FC<{
 
       {status && !terminales.has(status) && (
         <div className="nm-alert nm-alert-info">
-          <div>{t(cancelReq ? 'glosario.cancelando' : 'glosario.espera', idiomaUi)}</div>
+          <div>
+            <span className="nm-spinner" aria-hidden="true" />
+            {t(cancelReq ? 'glosario.cancelando' : 'glosario.espera', idiomaUi)}
+          </div>
           <div style={{ fontSize: '0.82rem', marginTop: '0.25rem' }}>
             {t(`estados.trabajo.${status}`, idiomaUi)}
           </div>

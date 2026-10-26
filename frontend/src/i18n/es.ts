@@ -58,6 +58,7 @@ export const CATALOGO_ES: Record<string, string> = {
   "sidebar.demo_generacion_pendiente": "La generación desde la biblioteca demo todavía está pendiente de integración. Para generar, seleccioná un documento de tu espacio o subí la fuente.",
   "generar.volver_resultado": "Volver a la generación",
   "sidebar.perfil": "Perfil del destinatario",
+  "sidebar.cantidad_items": "Cantidad de elementos",
   "sidebar.formato": "Formato de salida",
   "sidebar.nicho": "Nicho de aplicación",
   "sidebar.detalle": "Nivel de detalle",

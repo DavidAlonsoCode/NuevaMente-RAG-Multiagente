@@ -246,14 +246,19 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
                 if elegido is None:
                     faltantes.append(seccion)
             if faltantes:
-                code = "EVIDENCE_BUDGET" if omitidos else "COVERAGE_INCOMPLETE"
-                raise _Bloqueo(
-                    code,
-                    "No se pudo reunir evidencia para estas secciones: "
-                    + ", ".join(faltantes)
-                    + ". Acotá el alcance o aumentá el presupuesto dentro del límite permitido.",
-                    JobStatus.REJECTED_QUALITY,
-                )
+                if dependencias.pregunta is not None and evidencia:
+                    # En chat/glosario con pregunta puntual, si ya recuperamos evidencia suficiente
+                    # no bloqueamos por no cubrir todas las secciones del documento.
+                    pass
+                else:
+                    code = "EVIDENCE_BUDGET" if omitidos else "COVERAGE_INCOMPLETE"
+                    raise _Bloqueo(
+                        code,
+                        "No se pudo reunir evidencia para estas secciones: "
+                        + ", ".join(faltantes)
+                        + ". Acotá el alcance o aumentá el presupuesto dentro del límite permitido.",
+                        JobStatus.REJECTED_QUALITY,
+                    )
 
             for consulta in dict.fromkeys(estado.solicitudes_evidencia):
                 restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
