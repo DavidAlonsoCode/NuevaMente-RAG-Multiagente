@@ -95,13 +95,15 @@ class GlossaryOutput(ModeloContenido):
         definidos = any(t.estado == "definido" for t in self.terminos)
         if len(ids) != len(set(ids)):
             raise ValueError("Términos duplicados")
+        # Las definiciones verificadas traen revisión aprobada o con reservas (requiere_revision,
+        # respaldo parcial visible en la UI). El modo básico usa no_evaluado.
         if self.estado == "verificado" and (
             not definidos
             or self.evaluacion_calidad is None
-            or self.evaluacion_calidad.estado_evaluacion != "aprobada"
+            or self.evaluacion_calidad.estado_evaluacion not in ("aprobada", "requiere_revision")
             or self.trazabilidad is None
         ):
-            raise ValueError("Las definiciones requieren revisión completa aprobada")
+            raise ValueError("Las definiciones requieren una revisión aprobada o con reservas")
         if self.estado == "no_evaluado" and (
             not definidos or self.evaluacion_calidad is not None or self.trazabilidad is not None
         ):

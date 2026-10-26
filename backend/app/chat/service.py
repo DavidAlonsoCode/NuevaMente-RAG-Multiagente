@@ -361,6 +361,19 @@ class ServicioChat:
             campos_revisar.extend(["source_hashes", "documentos_fuente"])
         if autorizacion.get("error") or any(autorizacion[c] != getattr(revisado, c) for c in campos_revisar):
             raise FalloTrabajoError("INVALID_STATE", "La fuente cambió después de la revisión.")
+        calidad = revisado.evaluacion_pedagogica
+        if calidad is None:
+            raise FalloTrabajoError("INVALID_STATE", "La revisión no produjo una evaluación.")
+        if calidad.estado_evaluacion != "aprobada":
+            # Entrega con reservas: la respuesta se publica con su evaluación real, sin sellarla como aprobada.
+            borrador_validado, referencias_validadas = validar_borrador(revisado.borrador.model_dump_json(), revisado)
+            return ChatAnswer(
+                **base,
+                estado="respondida",
+                respuesta=borrador_validado.contenido_adaptado.items[0].dorso,
+                referencias=referencias_validadas,
+                evaluacion_calidad=calidad,
+            )
         paquete = finalizer(revisado, bucket=self.cfg.oci_bucket_name, created_at=datetime.now(timezone.utc))
         return ChatAnswer(
             **base,

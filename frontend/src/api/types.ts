@@ -6,7 +6,7 @@ export type OutputLanguage = 'es' | 'en' | 'pt';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'rejected_quality' | 'failed' | 'cancelled';
 export type DocumentStatus = 'processing' | 'ready' | 'failed';
 export type ExportFormat = 'json' | 'md' | 'pdf' | 'csv' | 'tsv' | 'apkg';
-export type TipoAlcance = 'documento_completo' | 'seccion' | 'multi_documento';
+export type TipoAlcance = 'documento_completo' | 'seccion' | 'multi_documento' | 'espacio_completo';
 
 export const PERFILES: readonly RecipientProfile[] = [
   'principiante',

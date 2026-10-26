@@ -178,6 +178,12 @@ La cancelación cooperativa y los límites compartidos pueden interrumpir cualqu
 de los recorridos sin entregar el borrador. Detalle: [modos de generación](docs/modos-generacion.md)
 y [arquitectura y correspondencia con código](docs/arquitectura.md).
 
+En **chat y glosario Multiagente**, una respuesta que no aprueba tras una reescritura se entrega con su
+evaluación real (`requiere_revision`) y la UI la rotula «Respaldo parcial: X %»; las aprobadas se
+rotulan «Verificada». Siguen rechazándose las respuestas sin ninguna afirmación respaldada o con citas
+fuera de la evidencia. La generación de material no tiene esta excepción: lo no aprobado se bloquea.
+Detalle: [contratos de chat y glosario](docs/contratos-api.md).
+
 ## Instalación y ejecución local
 
 Elegí un recorrido: **simulado funcional** para probar carga/generación sin
@@ -524,7 +530,7 @@ y permanece pendiente; el cierre de un issue no acredita su ejecución.
 | X7. ES/EN/PT | [Catálogos UI](frontend/src/i18n/index.ts) y prompts | [#55 multilingüe](docs/evidencia/issue-55/v2/README.md), [React #139](docs/verificacion-issue-139.md) | Reporte humano #60 y público |
 | X8. Progreso SSE | [Cliente SSE](frontend/src/api/sse.ts) | [#33 con dobles](docs/verificacion-issue-33.md), [#53](docs/verificacion-issue-53.md) | Proxy público con proveedores reales |
 | X9. Ver la fuente | [Fuentes React](frontend/src/components/SourcesDrawer.tsx) | [#55: citas/imagen](docs/evidencia/issue-55/v2/README.md); consultas locales simuladas | Revisión humana #56 y público |
-| X10. Bloqueo de no aprobados en Multiagente | [Critic](backend/app/core/agents/critic.py) | [Rechazo real #55 v2](docs/evidencia/issue-55/v2/README.md), [#53](docs/verificacion-issue-53.md) | Revisión humana y público; Básico se rotula no evaluado |
+| X10. Bloqueo de no aprobados en Multiagente | [Critic](backend/app/core/agents/critic.py) | [Rechazo real #55 v2](docs/evidencia/issue-55/v2/README.md), [#53](docs/verificacion-issue-53.md) | Revisión humana y público; Básico se rotula no evaluado; chat y glosario con reservas se rotulan respaldo parcial |
 | X11. Acceso anónimo por código | [Recuperación](backend/app/session/recovery.py) | [Comprobación local](docs/verificacion-issue-57.md#b-comandos-efectivamente-ejecutados), [aislamiento #51](docs/revision_seguridad.md) | Protocolo #56 y público |
 | X12. Diseño oscuro y accesibilidad | [Estilos React](frontend/src/styles/oracle-theme.css) | Capturas simuladas; [cobertura #139](docs/verificacion-issue-139.md) | Teclado, foco, contraste y 320 px firmados en #56; capturas no certifican WCAG |
 

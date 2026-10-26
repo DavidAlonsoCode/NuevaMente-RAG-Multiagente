@@ -14,6 +14,7 @@ import {
 } from '../api/types';
 import {
   filtrarTerminosGlosario,
+  nivelRespaldo,
   validarGlosario,
   validarPaquete,
   validarGeneracionCompletada,
@@ -27,6 +28,20 @@ import { ExportDownloads } from './ExportDownloads';
 import { PackageViewer } from './FormatRenderers';
 import { SourcesDrawer } from './SourcesDrawer';
 import { useOtherPendingChat, useScopedState } from '../flows/studyState';
+
+// Cuánto respaldo documental tiene una respuesta del chat o un glosario.
+export const RespaldoBadge: React.FC<{ calidad: any; idioma: OutputLanguage }> = ({ calidad, idioma }) => {
+  const nivel = nivelRespaldo(calidad);
+  const porcentaje = Math.round((calidad?.anclaje_fuente_score ?? 0) * 100);
+  return (
+    <div
+      className={`nm-alert ${nivel === 'verificada' ? 'nm-alert-success' : 'nm-alert-warning'}`}
+      style={{ margin: '0 0 0.6rem 0', padding: '0.4rem 0.7rem', fontSize: '0.8rem' }}
+    >
+      {t(`respaldo.${nivel}`, idioma, { porcentaje })}
+    </div>
+  );
+};
 
 // -----------------------------------------------------------------------------
 // 1. Tutor Chat RAG
@@ -331,7 +346,9 @@ export const ChatTutorView: React.FC<{
                   </div>
                 ) : (
                   <>
-                    {turno.respuesta.estado === 'no_evaluado' && <p className="nm-alert nm-alert-warning">{t('modo.aviso', idiomaUi)}</p>}
+                    {turno.respuesta.estado === 'no_evaluado'
+                      ? <p className="nm-alert nm-alert-warning">{t('modo.aviso', idiomaUi)}</p>
+                      : <RespaldoBadge calidad={turno.respuesta.evaluacion_calidad} idioma={idiomaUi} />}
                     <div style={{ whiteSpace: 'pre-wrap' }}>{turno.respuesta.respuesta}</div>
                     <SourcesDrawer
                       documentId={primaryDocId}
@@ -625,6 +642,7 @@ export const GlossaryView: React.FC<{
             <div className="nm-alert nm-alert-info">{t('glosario.sin_terminos', idiomaUi)}</div>
           ) : (
             <>
+              {salida.estado === 'verificado' && <RespaldoBadge calidad={salida.evaluacion_calidad} idioma={idiomaUi} />}
               <div style={{ position: 'relative', marginBottom: '0.6rem' }}>
                 <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '0.68rem', color: 'var(--ink-muted)' }} />
                 <input

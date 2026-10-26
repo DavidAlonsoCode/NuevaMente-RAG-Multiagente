@@ -168,6 +168,8 @@ export const CATALOGO_PT: Record<string, string> = {
   "chat.cancelar": "Cancelar resposta",
   "chat.actualizar": "Atualizar resposta",
   "chat.documento_no_listo": "Selecione um documento pronto para conversar.",
+  "respaldo.verificada": "Verificada: a resposta está respaldada pelo documento.",
+  "respaldo.parcial": "Respaldo parcial: {porcentaje}% das afirmações foram verificadas no documento. Revise as citações.",
   "chat.cancelada": "Resposta cancelada.",
   "chat.sin_respuesta": "Nenhuma resposta foi publicada. Você pode fazer outra pergunta.",
   "chat.otro_pendiente": "Há uma pergunta pendente em outro documento ou configuração deste espaço.",
