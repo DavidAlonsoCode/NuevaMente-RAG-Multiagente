@@ -71,6 +71,42 @@ al iniciar TestClient; no se cambió la aplicación para sortearlo.
   de Render fue el proporcionado por el usuario. No se actualizaron capturas.
 - La implementación y documentación se mantienen en la misma rama del PR #150.
 
+## Corrección de los checks de Caddy tras `e60ba16`
+
+Los checks `Caddy real / ubuntu-24.04` y `Caddy real / ubuntu-24.04-arm`
+fallaron en el mismo caso de `test_react_caddy.py`: la UI pedía ocho tarjetas,
+pero `DobleEducativo` devolvía el único ítem del ejemplo. El control de cantidad
+rechazaba correctamente el borrador y el test no encontraba el resultado básico.
+Se reprodujo por HTTP antes de corregir el doble (`VALIDATION_ERROR`).
+
+El doble ahora respeta `cantidad_items` para flashcards, quiz y tutorial, con IDs
+únicos y copias independientes. Las solicitudes históricas sin cantidad conservan
+su ejemplo original. No se modificó la validación de producción ni se cambiaron
+las esperas, omisiones o condiciones de los workflows.
+
+Se agregan seis casos de API (tres formatos por dos modos) que exigen ocho
+ítems, referencias canónicas, una sola redacción y ausencia de juez en básico.
+El caso existente de Playwright selecciona ocho explícitamente y verifica la
+cantidad y los IDs en los JSON descargados, también desde el historial.
+Los seis casos negativos/positivos de cantidad de `test_writer.py` siguen pasando.
+
+Validación de la corrección: seis regresiones de cantidad aprobadas para ambos
+modos y los tres formatos, y seis comprobaciones de Writer aprobadas que conservan
+el rechazo de cantidades incorrectas. Los 22 casos previos de API/modos también
+pasaron. Las comprobaciones de referencias del quiz se realizan sobre el canónico;
+la vista del estudiante sigue ocultando referencias/soluciones por pregunta.
+Ruff, formato y `git diff --check` correctos.
+
+```text
+python -m pytest backend/tests/test_basic_mode.py -k cantidad_solicitada -q --disable-warnings
+python -m pytest backend/tests/test_writer.py -k cantidad_solicitada -q --disable-warnings
+```
+
+La matriz real de Caddy se ejecuta en GitHub: este equipo no dispone de Caddy,
+Compose, Playwright ni WSL instalados. Sus aserciones se conservan y se refuerzan;
+la comprobación local utiliza la API, el worker, RAG y persistencia con proveedores
+simulados explícitos.
+
 ## Archivos de la revisión
 
 - [.env.example](../.env.example)
@@ -116,3 +152,7 @@ al iniciar TestClient; no se cambió la aplicación para sortearlo.
 - [frontend/src/i18n/es.ts](../frontend/src/i18n/es.ts)
 - [frontend/src/i18n/pt.ts](../frontend/src/i18n/pt.ts)
 - [frontend/src/styles/oracle-theme.css](../frontend/src/styles/oracle-theme.css)
+
+- [backend/tests/test_api_generate.py](../backend/tests/test_api_generate.py)
+- [backend/tests/test_basic_mode.py](../backend/tests/test_basic_mode.py)
+- [backend/tests/integration/test_react_caddy.py](../backend/tests/integration/test_react_caddy.py)

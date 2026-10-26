@@ -3,6 +3,7 @@
 import json
 import threading
 import time
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -36,6 +37,14 @@ class DobleEducativo(DobleGemini):
             .replace("[SOURCE_CHUNK_ID]", chunk["chunk_id"])
             .replace("[SOURCE_SECTION]", chunk["seccion"] or "Fuente")
         )
+        # El proveedor simulado debe cumplir también el volumen solicitado por la UI.
+        campo = {"flashcards": "items", "quiz": "preguntas", "tutorial": "pasos"}.get(solicitud.formato_salida.value)
+        if solicitud.cantidad_items is not None and campo is not None:
+            plantilla = salida["contenido_adaptado"][campo][0]
+            salida["contenido_adaptado"][campo] = [
+                {**deepcopy(plantilla), "id": f"{plantilla['id']}_{numero}"}
+                for numero in range(1, solicitud.cantidad_items + 1)
+            ]
         salida["metadatos"].update(
             idioma_origen=datos["idioma_origen"],
             nicho_sector=p["nicho_sector"],
