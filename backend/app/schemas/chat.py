@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 from app.schemas.enums import OutputLanguage, RecipientProfile
 from app.schemas.pedagogical import Referencia
@@ -18,6 +18,7 @@ class ChatRequest(BaseModel):
     pregunta: str = Field(min_length=1, max_length=2000)
     perfil_destinatario: RecipientProfile
     idioma_salida: OutputLanguage
+    modo_generacion: Literal["multiagente", "basico"] = "multiagente"
 
     @field_validator("pregunta")
     @classmethod
@@ -59,8 +60,19 @@ class ChatRequest(BaseModel):
 
         return self
 
+    @model_serializer(mode="wrap")
+    def _serializar(self, handler):
+        """Serialización pública idéntica al contrato histórico: el modo por
+        defecto no forma parte del cuerpo ni del hash de idempotencia."""
+        datos = handler(self)
+        if datos.get("modo_generacion") == "multiagente":
+            datos.pop("modo_generacion", None)
+        return datos
+
     def parametros_persistidos(self):
         datos = self.model_dump(mode="json")
+        if self.modo_generacion == "multiagente":
+            datos.pop("modo_generacion", None)
         if len(self.document_ids) == 1:
             datos.pop("document_ids")
         return datos
@@ -68,6 +80,8 @@ class ChatRequest(BaseModel):
     def parametros_idempotentes(self) -> tuple[dict, ...]:
         principal = self.parametros_persistidos()
         anterior = self.model_dump(mode="json")
+        if self.modo_generacion == "multiagente":
+            anterior.pop("modo_generacion", None)
         return (principal,) if principal == anterior else (principal, anterior)
 
 

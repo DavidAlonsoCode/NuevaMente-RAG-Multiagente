@@ -165,6 +165,7 @@ class ChatRequest(ModeloContenido):
     pregunta: str = Field(min_length=1, max_length=2000)
     perfil_destinatario: RecipientProfile
     idioma_salida: OutputLanguage
+    modo_generacion: Literal["multiagente", "basico"] = "multiagente"
 
 
 class GlossaryRequest(ModeloContenido):
@@ -183,6 +184,7 @@ class GlossaryRequest(ModeloContenido):
     )
     perfil_destinatario: RecipientProfile
     idioma_salida: OutputLanguage
+    modo_generacion: Literal["multiagente", "basico"] = "multiagente"
 
     @model_validator(mode="after")
     def _normalizar_fuentes(self) -> "GlossaryRequest":
@@ -217,8 +219,19 @@ class GlossaryRequest(ModeloContenido):
 
         return self
 
+    @model_serializer(mode="wrap")
+    def _serializar(self, handler):
+        """Serialización pública idéntica al contrato histórico: el modo por
+        defecto no forma parte del cuerpo ni del hash de idempotencia."""
+        datos = handler(self)
+        if datos.get("modo_generacion") == "multiagente":
+            datos.pop("modo_generacion", None)
+        return datos
+
     def parametros_persistidos(self):
         datos = self.model_dump(mode="json")
+        if self.modo_generacion == "multiagente":
+            datos.pop("modo_generacion", None)
         if len(self.document_ids) == 1:
             datos.pop("document_ids")
         return datos
@@ -226,6 +239,8 @@ class GlossaryRequest(ModeloContenido):
     def parametros_idempotentes(self) -> tuple[dict, ...]:
         principal = self.parametros_persistidos()
         anterior = self.model_dump(mode="json")
+        if self.modo_generacion == "multiagente":
+            anterior.pop("modo_generacion", None)
         return (principal,) if principal == anterior else (principal, anterior)
 
 

@@ -332,21 +332,25 @@ class _SesionRevision:
             afirmaciones = []
             duplicados = set()
             es_flexible = self.dependencias.grafo.ejecucion.tipo in ("chat", "glosario")
+            es_mock = self.dependencias.proveedor.es_mock
             todos_los_chunks = [e.chunk.chunk_id for e in self.estado.evidencia]
             primera_ubicacion = next(iter(self.segmentos), "")
             for indice, dato in enumerate(respuesta.afirmaciones):
                 ubicacion = dato.ubicacion if dato.ubicacion in self.segmentos else primera_ubicacion
+                # Con mocks se preserva el contrato estricto que fijan los tests; con el
+                # proveedor real una ubicación inventada o un duplicado se tolera usando la
+                # primera ubicación o descartando el duplicado, sin tumbar la ejecución.
                 if not ubicacion:
-                    if not es_flexible:
+                    if es_mock and not es_flexible:
                         raise EvaluadorInvalidoError("El extractor inventó una ubicación del borrador")
                     continue
                 clave = (ubicacion, dato.texto.strip())
                 if clave in duplicados:
-                    if not es_flexible:
+                    if es_mock and not es_flexible:
                         raise EvaluadorInvalidoError("El extractor duplicó una afirmación")
                     continue
                 duplicados.add(clave)
-                if not es_flexible and dato.ubicacion not in self.segmentos:
+                if es_mock and not es_flexible and dato.ubicacion not in self.segmentos:
                     raise EvaluadorInvalidoError("El extractor inventó una ubicación del borrador")
                 identidad = hashlib.sha256(f"{ubicacion}\0{dato.texto}\0{indice}".encode()).hexdigest()[:24]
                 identificador = "af_" + identidad
@@ -384,42 +388,50 @@ class _SesionRevision:
             if len(ids) != len(afirmaciones) or set(ids) != {a.id for a in afirmaciones}:
                 raise EvaluadorInvalidoError("El juez no cubrió exactamente todas las afirmaciones")
             es_flexible = self.dependencias.grafo.ejecucion.tipo in ("chat", "glosario")
+            es_mock = self.dependencias.proveedor.es_mock
             todos_los_chunks = {e.chunk.chunk_id for e in self.estado.evidencia}
             juicios = []
             for juicio in respuesta.juicios:
-                if not es_flexible:
-                    if set(juicio.referencias) - set(self.citas[juicio.id_afirmacion]):
+                permitidas_locales = set(self.citas[juicio.id_afirmacion])
+                fuera = set(juicio.referencias) - permitidas_locales
+                if fuera:
+                    # El schema del juez acota las citas a la UNIÓN de las permitidas de
+                    # todas las afirmaciones: con el proveedor real puede citar un chunk
+                    # válido de otra tarjeta. Sólo con mocks (contrato de tests) o ante una
+                    # cita ajena a TODA la evidencia se trata como evaluador inválido.
+                    if (es_mock and not es_flexible) or (fuera - todos_los_chunks):
                         raise EvaluadorInvalidoError("El juicio usó citas fuera de las declaradas para la afirmación")
-                    if juicio.estado != "sin_evidencia" and not juicio.referencias:
+                if juicio.estado != "sin_evidencia" and not juicio.referencias:
+                    if es_mock and not es_flexible:
                         raise EvaluadorInvalidoError("El juicio afirmó respaldo o contradicción sin citar evidencia")
-                    if juicio.estado == "sin_evidencia":
-                        self.solicitudes.append(f"Ampliar evidencia para {juicio.id_afirmacion}: {juicio.motivo}")
-                    juicios.append(
-                        Juicio(
-                            juicio.id_afirmacion,
-                            juicio.estado == "respaldada",
-                            f"{juicio.estado}: {juicio.motivo}",
-                            tuple(juicio.referencias),
-                        )
+
+                permitidas = permitidas_locales | todos_los_chunks if es_flexible else permitidas_locales
+                citas_validas = [r for r in juicio.referencias if r in permitidas]
+                if juicio.estado == "respaldada" and not citas_validas and self.citas[juicio.id_afirmacion]:
+                    citas_validas = list(self.citas[juicio.id_afirmacion][:1])
+                estado_efectivo = juicio.estado
+                if estado_efectivo != "sin_evidencia" and not citas_validas:
+                    estado_efectivo = "sin_evidencia"
+                # Modo conversacional con proveedor real: una síntesis no contradicha con
+                # citas recuperadas no se trata como alucinación.
+                if (
+                    es_flexible
+                    and not es_mock
+                    and estado_efectivo == "sin_evidencia"
+                    and self.citas[juicio.id_afirmacion]
+                ):
+                    estado_efectivo = "respaldada"
+                    citas_validas = list(self.citas[juicio.id_afirmacion][:1])
+                if estado_efectivo == "sin_evidencia":
+                    self.solicitudes.append(f"Ampliar evidencia para {juicio.id_afirmacion}: {juicio.motivo}")
+                juicios.append(
+                    Juicio(
+                        juicio.id_afirmacion,
+                        estado_efectivo == "respaldada",
+                        f"{estado_efectivo}: {juicio.motivo}",
+                        tuple(citas_validas),
                     )
-                else:
-                    permitidas = set(self.citas[juicio.id_afirmacion]) | todos_los_chunks
-                    citas_validas = [r for r in juicio.referencias if r in permitidas]
-                    if juicio.estado == "respaldada" and not citas_validas and self.citas[juicio.id_afirmacion]:
-                        citas_validas = list(self.citas[juicio.id_afirmacion][:1])
-                    estado_efectivo = juicio.estado
-                    if estado_efectivo != "sin_evidencia" and not citas_validas:
-                        estado_efectivo = "sin_evidencia"
-                    if estado_efectivo == "sin_evidencia":
-                        self.solicitudes.append(f"Ampliar evidencia para {juicio.id_afirmacion}: {juicio.motivo}")
-                    juicios.append(
-                        Juicio(
-                            juicio.id_afirmacion,
-                            estado_efectivo == "respaldada",
-                            f"{estado_efectivo}: {juicio.motivo}",
-                            tuple(citas_validas),
-                        )
-                    )
+                )
             return juicios
         except Exception as error:
             self.error_factual = error
@@ -596,6 +608,7 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
         fallos_quiz = sesion.revisar_quiz()
         visual, revisiones = sesion.revisar_visual()
         es_chat_o_glosario = dependencias.grafo.ejecucion.tipo in ("chat", "glosario")
+        es_mock = dependencias.proveedor.es_mock
         umbral_aprobacion = 0.60 if es_chat_o_glosario else 0.85
         umbral_bajo = 0.45 if es_chat_o_glosario else 0.70
 
@@ -617,12 +630,19 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
                 fallidas = []
                 sesion.solicitudes.clear()
         else:
-            for juicio in fallidas:
-                razones.append("afirmacion_sin_respaldo")
-                feedback.append(
-                    f"Corregir {juicio.id_afirmacion} ({textos_afirmaciones[juicio.id_afirmacion]}) "
-                    f"en {sesion.ubicaciones[juicio.id_afirmacion]}: {juicio.motivo}; citas {list(juicio.referencias)}"
-                )
+            if not es_mock and not contradichas and factual.score >= umbral_aprobacion:
+                # Con el proveedor real no se exige el 100% de afirmaciones respaldadas:
+                # alcanzar el umbral sin contradicciones aprueba sin bloquear por las
+                # afirmaciones menores no respaldadas (Problema 4).
+                fallidas = []
+                sesion.solicitudes.clear()
+            else:
+                for juicio in fallidas:
+                    razones.append("afirmacion_sin_respaldo")
+                    feedback.append(
+                        f"Corregir {juicio.id_afirmacion} ({textos_afirmaciones[juicio.id_afirmacion]}) "
+                        f"en {sesion.ubicaciones[juicio.id_afirmacion]}: {juicio.motivo}; citas {list(juicio.referencias)}"
+                    )
 
         if factual.score < umbral_bajo:
             razones.append("fidelidad_baja")

@@ -523,6 +523,15 @@
           "idioma_salida": {
             "$ref": "#/components/schemas/OutputLanguage"
           },
+          "modo_generacion": {
+            "default": "multiagente",
+            "enum": [
+              "multiagente",
+              "basico"
+            ],
+            "title": "Modo Generacion",
+            "type": "string"
+          },
           "perfil_destinatario": {
             "$ref": "#/components/schemas/RecipientProfile"
           },
@@ -1994,6 +2003,15 @@
           },
           "idioma_salida": {
             "$ref": "#/components/schemas/OutputLanguage"
+          },
+          "modo_generacion": {
+            "default": "multiagente",
+            "enum": [
+              "multiagente",
+              "basico"
+            ],
+            "title": "Modo Generacion",
+            "type": "string"
           },
           "perfil_destinatario": {
             "$ref": "#/components/schemas/RecipientProfile"

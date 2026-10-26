@@ -133,12 +133,25 @@ def test_produccion_rechaza_valores_vacios(tmp_path):
         {"razones_bloqueo": ["Cita inválida"]},
         {"verificacion_visual": "insuficiente"},
         {"cobertura_objetivos": "parcial"},
-        {"cantidad_afirmaciones": 20, "cantidad_respaldadas": 19, "anclaje_fuente_score": 0.95},
+        {"cantidad_afirmaciones": 20, "cantidad_respaldadas": 19, "anclaje_fuente_score": 0.98},
     ],
 )
 def test_evaluacion_no_aprueba_comprobaciones_fallidas(cambio):
     with pytest.raises(ValidationError):
         EvaluacionCalidad.model_validate(evaluacion_valida(**cambio))
+
+
+def test_evaluacion_aprueba_superando_umbral_sin_exigir_respaldo_total():
+    """El score >= 0.85 sin contradicciones aprueba aunque no respalde el 100%.
+
+    Contrato vigente desde el fix del Problema 4: el piso de respaldo lo fija el
+    score, no la igualdad cantidad_respaldadas == cantidad_afirmaciones.
+    """
+    evaluacion = EvaluacionCalidad.model_validate(
+        evaluacion_valida(cantidad_afirmaciones=20, cantidad_respaldadas=19, anclaje_fuente_score=0.95)
+    )
+    assert evaluacion.estado_evaluacion == "aprobada"
+    assert evaluacion.cantidad_respaldadas < evaluacion.cantidad_afirmaciones
 
 
 def test_diagnostico_sin_afirmaciones_no_inventa_score():
