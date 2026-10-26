@@ -665,7 +665,11 @@ Precisión #37 (`contract-change`): el recibo es `TrabajoComunResponse`; consult
 SSE/reconexión y cancelación se realizan en `/api/jobs/{job_id}`. `result` es
 `ChatAnswer`: `document_id`, `document_hash`, `document_ids`, `documentos_fuente`, `pregunta`, `perfil_destinatario`,
 `idioma_salida`, `estado`, `respuesta`, `referencias` y `evaluacion_calidad`.
-`estado=respondida` requiere revisión completa aprobada; `fuera_de_alcance` sólo
+`estado=respondida` requiere citas y una evaluación `aprobada` (anclaje >= 0,85) o
+`requiere_revision`: el chat no se cancela por calidad, tras una reescritura entrega la
+respuesta con su score y razones reales y la UI advierte el respaldo parcial (el modo
+básico responde con `no_evaluado`). Las citas fuera de la evidencia siguen
+terminando en `rejected_quality`. `fuera_de_alcance` sólo
 entrega una abstención fija que pide precisar, con referencias vacías y evaluación
 nula. `rejected_quality` no entrega result. El historial usa únicamente turnos
 completed del mismo workspace y conjunto exacto de identidades, hashes y versiones,
@@ -733,7 +737,10 @@ Precisión #39 (`contract-change`):
   asigna el backend para mostrar dónde aparece el término; no prueban una definición.
   Si no hay definiciones, el glosario declara `sin_definiciones` con evaluación
   nula; sin candidatos declara `sin_terminos`. Estas limitaciones no reciben
-  un score ficticio. El estado `verificado` requiere definiciones y calidad aprobada.
+  un score ficticio. El estado `verificado` requiere definiciones y una evaluación
+  `aprobada` (anclaje >= 0,85) o `requiere_revision` (entrega con reservas tras una
+  reescritura, con score y razones reales que la UI muestra como respaldo parcial);
+  el modo básico usa `no_evaluado`. Un glosario con reservas no se reutiliza desde caché.
 - La clave de caché incluye espacio, conjunto de documentos/hashes/versiones, configuración del
   parser, modelos de generación/verificación/embeddings, perfil, idioma, versiones
   del prompt de glosario/base y detector. SQLite conserva trabajos y resultados

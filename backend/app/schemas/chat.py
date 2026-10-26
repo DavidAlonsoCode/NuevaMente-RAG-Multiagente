@@ -119,12 +119,14 @@ class ChatAnswer(BaseModel):
     def aprobacion(self):
         if not self.document_ids and self.document_id:
             self.document_ids = [self.document_id]
+        # La respuesta revisada siempre cita y trae su evaluación: aprobada o con reservas
+        # (requiere_revision, respaldo parcial visible en la UI). El modo básico usa no_evaluado.
         if self.estado == "respondida" and (
             not self.referencias
             or self.evaluacion_calidad is None
-            or self.evaluacion_calidad.estado_evaluacion != "aprobada"
+            or self.evaluacion_calidad.estado_evaluacion not in ("aprobada", "requiere_revision")
         ):
-            raise ValueError("La respuesta requiere citas y revisión aprobada")
+            raise ValueError("La respuesta requiere citas y una revisión aprobada o con reservas")
         if self.estado == "no_evaluado" and (
             not self.respuesta.strip() or not self.referencias or self.evaluacion_calidad is not None
         ):

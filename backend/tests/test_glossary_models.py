@@ -102,3 +102,20 @@ def test_cache_operativa_sobrevive_reinicio_y_omite_fallos_y_borrados(tmp_path):
         assert db.job_cache_glosario("ws", "cache") is None
     finally:
         db.cerrar()
+
+
+def test_cache_no_reutiliza_glosario_con_reservas(tmp_path):
+    db = RegistroOperativo(tmp_path / "registro.db")
+    db.crear_workspace("ws", "codigo", dias_validez=30)
+    db.registrar_documento("doc", "ws", "VCN", DocumentStatus.READY, "a" * 64)
+    try:
+        for job, estado in (("aprobado", "aprobada"), ("reservas", "requiere_revision")):
+            db.encolar_job(job, "ws", "glosario", document_id="doc")
+            db.vincular_cache_job(job, job)
+            db.iniciar_job(job)
+            resultado = '{"evaluacion_calidad": {"estado_evaluacion": "%s"}}' % estado
+            db.finalizar_job(job, JobStatus.COMPLETED, resultado=resultado)
+        assert db.job_cache_glosario("ws", "aprobado")["job_id"] == "aprobado"
+        assert db.job_cache_glosario("ws", "reservas") is None
+    finally:
+        db.cerrar()

@@ -2151,10 +2151,16 @@ class RegistroOperativo:
 
     @_sincronizado
     def job_cache_glosario(self, workspace_id: str, cache_key: str) -> dict | None:
-        """Sólo aprobados confirmados o un intento activo de la misma combinación."""
+        """Sólo aprobados confirmados o un intento activo de la misma combinación.
+
+        Un glosario entregado con reservas (requiere_revision) no se reutiliza: la
+        siguiente solicitud vuelve a intentar una revisión aprobada.
+        """
         fila = self._conn.execute(
             """SELECT job_id FROM jobs WHERE workspace_id=? AND cache_key=? AND tipo='glosario'
-               AND (status IN ('queued','running') OR (status='completed' AND resultado IS NOT NULL))
+               AND (status IN ('queued','running') OR (status='completed' AND resultado IS NOT NULL
+                    AND COALESCE(json_extract(resultado, '$.evaluacion_calidad.estado_evaluacion'), '')
+                        != 'requiere_revision'))
                ORDER BY creado_en DESC LIMIT 1""",
             (workspace_id, cache_key),
         ).fetchone()

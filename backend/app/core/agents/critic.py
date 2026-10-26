@@ -667,7 +667,12 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
             razones_bloqueo=razones,
         )
         _revalidar(estado, dependencias)
-        if not aprobada and estado.intento >= min(3, dependencias.configuracion.max_generation_attempts):
+        limite = min(2 if es_chat_o_glosario else 3, dependencias.configuracion.max_generation_attempts)
+        # Chat y glosario no se cancelan por calidad: agotada la reescritura, entregan el último
+        # borrador con su evaluación "requiere_revision" para que la UI advierta el respaldo parcial.
+        # Sin ninguna afirmación respaldada no hay respuesta que entregar y sigue la política estricta.
+        con_reservas = es_chat_o_glosario and not aprobada and estado.intento >= limite and factual.respaldadas > 0
+        if not aprobada and not con_reservas and estado.intento >= limite:
             return devolver_revision(feedback or razones, razones_bloqueo=razones)
         return update(
             borrador=borrador,
@@ -678,7 +683,7 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
             afirmaciones_fallidas=fallidas,
             feedback=[] if aprobada else list(dict.fromkeys(feedback or razones)),
             solicitudes_evidencia=list(dict.fromkeys(solicitudes)),
-            destino_revision="finalizer" if aprobada else "researcher" if solicitudes else "writer",
+            destino_revision="finalizer" if aprobada or con_reservas else "researcher" if solicitudes else "writer",
             trazabilidad=estado.trazabilidad.model_copy(
                 update={
                     "modelo_verificacion": dependencias.configuracion.gemini_verification_model,
