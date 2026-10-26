@@ -17,7 +17,7 @@ y omitir alcance selecciona documento_completo; una sección exige su ID.
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from app.schemas.enums import DetailLevel, IndustryNiche, OutputLanguage, PedagogicalFormat, RecipientProfile
 from app.schemas.pedagogical import AlcanceSolicitud, ModeloContenido
@@ -93,6 +93,19 @@ class GenerateRequest(ModeloContenido):
             raise ValueError("alcance multi_documento requiere al menos 2 fuentes")
 
         return self
+
+    @model_serializer(mode="wrap")
+    def _serializar(self, handler):
+        """Serialización pública idéntica al contrato histórico.
+
+        ``cantidad_items`` es una adición opcional: cuando no se solicitó, no
+        debe aparecer en el JSON público (historial, estado del grafo, paquetes)
+        para no alterar los contratos 1.0/1.1 ni las comparaciones de idempotencia.
+        """
+        datos = handler(self)
+        if datos.get("cantidad_items") is None:
+            datos.pop("cantidad_items", None)
+        return datos
 
     def parametros_persistidos(self):
         datos = self.model_dump(mode="json")

@@ -337,9 +337,7 @@ class ProcesadorIngestionDocumental:
             raise StorageUnavailable("No se pudo confirmar la fuente o su manifiesto") from error
         except ParserError as error:
             try:
-                manifest = manifest.model_copy(
-                    update={"estado": DocumentStatus.FAILED, "detalle_error": error.mensaje}
-                )
+                manifest = manifest.model_copy(update={"estado": DocumentStatus.FAILED, "detalle_error": error.mensaje})
                 self._persistir(manifest, etag)
             except Exception:
                 pass

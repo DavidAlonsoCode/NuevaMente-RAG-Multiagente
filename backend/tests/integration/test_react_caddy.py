@@ -77,7 +77,10 @@ def download_all_formats(page, mode, secrets):
         elif fmt in ("csv", "tsv"):
             rows = list(
                 csv.reader(
-                    (line for line in data.decode().splitlines() if not line.startswith("#")),
+                    # utf-8-sig: el CSV de Anki lleva BOM para que Excel en Windows
+                    # no rompa acentos; sin él, la primera directiva '#html:true'
+                    # se leería como fila de datos.
+                    (line for line in data.decode("utf-8-sig").splitlines() if not line.startswith("#")),
                     delimiter="," if fmt == "csv" else "\t",
                 )
             )
