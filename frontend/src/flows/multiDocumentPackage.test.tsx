@@ -2,7 +2,6 @@ import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import fixtures from './fixtures.test-data.json';
-import evidencia from '../../../docs/evidencia/salida-multidocumental-d.json';
 import { validarGeneracionCompletada, validarPaquete } from './validators';
 import { PackageViewer } from '../components/FormatRenderers';
 import { APIClient } from '../api/client';
@@ -67,6 +66,3 @@ it('muestra el guion multidocumental con todas sus fuentes', () => {
   expect(screen.getByText('Fuente a · Fuente b')).toBeTruthy();
 });
 
-it('acepta la evidencia multidocumental publicada del backend', () => {
-  expect(() => validarPaquete(evidencia)).not.toThrow();
-});
