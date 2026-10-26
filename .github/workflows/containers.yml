@@ -15,6 +15,8 @@ on:
       - ".env.docker.example"
       - ".github/workflows/containers.yml"
       - ".github/scripts/smoke_compose.py"
+      - "Dockerfile"
+      - "runner.py"
   push:
     branches: [develop, main]
     paths:
@@ -29,6 +31,8 @@ on:
       - ".env.docker.example"
       - ".github/workflows/containers.yml"
       - ".github/scripts/smoke_compose.py"
+      - "Dockerfile"
+      - "runner.py"
 
 permissions:
   contents: read
@@ -85,3 +89,28 @@ jobs:
       - name: Detener servicios y borrar solo el volumen efímero de CI
         if: always()
         run: docker compose down --volumes
+
+  render:
+    name: Render / imagen del Dockerfile raíz
+    # Render construye el Dockerfile raíz (React + FastAPI en un contenedor) desde main;
+    # los jobs anteriores usan los Dockerfiles de backend/ y frontend/.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v4
+      - name: Construir la imagen con el contexto raíz, como Render
+        run: docker buildx build --load --tag nuevamente-render:ci .
+      - name: Arrancar con mocks explícitos y verificar API y UI por el puerto público
+        run: |
+          docker run --detach --name nuevamente-render -p 10000:10000 \
+            -e APP_ENV=ci -e MOCK_GEMINI=1 -e MOCK_OCI=1 nuevamente-render:ci
+          for intento in $(seq 1 60); do
+            curl -fsS -m 3 http://127.0.0.1:10000/api/health >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:10000/api/health | grep -q '"status":"ok"'
+          curl -fsS http://127.0.0.1:10000/ | grep -q '<div id="root"'
+      - name: Diagnóstico si falla
+        if: failure()
+        run: docker logs --tail 100 nuevamente-render

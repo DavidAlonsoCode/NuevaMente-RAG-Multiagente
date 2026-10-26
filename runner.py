@@ -75,7 +75,9 @@ def main():
     env_frontend["PORT"] = port
     env_frontend["FRONTEND_HOST"] = "0.0.0.0"
     env_frontend["API_URL"] = "http://127.0.0.1:8000"
-    env_frontend["API_HEALTH_WAIT_SECONDS"] = "60"
+    # En Render free (CPU compartida) y con OCI real, el arranque restaura los espacios
+    # desde el bucket y puede superar 60 s; el puerto público se abre recién con la API lista.
+    env_frontend["API_HEALTH_WAIT_SECONDS"] = os.environ.get("API_HEALTH_WAIT_SECONDS", "300")
 
     entrypoint_script = frontend_dir / "entrypoint.py"
     cmd_frontend = [sys.executable, str(entrypoint_script)]
