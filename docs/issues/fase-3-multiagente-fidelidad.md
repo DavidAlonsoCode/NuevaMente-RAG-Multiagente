@@ -129,7 +129,7 @@ graph TD
 **Objetivo**: interpretación de diagramas y páginas visuales del PDF: rasterizado, descripción por Gemini con procedencia, indexación de descripciones y verificación visual en Critic.
 
 **Tareas**:
-- Detección de páginas con contenido visual relevante (imágenes incrustadas, vectoriales, escaneadas legibles) dentro del límite de 20 páginas visuales (§4.1).
+- Detección de páginas con contenido visual relevante (imágenes incrustadas, vectoriales, escaneadas legibles) dentro del límite de 100 páginas visuales (§4.1, ajuste autorizado del PR #150 del 26/10/2026).
 - Rasterizado con pypdfium2 a resolución apta para visión; envío a Gemini con prompt de descripción técnica neutra.
 - Cada descripción: `document_id`, página, región/imagen de referencia, `source_type=image_description`; se guarda **separada del texto original** como interpretación del modelo (§4.2).
 - Diagramas ambiguos marcados como tales; prohibido derivar relaciones no verificables.

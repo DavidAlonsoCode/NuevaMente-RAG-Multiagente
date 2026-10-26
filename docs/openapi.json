@@ -446,6 +446,7 @@
           "estado": {
             "enum": [
               "respondida",
+              "no_evaluado",
               "fuera_de_alcance"
             ],
             "title": "Estado",
@@ -522,6 +523,15 @@
           },
           "idioma_salida": {
             "$ref": "#/components/schemas/OutputLanguage"
+          },
+          "modo_generacion": {
+            "default": "multiagente",
+            "enum": [
+              "multiagente",
+              "basico"
+            ],
+            "title": "Modo Generacion",
+            "type": "string"
           },
           "perfil_destinatario": {
             "$ref": "#/components/schemas/RecipientProfile"
@@ -1625,6 +1635,20 @@
             "$ref": "#/components/schemas/AlcanceSolicitud",
             "description": "Documento completo, sección explícita o multi_documento."
           },
+          "cantidad_items": {
+            "anyOf": [
+              {
+                "maximum": 25.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cantidad deseada de tarjetas (flashcards), preguntas (quiz) o pasos (tutorial).",
+            "title": "Cantidad Items"
+          },
           "document_id": {
             "anyOf": [
               {
@@ -1883,6 +1907,7 @@
           "estado": {
             "enum": [
               "verificado",
+              "no_evaluado",
               "sin_definiciones",
               "sin_terminos"
             ],
@@ -1980,6 +2005,15 @@
           },
           "idioma_salida": {
             "$ref": "#/components/schemas/OutputLanguage"
+          },
+          "modo_generacion": {
+            "default": "multiagente",
+            "enum": [
+              "multiagente",
+              "basico"
+            ],
+            "title": "Modo Generacion",
+            "type": "string"
           },
           "perfil_destinatario": {
             "$ref": "#/components/schemas/RecipientProfile"

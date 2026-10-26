@@ -17,6 +17,25 @@ pytestmark = pytest.mark.integration_mock
 entorno = api_cases.entorno
 
 
+@pytest.mark.parametrize("modo", ["basico", "multiagente"])
+@pytest.mark.parametrize("formato,campo", [("flashcards", "items"), ("quiz", "preguntas"), ("tutorial", "pasos")])
+def test_cantidad_solicitada_completa_en_una_redaccion(entorno, modo, formato, campo):
+    e = entorno
+    recibo = api_cases.generar(e, modo_generacion=modo, formato_salida=formato, cantidad_items=8)
+    assert recibo.status_code == 202, recibo.text
+    trabajo = api_cases.esperar(e, recibo.json())
+    contenido = trabajo["contenido"]
+    elementos = contenido["contenido_adaptado"][campo]
+    assert len(elementos) == 8
+    assert len({elemento["id"] for elemento in elementos}) == 8
+    canonico = e.app.state.generations.canonico(e.ws["token"], trabajo["generation_id"])
+    assert all(elemento.referencias for elemento in getattr(canonico.contenido_adaptado, campo))
+    assert contenido["documento_fuente"]["document_id"] == e.doc
+    assert contenido["status"] == ("no_evaluado" if modo == "basico" else "aprobado")
+    assert e.doble.llamadas_generacion == 1
+    assert (e.doble.llamadas_verificacion == 0) == (modo == "basico")
+
+
 @pytest.mark.parametrize("formato", PedagogicalFormat)
 def test_basico_cinco_formatos_sin_juez_ni_score(entorno, formato):
     e = entorno

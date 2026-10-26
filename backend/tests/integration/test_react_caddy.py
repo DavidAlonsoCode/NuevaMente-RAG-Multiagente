@@ -43,7 +43,7 @@ def generate_from_browser(page):
     page.get_by_role("button", name="Confirmar y generar", exact=True).click()
 
 
-def download_all_formats(page, mode, secrets):
+def download_all_formats(page, mode, secrets, cantidad_items=None):
     from pypdf import PdfReader
 
     labels = {
@@ -65,6 +65,10 @@ def download_all_formats(page, mode, secrets):
             package = json.loads(data)
             assert package["modo_generacion"] == mode
             assert package["status"] == ("no_evaluado" if mode == "basico" else "aprobado")
+            if cantidad_items is not None:
+                items = package["contenido_adaptado"]["items"]
+                assert len(items) == cantidad_items
+                assert len({item["id"] for item in items}) == cantidad_items
         elif fmt == "pdf":
             pdf = PdfReader(io.BytesIO(data))
             assert pdf.pages
@@ -77,7 +81,10 @@ def download_all_formats(page, mode, secrets):
         elif fmt in ("csv", "tsv"):
             rows = list(
                 csv.reader(
-                    (line for line in data.decode().splitlines() if not line.startswith("#")),
+                    # utf-8-sig: el CSV de Anki lleva BOM para que Excel en Windows
+                    # no rompa acentos; sin él, la primera directiva '#html:true'
+                    # se leería como fila de datos.
+                    (line for line in data.decode("utf-8-sig").splitlines() if not line.startswith("#")),
                     delimiter="," if fmt == "csv" else "\t",
                 )
             )
@@ -300,6 +307,7 @@ def test_basic_and_multiagent_reuse_document_without_relabeling_results():
                 context = browser.new_context(ignore_https_errors=True, service_workers="block")
                 page = context.new_page()
                 modes, generation_ids, uploads, errors = [], [], [], []
+                cantidad = 8
                 secrets = set()
 
                 def request(req):
@@ -309,6 +317,7 @@ def test_basic_and_multiagent_reuse_document_without_relabeling_results():
                         secrets.add(authorization.removeprefix("Bearer "))
                     if req.method == "POST" and path == "/api/generate":
                         modes.append(req.post_data_json["modo_generacion"])
+                        assert req.post_data_json["cantidad_items"] == cantidad
                     if req.method == "POST" and path == "/api/documents/upload":
                         uploads.append(1)
 
@@ -320,6 +329,7 @@ def test_basic_and_multiagent_reuse_document_without_relabeling_results():
                 page.on("response", response)
                 page.on("pageerror", lambda _error: errors.append("browser-error"))
                 secrets.add(upload_from_browser(page, proxy.url, "Documento compartido por ambos modos"))
+                page.get_by_label("Cantidad de elementos", exact=True).select_option(str(cantidad))
                 selector = page.get_by_label("Modo de generación", exact=True)
                 expect(selector).to_have_value("multiagente")
                 selector.select_option("basico")
@@ -331,13 +341,13 @@ def test_basic_and_multiagent_reuse_document_without_relabeling_results():
                 assert proxy.counters()["generation_calls"] == 1
                 assert proxy.counters()["verification_calls"] == 0
                 assert not page.get_by_text("Contenido revisado con fuentes", exact=True).count()
-                download_all_formats(page, "basico", secrets)
+                download_all_formats(page, "basico", secrets, cantidad)
                 selector.select_option("multiagente")
                 assert modes == ["basico"]
                 assert not page.get_by_text("Contenido revisado con fuentes", exact=True).count()
                 generate_from_browser(page)
                 expect(page.get_by_text("Contenido revisado con fuentes", exact=True)).to_be_visible(timeout=30000)
-                download_all_formats(page, "multiagente", secrets)
+                download_all_formats(page, "multiagente", secrets, cantidad)
                 assert modes == ["basico", "multiagente"]
                 assert len(set(generation_ids)) == 2 and len(uploads) == 1
                 assert proxy.counters()["generation_calls"] == 2
@@ -347,7 +357,7 @@ def test_basic_and_multiagent_reuse_document_without_relabeling_results():
                 page.get_by_role("button", name="Ver historial completo", exact=True).click()
                 for position, mode in ((0, "multiagente"), (1, "basico")):
                     page.get_by_role("button", name="Abrir resultado o diagnóstico", exact=True).nth(position).click()
-                    download_all_formats(page, mode, secrets)
+                    download_all_formats(page, mode, secrets, cantidad)
                     page.get_by_role("button", name="Volver al listado", exact=True).click()
                 assert proxy.counters()["generation_calls"] == 2
                 assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
@@ -358,6 +368,7 @@ def test_basic_and_multiagent_reuse_document_without_relabeling_results():
                             "modes": modes,
                             "independent_results": 2,
                             "uploads": 1,
+                            "cantidad_items": cantidad,
                             "result_downloads_per_mode": 6,
                             "history_downloads_per_mode": 6,
                             "private_data_absent": True,

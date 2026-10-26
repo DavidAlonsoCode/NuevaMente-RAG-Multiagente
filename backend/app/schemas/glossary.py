@@ -67,7 +67,7 @@ class GlossaryOutput(ModeloContenido):
     )
     perfil_destinatario: RecipientProfile
     idioma_salida: OutputLanguage
-    estado: Literal["verificado", "sin_definiciones", "sin_terminos"]
+    estado: Literal["verificado", "no_evaluado", "sin_definiciones", "sin_terminos"]
     terminos: list[TerminoGlosario] = Field(max_length=64)
     candidatos_omitidos: int = Field(ge=0)
     evaluacion_calidad: EvaluacionCalidad | None
@@ -102,7 +102,11 @@ class GlossaryOutput(ModeloContenido):
             or self.trazabilidad is None
         ):
             raise ValueError("Las definiciones requieren revisión completa aprobada")
-        if self.estado != "verificado" and (definidos or self.evaluacion_calidad is not None):
+        if self.estado == "no_evaluado" and (
+            not definidos or self.evaluacion_calidad is not None or self.trazabilidad is not None
+        ):
+            raise ValueError("El glosario básico requiere definiciones sin revisión atribuida")
+        if self.estado in ("sin_definiciones", "sin_terminos") and (definidos or self.evaluacion_calidad is not None):
             raise ValueError("La ausencia de definiciones no obtiene un score de aprobación")
         if (self.estado == "sin_terminos") != (not self.terminos):
             raise ValueError("El estado debe corresponder al inventario de términos")

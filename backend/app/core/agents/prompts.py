@@ -22,7 +22,7 @@ from app.schemas.pedagogical import (
 from app.schemas.requests import GenerateRequest
 from app.schemas.responses import IdiomaOrigen, Metadatos, Trazabilidad
 
-PROMPT_VERSION = "nm-prompts-1.1.4"
+PROMPT_VERSION = "nm-prompts-1.1.5"
 
 _IDIOMAS = {
     OutputLanguage.ES: "español latinoamericano",
@@ -88,22 +88,22 @@ _FORMATOS = {
 # Estas frases muestran tono; los marcadores nunca afirman hechos externos.
 _TONOS_EJEMPLO = {
     OutputLanguage.ES: {
-        RecipientProfile.PRINCIPIANTE: "Vamos paso a paso: [SOURCE_EXPLANATION]. Analogía ilustrativa: [LABELED_ANALOGY].",
-        RecipientProfile.JUNIOR_SSR: "Aplicación práctica: [SOURCE_STEPS]. Verificación: [SOURCE_CHECK].",
-        RecipientProfile.LIDER_TECNICO: "Decisión: [SOURCE_DECISION]. Compromisos y límites: [SOURCE_TRADE_OFFS].",
-        RecipientProfile.EJECUTIVO: "Decisión e impacto cualitativo: [SOURCE_IMPACT]. Riesgos: [SOURCE_RISKS].",
+        RecipientProfile.PRINCIPIANTE: "[SOURCE_SIMPLE_EXPLANATION]. Analogía ilustrativa: [LABELED_ANALOGY].",
+        RecipientProfile.JUNIOR_SSR: "[SOURCE_PRACTICAL_STEPS]. Verificación: [SOURCE_CHECK].",
+        RecipientProfile.LIDER_TECNICO: "[SOURCE_ARCHITECTURAL_DECISION]. Compromisos y límites: [SOURCE_TRADE_OFFS].",
+        RecipientProfile.EJECUTIVO: "[SOURCE_QUALITATIVE_IMPACT]. Riesgos: [SOURCE_RISKS].",
     },
     OutputLanguage.EN: {
-        RecipientProfile.PRINCIPIANTE: "Step by step: [SOURCE_EXPLANATION]. Illustrative analogy: [LABELED_ANALOGY].",
-        RecipientProfile.JUNIOR_SSR: "Practical application: [SOURCE_STEPS]. Verification: [SOURCE_CHECK].",
-        RecipientProfile.LIDER_TECNICO: "Decision: [SOURCE_DECISION]. Trade-offs and limits: [SOURCE_TRADE_OFFS].",
-        RecipientProfile.EJECUTIVO: "Decision and qualitative impact: [SOURCE_IMPACT]. Risks: [SOURCE_RISKS].",
+        RecipientProfile.PRINCIPIANTE: "[SOURCE_SIMPLE_EXPLANATION]. Illustrative analogy: [LABELED_ANALOGY].",
+        RecipientProfile.JUNIOR_SSR: "[SOURCE_PRACTICAL_STEPS]. Verification: [SOURCE_CHECK].",
+        RecipientProfile.LIDER_TECNICO: "[SOURCE_ARCHITECTURAL_DECISION]. Trade-offs and limits: [SOURCE_TRADE_OFFS].",
+        RecipientProfile.EJECUTIVO: "[SOURCE_QUALITATIVE_IMPACT]. Risks: [SOURCE_RISKS].",
     },
     OutputLanguage.PT: {
-        RecipientProfile.PRINCIPIANTE: "Passo a passo: [SOURCE_EXPLANATION]. Analogia ilustrativa: [LABELED_ANALOGY].",
-        RecipientProfile.JUNIOR_SSR: "Aplicação prática: [SOURCE_STEPS]. Verificação: [SOURCE_CHECK].",
-        RecipientProfile.LIDER_TECNICO: "Decisão: [SOURCE_DECISION]. Compromissos e limites: [SOURCE_TRADE_OFFS].",
-        RecipientProfile.EJECUTIVO: "Decisão e impacto qualitativo: [SOURCE_IMPACT]. Riscos: [SOURCE_RISKS].",
+        RecipientProfile.PRINCIPIANTE: "[SOURCE_SIMPLE_EXPLANATION]. Analogia ilustrativa: [LABELED_ANALOGY].",
+        RecipientProfile.JUNIOR_SSR: "[SOURCE_PRACTICAL_STEPS]. Verificação: [SOURCE_CHECK].",
+        RecipientProfile.LIDER_TECNICO: "[SOURCE_ARCHITECTURAL_DECISION]. Compromissos e limites: [SOURCE_TRADE_OFFS].",
+        RecipientProfile.EJECUTIVO: "[SOURCE_QUALITATIVE_IMPACT]. Riscos: [SOURCE_RISKS].",
     },
 }
 
@@ -128,7 +128,7 @@ No revelar razonamientos privados: solo diagnósticos breves, verificables y ref
 
 class PlantillasPrompts(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prompt_version: Literal["nm-prompts-1.1.4"] = PROMPT_VERSION
+    prompt_version: Literal["nm-prompts-1.1.5"] = PROMPT_VERSION
     writer: str
     critic: str
 
@@ -141,7 +141,7 @@ class PromptRol(BaseModel):
 
 class PromptsGeneracion(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prompt_version: Literal["nm-prompts-1.1.4"] = PROMPT_VERSION
+    prompt_version: Literal["nm-prompts-1.1.5"] = PROMPT_VERSION
     writer: PromptRol
     critic: PromptRol
 
@@ -258,12 +258,30 @@ def cargar_plantilla(solicitud: GenerateRequest | dict) -> PlantillasPrompts:
         if es_multidocumento
         else ""
     )
+    cantidad_solicitada = getattr(solicitud, "cantidad_items", None)
+    if cantidad_solicitada:
+        regla_volumen = (
+            f"Volumen obligatorio: Generar exactamente {cantidad_solicitada} elementos principales "
+            f"(tarjetas en flashcards, pasos en tutorial, preguntas en quiz o escenas en guion), "
+            f"distribuidos entre las distintas secciones de la evidencia recuperada.\n"
+        )
+    else:
+        regla_volumen = (
+            "Volumen y granularidad obligatorios: NO limitarse a 2 o 3 elementos superficiales. "
+            "Generar al menos entre 6 y 10 elementos sustantivos (tarjetas, pasos o preguntas) "
+            "cuando la evidencia tenga múltiples secciones o conceptos clave, cubriendo al menos "
+            "un elemento por cada sección o concepto principal presente en la evidencia.\n"
+        )
+
     adaptacion = (
         f"Idioma de salida: {_IDIOMAS[solicitud.idioma_salida]}. El idioma de origen no cambia esta elección.\n"
         f"Perfil: {_PERFILES[solicitud.perfil_destinatario]}\n"
         f"Detalle (independiente del perfil): {_DETALLES[solicitud.nivel_detalle]}\n"
         f"Nicho: {_NICHOS[solicitud.nicho_sector]} No presupone cifras, regulaciones ni propiedades sectoriales.\n"
         f"Formato: {_FORMATOS[solicitud.formato_salida][1]}\n"
+        + regla_volumen
+        + "Redactar con fluidez y naturalidad: NO repetir prefijos mecánicos (como 'Vamos paso a paso:', "
+        "'Aplicación práctica:' o 'Decisión:') al inicio de cada paso o tarjeta.\n"
     )
     ejemplo = ejemplo_few_shot(solicitud.perfil_destinatario, solicitud.formato_salida, solicitud.idioma_salida)
     writer = (

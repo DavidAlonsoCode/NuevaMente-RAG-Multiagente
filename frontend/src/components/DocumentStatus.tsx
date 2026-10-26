@@ -16,8 +16,13 @@ export function DocumentStatus({ doc, tracking, idioma }: {
     {!!doc.cobertura?.paginas_omitidas?.length && <p className="nm-alert nm-alert-warning">
       {t('upload.omitidas', idioma, { paginas: doc.cobertura.paginas_omitidas.join(', ') })}
     </p>}
-    {doc.status === 'failed' && doc.error && <p className="nm-alert nm-alert-error" role="alert">
-      {CATALOGOS[idioma][parser] ? t(parser, idioma) : doc.error.message || t('estados.documento.failed', idioma)}
-    </p>}
+    {doc.status === 'failed' && (
+      <div className="nm-alert nm-alert-error" role="alert">
+        <p style={{ margin: 0, fontWeight: 600 }}>{t('estados.documento.failed', idioma)}</p>
+        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.88rem' }}>
+          {CATALOGOS[idioma][parser] ? t(parser, idioma) : doc.error?.message || t('estados.documento.failed', idioma)}
+        </p>
+      </div>
+    )}
   </div>;
 }

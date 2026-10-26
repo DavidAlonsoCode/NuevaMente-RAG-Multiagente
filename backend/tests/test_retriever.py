@@ -220,7 +220,9 @@ def test_pdf_demo_vcn_con_metadatos_citables(pila, documento_demo_vcn):
     indice.indexar("espacio-a", "vcn", originales, contexto=contexto())
     recuperador = RetrieverMMR(indice, configuracion=configuracion())
     resultado = recuperador.recuperar("espacio-a", "vcn", "VCN subredes gateways rutas", contexto=contexto())
-    assert 1 < len(resultado.evidencia) <= 5
+    # El tope es el retrieval_k configurado (default 10 desde Problema 5/10),
+    # no un número fijo: la ventana de recuperación es configurable.
+    assert 1 < len(resultado.evidencia) <= configuracion().retrieval_k
     assert len({e.chunk.texto for e in resultado.evidencia}) == len(resultado.evidencia)
     assert all(e.chunk.pagina and e.chunk.source_name == documento_demo_vcn.name for e in resultado.evidencia)
     assert resultado.tokens <= 12000

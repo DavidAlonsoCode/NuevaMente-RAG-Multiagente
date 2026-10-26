@@ -2130,6 +2130,15 @@ class RegistroOperativo:
             )
 
     @_sincronizado
+    def ultimo_error_ingestion(self, workspace_id: str, document_id: str) -> str | None:
+        fila = self._conn.execute(
+            """SELECT error_code FROM jobs WHERE workspace_id=? AND document_id=? AND tipo='ingestion'
+               ORDER BY creado_en DESC, rowid DESC LIMIT 1""",
+            (workspace_id, document_id),
+        ).fetchone()
+        return fila["error_code"] if fila else None
+
+    @_sincronizado
     def obtener_job(self, job_id: str) -> dict | None:
         """Trabajo solo si existe y su espacio no fue retirado (ownership
         se resuelve desde la sesión en la capa API, §7.2)."""
