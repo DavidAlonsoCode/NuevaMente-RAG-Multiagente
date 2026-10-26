@@ -117,8 +117,7 @@ def _es_sintesis(estado, dependencias):
 # descarto metadatos y opciones distractoras de cuestionarios para concentrar la evaluacion solo en afirmaciones tecnicas
 def _segmentos(borrador, referencias, *, es_sintesis=False, ignorar_metadatos=False):
     """Texto factual con ubicación y citas heredadas; distractores quedan fuera."""
-    segmentos = {}
-    omitidos = {
+    omitidos_base = {
         "tipo",
         "id",
         "option_id",
@@ -132,31 +131,40 @@ def _segmentos(borrador, referencias, *, es_sintesis=False, ignorar_metadatos=Fa
         "seccion_id",
         "secciones_cubiertas",
     }
+
+    def _extraer(omitir_conjunto):
+        segmentos = {}
+
+        def recorrer(valor, ruta, citas):
+            if isinstance(valor, dict):
+                if es_sintesis and ruta == "/contenido_adaptado":
+                    citas = []
+                citas = [r["chunk_id"] for r in valor.get("referencias", [])] or citas
+                for clave, item in valor.items():
+                    if clave in omitir_conjunto or clave == "referencias":
+                        continue
+                    if clave == "opciones" and "correct_option_id" in valor:
+                        for indice, opcion in enumerate(item):
+                            if opcion["option_id"] == valor["correct_option_id"]:
+                                recorrer(opcion, f"{ruta}/opciones/{indice}", citas)
+                    else:
+                        recorrer(item, ruta + "/" + clave.replace("~", "~0").replace("/", "~1"), citas)
+            elif isinstance(valor, list):
+                for indice, item in enumerate(valor):
+                    recorrer(item, f"{ruta}/{indice}", citas)
+            elif isinstance(valor, str) and valor.strip():
+                segmentos[ruta] = {"texto": valor, "referencias": citas}
+
+        recorrer(borrador.model_dump(mode="json"), "", [r.chunk_id for r in referencias])
+        return segmentos
+
+    omitidos = set(omitidos_base)
     if ignorar_metadatos:
-        omitidos.add("metadatos")
-
-    def recorrer(valor, ruta, citas):
-        if isinstance(valor, dict):
-            if es_sintesis and ruta == "/contenido_adaptado":
-                citas = []
-            citas = [r["chunk_id"] for r in valor.get("referencias", [])] or citas
-            for clave, item in valor.items():
-                if clave in omitidos or clave == "referencias":
-                    continue
-                if clave == "opciones" and "correct_option_id" in valor:
-                    for indice, opcion in enumerate(item):
-                        if opcion["option_id"] == valor["correct_option_id"]:
-                            recorrer(opcion, f"{ruta}/opciones/{indice}", citas)
-                else:
-                    recorrer(item, ruta + "/" + clave.replace("~", "~0").replace("/", "~1"), citas)
-        elif isinstance(valor, list):
-            for indice, item in enumerate(valor):
-                recorrer(item, f"{ruta}/{indice}", citas)
-        elif isinstance(valor, str) and valor.strip():
-            segmentos[ruta] = {"texto": valor, "referencias": citas}
-
-    recorrer(borrador.model_dump(mode="json"), "", [r.chunk_id for r in referencias])
-    return segmentos
+        omitidos.update({"metadatos", "titulo", "frente"})
+    res = _extraer(omitidos)
+    if not res and ignorar_metadatos:
+        res = _extraer(omitidos - {"titulo", "frente"})
+    return res
 
 
 _TAREAS = {

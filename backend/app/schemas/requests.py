@@ -115,6 +115,8 @@ class GenerateRequest(ModeloContenido):
         anterior = self.model_dump(mode="json")
         if self.modo_generacion == "multiagente":
             anterior.pop("modo_generacion")
+        if self.cantidad_items is None:
+            anterior.pop("cantidad_items", None)
         return (principal,) if principal == anterior else (principal, anterior)
 
 
@@ -168,7 +170,6 @@ class GlossaryRequest(ModeloContenido):
     )
     perfil_destinatario: RecipientProfile
     idioma_salida: OutputLanguage
-    modo_generacion: Literal["multiagente", "basico"] = "multiagente"
 
     @model_validator(mode="after")
     def _normalizar_fuentes(self) -> "GlossaryRequest":
@@ -205,8 +206,6 @@ class GlossaryRequest(ModeloContenido):
 
     def parametros_persistidos(self):
         datos = self.model_dump(mode="json")
-        if self.modo_generacion == "multiagente":
-            datos.pop("modo_generacion", None)
         if len(self.document_ids) == 1:
             datos.pop("document_ids")
         return datos
@@ -214,13 +213,7 @@ class GlossaryRequest(ModeloContenido):
     def parametros_idempotentes(self) -> tuple[dict, ...]:
         principal = self.parametros_persistidos()
         anterior = self.model_dump(mode="json")
-        sin_modo = {k: v for k, v in principal.items() if k != "modo_generacion"}
-        res = [principal]
-        if anterior != principal:
-            res.append(anterior)
-        if sin_modo != principal and sin_modo not in res:
-            res.append(sin_modo)
-        return tuple(res)
+        return (principal,) if principal == anterior else (principal, anterior)
 
 
 class QuizAnswerRequest(ModeloContenido):

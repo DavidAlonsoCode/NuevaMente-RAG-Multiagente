@@ -102,6 +102,8 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
     if estado.status != JobStatus.RUNNING:
         return {}
     ctx, recuperador = dependencias.grafo.ejecucion, dependencias.retriever
+    tipo_ejecucion = getattr(ctx, "tipo", None) or getattr(dependencias.grafo.ejecucion, "tipo", None)
+    es_chat_o_glosario = dependencias.pregunta is not None or tipo_ejecucion in ("chat", "glosario")
 
     def update(**campos):
         return {
@@ -246,8 +248,8 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
                 if elegido is None:
                     faltantes.append(seccion)
             if faltantes:
-                if dependencias.pregunta is not None and evidencia:
-                    # En chat/glosario con pregunta puntual, si ya recuperamos evidencia suficiente
+                if es_chat_o_glosario and evidencia:
+                    # En chat/glosario con alcance flexible, si ya recuperamos evidencia suficiente
                     # no bloqueamos por no cubrir todas las secciones del documento.
                     pass
                 else:
@@ -373,6 +375,8 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
                 for item in nuevos:
                     agregar(item)
 
+            objetivo = list(dict.fromkeys(seccion_del_chunk(e.chunk) for e in evidencia))
+        if es_chat_o_glosario and evidencia:
             objetivo = list(dict.fromkeys(seccion_del_chunk(e.chunk) for e in evidencia))
         revalidar()
         cfg = recuperador.configuracion

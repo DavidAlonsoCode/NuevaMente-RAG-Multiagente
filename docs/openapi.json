@@ -1625,6 +1625,20 @@
             "$ref": "#/components/schemas/AlcanceSolicitud",
             "description": "Documento completo, sección explícita o multi_documento."
           },
+          "cantidad_items": {
+            "anyOf": [
+              {
+                "maximum": 25.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cantidad deseada de tarjetas (flashcards), preguntas (quiz) o pasos (tutorial).",
+            "title": "Cantidad Items"
+          },
           "document_id": {
             "anyOf": [
               {
