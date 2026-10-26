@@ -73,3 +73,10 @@ node_modules/
 **/node_modules/
 *.zip
 *.tsbuildinfo
+
+# Volcados locales de codigo para compartir con IA (no versionar)
+arbol_carpetas.txt
+cambios_git_diff.txt
+codigo_archivos_modificados_backend.txt
+codigo_completo.txt
+codigo_para_ia/

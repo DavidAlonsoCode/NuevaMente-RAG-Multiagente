@@ -397,10 +397,9 @@ class ServicioGlosario:
         )
         if revisado.status == JobStatus.CANCELLED:
             raise TrabajoCanceladoError()
+        evaluacion = trazabilidad = None
         if not sin_definiciones:
-            if getattr(solicitud, "modo_generacion", "multiagente") == "basico":
-                aprobado = None
-            else:
+            if getattr(solicitud, "modo_generacion", "multiagente") != "basico":
                 if revisado.status == JobStatus.REJECTED_QUALITY:
                     raise RechazoCalidadError(revisado.error.razones_bloqueo if revisado.error else ())
                 if revisado.error is not None:
@@ -418,9 +417,14 @@ class ServicioGlosario:
                     )
                 ):
                     raise FalloTrabajoError("INVALID_STATE", "La fuente cambió después de la revisión.")
-                aprobado = finalizer(revisado, bucket=self.cfg.oci_bucket_name, created_at=base["created_at"])
-        else:
-            aprobado = None
+                if revisado.evaluacion_pedagogica is None:
+                    raise FalloTrabajoError("INVALID_STATE", "La revisión no produjo una evaluación.")
+                if revisado.evaluacion_pedagogica.estado_evaluacion == "aprobada":
+                    aprobado = finalizer(revisado, bucket=self.cfg.oci_bucket_name, created_at=base["created_at"])
+                    evaluacion, trazabilidad = aprobado.evaluacion_calidad, aprobado.trazabilidad
+                else:
+                    # Entrega con reservas: se publica la evaluación real, sin sellarla como aprobada.
+                    evaluacion, trazabilidad = revisado.evaluacion_pedagogica, revisado.trazabilidad
         referencias_canonicas = {r.chunk_id: r for r in revisado.referencias}
         chunk_a_doc = {c.chunk_id: c.document_id for c in chunks}
         originales = {t.id: t for t in candidatos}
@@ -458,6 +462,6 @@ class ServicioGlosario:
             if solicitud.modo_generacion == "basico"
             else "verificado",
             terminos=terminos,
-            evaluacion_calidad=aprobado.evaluacion_calidad if aprobado else None,
-            trazabilidad=aprobado.trazabilidad if aprobado else None,
+            evaluacion_calidad=evaluacion,
+            trazabilidad=trazabilidad,
         )

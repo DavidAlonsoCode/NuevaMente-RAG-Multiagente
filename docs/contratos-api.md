@@ -1,5 +1,7 @@
 # 🔌 Contratos API v1 — NuevaMente
 
+> **Revisión PR #152 — 26/10/2026**: chat y glosario Multiagente no se cancelan por la revisión de calidad: tras una reescritura (dos borradores) entregan la respuesta con su evaluación real `requiere_revision` (score, conteos y `razones_bloqueo`) y la UI la rotula como respaldo parcial. `aprobada` conserva su significado (anclaje >= 0,85 y todas las afirmaciones respaldadas). Sin afirmaciones respaldadas o con citas fuera de la evidencia se mantiene `rejected_quality`. Un glosario con reservas no se reutiliza desde caché. La generación pedagógica no cambia. El frontend acepta paquetes `multi_documento`/`espacio_completo` y exige el mismo conjunto de fuentes pedido.
+
 > **Revisión PR #150 — 26/10/2026**: `cantidad_items` opcional de 1 a 25 en generación de flashcards, quiz y tutorial, validado sobre el borrador. Chat y glosario admiten `modo_generacion=multiagente|basico`; su básico devuelve contenido citado con `estado=no_evaluado`, evaluación nula y aviso en UI. Glosario básico también tiene trazabilidad nula. La cobertura multiagente de estas consultas evalúa pregunta/definiciones, sin exigir todo el documento; se conserva §19.3. [Detalle y límites](revision-pr-150.md).
 
 > **Ampliación 1.1 — complemento 33.1 (16/10/2026)**: [contrato de modos](modos-generacion.md). `GenerateRequest.modo_generacion` es opcional (`multiagente` por defecto, `basico` explícito). Omitirlo conserva el paquete 1.0; explicitarlo solicita 1.1. El básico tiene `status=no_evaluado`, evaluación `no_realizada`, métricas y modelo juez nulos. Cada variante tiene validación estricta; el paquete 1.0 aprobado no cambia. `completed` sigue requiriendo persistencia confirmada y no significa aprobación del básico. El [OpenAPI](openapi.json) incluye las variantes de respuesta y exportación. La compatibilidad de idempotencia y exportaciones históricas está detallada en el contrato de modos.
@@ -665,7 +667,11 @@ Precisión #37 (`contract-change`): el recibo es `TrabajoComunResponse`; consult
 SSE/reconexión y cancelación se realizan en `/api/jobs/{job_id}`. `result` es
 `ChatAnswer`: `document_id`, `document_hash`, `document_ids`, `documentos_fuente`, `pregunta`, `perfil_destinatario`,
 `idioma_salida`, `estado`, `respuesta`, `referencias` y `evaluacion_calidad`.
-`estado=respondida` requiere revisión completa aprobada; `fuera_de_alcance` sólo
+`estado=respondida` requiere citas y una evaluación `aprobada` (anclaje >= 0,85) o
+`requiere_revision`: el chat no se cancela por calidad, tras una reescritura entrega la
+respuesta con su score y razones reales y la UI advierte el respaldo parcial (el modo
+básico responde con `no_evaluado`). Las citas fuera de la evidencia siguen
+terminando en `rejected_quality`. `fuera_de_alcance` sólo
 entrega una abstención fija que pide precisar, con referencias vacías y evaluación
 nula. `rejected_quality` no entrega result. El historial usa únicamente turnos
 completed del mismo workspace y conjunto exacto de identidades, hashes y versiones,
@@ -724,7 +730,8 @@ Precisión #39 (`contract-change`):
   conservan el contrato común.
 - Cada término contiene `id`, `termino_original`, `es_identificador`,
   `traduccion`, `estado`, `definicion`, `referencias` y `limitacion`. El estado
-  `definido` requiere definición citada y revisión completa aprobada. Productos,
+  `definido` requiere definición citada y revisión completa del Critic, aprobada o
+  entregada con reservas tras la reescritura. Productos,
   comandos y APIs conservan su nombre original sin traducción. Definición y
   traducción pasan juntas por el Critic; el extractor factual debe cubrir cada
   definición. No se publican borradores rechazados ni incompletos.
@@ -733,7 +740,10 @@ Precisión #39 (`contract-change`):
   asigna el backend para mostrar dónde aparece el término; no prueban una definición.
   Si no hay definiciones, el glosario declara `sin_definiciones` con evaluación
   nula; sin candidatos declara `sin_terminos`. Estas limitaciones no reciben
-  un score ficticio. El estado `verificado` requiere definiciones y calidad aprobada.
+  un score ficticio. El estado `verificado` requiere definiciones y una evaluación
+  `aprobada` (anclaje >= 0,85) o `requiere_revision` (entrega con reservas tras una
+  reescritura, con score y razones reales que la UI muestra como respaldo parcial);
+  el modo básico usa `no_evaluado`. Un glosario con reservas no se reutiliza desde caché.
 - La clave de caché incluye espacio, conjunto de documentos/hashes/versiones, configuración del
   parser, modelos de generación/verificación/embeddings, perfil, idioma, versiones
   del prompt de glosario/base y detector. SQLite conserva trabajos y resultados

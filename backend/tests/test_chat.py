@@ -24,6 +24,7 @@ def entorno(entorno_generacion, monkeypatch):
     e = entorno_generacion
     e.entradas_chat, e.revisiones_chat = [], []
     e.fuera, e.cita_invalida, e.contradiccion, e.json_invalido = False, False, False, 0
+    e.parcial = False
     juez_original = e.doble._revisar
 
     def generar(prompt, **kwargs):
@@ -60,24 +61,31 @@ def entorno(entorno_generacion, monkeypatch):
     def juzgar(**entrada):
         datos = json.loads(entrada["prompt"])
         e.revisiones_chat.append(datos)
-        if e.contradiccion and datos["tarea"] == "descomponer":
+        if (e.contradiccion or e.parcial) and datos["tarea"] == "descomponer":
             salida = {
                 "afirmaciones": [
                     {"texto": f"Afirmación {n}", "ubicacion": "/contenido_adaptado/items/0/dorso"} for n in range(10)
                 ]
             }
-        elif e.contradiccion and datos["tarea"] == "juzgar":
-            salida = {
-                "juicios": [
-                    {
+        elif (e.contradiccion or e.parcial) and datos["tarea"] == "juzgar":
+            # contradiccion: 9/10 respaldadas y una contradicha; parcial: 7/10 sin contradicciones.
+            def veredicto(n, a):
+                if e.parcial and n >= 7:
+                    return {
                         "id_afirmacion": a["id"],
-                        "estado": "contradicha" if n == 9 else "respaldada",
+                        "estado": "sin_evidencia",
                         "motivo": "Juicio sintético",
-                        "referencias": a["citas_permitidas"],
+                        "referencias": [],
                     }
-                    for n, a in enumerate(datos["afirmaciones"])
-                ]
-            }
+                estado = "contradicha" if e.contradiccion and n == 9 else "respaldada"
+                return {
+                    "id_afirmacion": a["id"],
+                    "estado": estado,
+                    "motivo": "Juicio sintético",
+                    "referencias": a["citas_permitidas"],
+                }
+
+            salida = {"juicios": [veredicto(n, a) for n, a in enumerate(datos["afirmaciones"])]}
         else:
             return juez_original(**entrada)
         e.doble.programar_revision(json.dumps(salida))
@@ -151,12 +159,30 @@ def test_historial_nunca_es_evidencia_y_cada_pregunta_recupera(entorno):
     assert "NO" in kwargs["system_instruction"]
 
 
-@pytest.mark.parametrize("defecto", ["rubrica", "cita", "contradiccion"])
-def test_politica_completa_rechaza_tras_tres_redacciones(entorno, defecto):
+@pytest.mark.parametrize(
+    "defecto,score",
+    [("rubrica", 1.0), ("contradiccion", 0.9), ("parcial", 0.7)],
+)
+def test_chat_responde_con_reservas_tras_la_reescritura(entorno, defecto, score):
+    """El chat no se cancela por calidad: tras una reescritura entrega la respuesta
+    con su evaluación real (requiere_revision) para que la UI advierta el respaldo parcial."""
     e = entorno
     e.doble.rechazar = defecto == "rubrica"
-    e.cita_invalida = defecto == "cita"
     e.contradiccion = defecto == "contradiccion"
+    e.parcial = defecto == "parcial"
+    resultado = esperar(e, chat(e).json())["result"]
+    assert resultado["estado"] == "respondida" and resultado["respuesta"] and resultado["referencias"]
+    calidad = resultado["evaluacion_calidad"]
+    assert calidad["estado_evaluacion"] == "requiere_revision" and calidad["razones_bloqueo"]
+    assert calidad["anclaje_fuente_score"] == pytest.approx(score)
+    assert e.doble.llamadas_generacion == 2
+    assert e.db.obtener_documento(e.doc)["estado"] == "ready"
+
+
+def test_chat_con_citas_inventadas_se_rechaza_tras_tres_redacciones(entorno):
+    """Una cita fuera de la evidencia nunca se entrega, ni siquiera con reservas."""
+    e = entorno
+    e.cita_invalida = True
     recibo = chat(e).json()
     resultado = esperar(e, recibo, "rejected_quality")
     assert resultado["result"] is None and resultado["error"]

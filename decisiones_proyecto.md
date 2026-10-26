@@ -13,6 +13,8 @@
 
 El modo básico se extiende explícitamente a chat y glosario: resultados con `estado=no_evaluado`, citas validadas y evaluación nula; nunca `respondida`/`verificado` sin revisión. La UI permite elegirlo y muestra su limitación. No se activa como salida automática ante un fallo del multiagente. Se permiten 1–25 tarjetas/preguntas/pasos solicitados y se valida su cantidad; no se inventa contenido para completar el número. Retrieval predeterminado: `k=10`, `fetch_k=25`, presupuesto máximo sin ampliar. El parser admite hasta 100 páginas visuales; siguen rigiendo los límites de tiempo, memoria, tokens y cuotas. [Contrato y comprobaciones de la revisión](docs/revision-pr-150.md).
 
+**Ajuste autorizado — 26/10/2026 (PR #152)**: chat y glosario Multiagente responden siempre que exista respaldo: si tras una reescritura (dos borradores) la revisión no aprueba, se entrega el último borrador con su evaluación real `requiere_revision` (score, conteos y razones) y la UI advierte el respaldo parcial en vez de ocultar la respuesta. No se presenta como aprobado: `aprobada` sigue exigiendo anclaje >= 0,85 y todas las afirmaciones respaldadas, y el Finalizer sólo sella lo aprobado. Se mantiene el rechazo cuando ninguna afirmación tiene respaldo o las citas salen de la evidencia, y un glosario con reservas no se reutiliza desde caché. La generación pedagógica conserva el bloqueo de lo no aprobado sin excepciones.
+
 Este documento define la entrega completa: requisitos mínimos, todos los diferenciales del enunciado y los extras acordados. No constituye un plan de implementación ni acredita funcionalidades implementadas. La solución se orienta a capacitación técnica reutilizable; no presupone una adopción comercial por parte de Oracle.
 
 ---
