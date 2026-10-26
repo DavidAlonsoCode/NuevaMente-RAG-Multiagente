@@ -118,7 +118,7 @@ function exigir(condicion: boolean, msg = 'Contrato incompatible'): void {
   if (!condicion) throw new Error(msg);
 }
 
-function validarCalidadAprobada(calidad: any, exigirIgualdadRespaldadas = false): boolean {
+function validarCalidadAprobada(calidad: any): boolean {
   if (typeof calidad !== 'object' || calidad === null) return false;
   const score = calidad.anclaje_fuente_score;
   const total = calidad.cantidad_afirmaciones;
@@ -129,7 +129,7 @@ function validarCalidadAprobada(calidad: any, exigirIgualdadRespaldadas = false)
   if (!Number.isInteger(total) || !Number.isInteger(respaldadas) || total <= 0) {
     return false;
   }
-  if (exigirIgualdadRespaldadas ? respaldadas !== total : respaldadas > total || respaldadas < 0) {
+  if (respaldadas !== total) {
     return false;
   }
   if (Math.abs(score - respaldadas / total) > 1e-6) return false;
@@ -150,11 +150,11 @@ function validarCalidadAprobada(calidad: any, exigirIgualdadRespaldadas = false)
 export function validarPaquete(paquete: any): asserts paquete is PedagogicalStudentOutput {
   exigir(
     typeof paquete === 'object' &&
-      paquete !== null &&
-      ((paquete.schema_version === '1.0' && paquete.status === 'aprobado' && paquete.modo_generacion === undefined) ||
-       (paquete.schema_version === '1.1' &&
+    paquete !== null &&
+    ((paquete.schema_version === '1.0' && paquete.status === 'aprobado' && paquete.modo_generacion === undefined) ||
+      (paquete.schema_version === '1.1' &&
         ((paquete.modo_generacion === 'multiagente' && paquete.status === 'aprobado') ||
-         (paquete.modo_generacion === 'basico' && paquete.status === 'no_evaluado'))))
+          (paquete.modo_generacion === 'basico' && paquete.status === 'no_evaluado'))))
   );
   exigir(esTexto(paquete.generation_id));
 
@@ -172,7 +172,7 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
   );
   exigir(
     esTexto(contenido.titulo) &&
-      ['document_id', 'titulo', 'hash', 'version'].every((k) => esTexto(fuente[k]))
+    ['document_id', 'titulo', 'hash', 'version'].every((k) => esTexto(fuente[k]))
   );
   exigir(PERFILES.includes(meta.perfil_aplicado));
   exigir(NICHOS.includes(meta.nicho_sector));
@@ -181,25 +181,25 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
 
   exigir(
     esListaTextos(meta.conceptos_clave) &&
-      esListaTextos(meta.prerrequisitos) &&
-      esListaTextos(meta.objetivos_aprendizaje)
+    esListaTextos(meta.prerrequisitos) &&
+    esListaTextos(meta.objetivos_aprendizaje)
   );
   exigir(meta.conceptos_clave.length > 0 && meta.objetivos_aprendizaje.length > 0);
   exigir(
     Number.isInteger(meta.tiempo_estimado_estudio_minutos) &&
-      meta.tiempo_estimado_estudio_minutos > 0
+    meta.tiempo_estimado_estudio_minutos > 0
   );
   exigir(
     meta.alcance &&
-      (meta.alcance.tipo === 'documento_completo' || meta.alcance.tipo === 'seccion')
+    (meta.alcance.tipo === 'documento_completo' || meta.alcance.tipo === 'seccion')
   );
   if (meta.alcance.tipo === 'seccion') {
     exigir(esTexto(meta.alcance.seccion_id));
   }
   exigir(
     meta.alcance.secciones_cubiertas === undefined ||
-      meta.alcance.secciones_cubiertas === null ||
-      esListaTextos(meta.alcance.secciones_cubiertas)
+    meta.alcance.secciones_cubiertas === null ||
+    esListaTextos(meta.alcance.secciones_cubiertas)
   );
   exigir(esReferencias(paquete.referencias));
   if (paquete.status === 'no_evaluado') {
@@ -209,13 +209,14 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
       'verificacion_visual', 'observaciones', 'razones_bloqueo'].every((key) => calidad[key] === null));
     exigir(paquete.trazabilidad?.modelo_verificacion === null);
   } else {
-    exigir(validarCalidadAprobada(calidad, true));
+    // El contrato vigente aprueba con score >= 0.85 sin exigir respaldo total.
+    exigir(validarCalidadAprobada(calidad));
   }
   exigir(calidad.observaciones === undefined || calidad.observaciones === null || esTexto(calidad.observaciones));
   exigir(
     contenido.introduccion_contextualizada === undefined ||
-      contenido.introduccion_contextualizada === null ||
-      esTexto(contenido.introduccion_contextualizada)
+    contenido.introduccion_contextualizada === null ||
+    esTexto(contenido.introduccion_contextualizada)
   );
 
   const tipo = contenido.tipo;
@@ -238,8 +239,8 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
   const items = contenido[campo];
   exigir(
     Array.isArray(items) &&
-      items.length > 0 &&
-      items.every((item) => typeof item === 'object' && item !== null && esTexto(item.id))
+    items.length > 0 &&
+    items.every((item) => typeof item === 'object' && item !== null && esTexto(item.id))
   );
   const uniqueIds = new Set(items.map((i: any) => i.id));
   exigir(uniqueIds.size === items.length);
@@ -255,8 +256,8 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
     if (tipo === 'quiz') {
       exigir(
         !('correct_option_id' in item) &&
-          !('justificacion' in item) &&
-          !('referencias' in item)
+        !('justificacion' in item) &&
+        !('referencias' in item)
       );
       exigir(esTexto(item.enunciado));
       exigir(Array.isArray(item.opciones) && item.opciones.length >= 2);
@@ -271,23 +272,23 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
       } else if (tipo === 'tutorial') {
         exigir(
           esTexto(item.instruccion) &&
-            esTexto(item.resultado_esperado) &&
-            esTexto(item.verificacion)
+          esTexto(item.resultado_esperado) &&
+          esTexto(item.verificacion)
         );
         exigir(item.codigo === undefined || item.codigo === null || esTexto(item.codigo));
       } else if (tipo === 'guion_clase') {
         exigir(
           esTexto(item.narracion) &&
-            typeof item.duracion_min === 'number' &&
-            Number.isFinite(item.duracion_min) &&
-            item.duracion_min > 0 &&
-            esListaTextos(item.puntos_diapositiva) &&
-            item.puntos_diapositiva.length > 0
+          typeof item.duracion_min === 'number' &&
+          Number.isFinite(item.duracion_min) &&
+          item.duracion_min > 0 &&
+          esListaTextos(item.puntos_diapositiva) &&
+          item.puntos_diapositiva.length > 0
         );
         exigir(
           item.pregunta_interactiva === undefined ||
-            item.pregunta_interactiva === null ||
-            esTexto(item.pregunta_interactiva)
+          item.pregunta_interactiva === null ||
+          esTexto(item.pregunta_interactiva)
         );
       }
     }
@@ -362,6 +363,7 @@ export function validarRespuestaChat(
     document_id: string;
     document_ids?: string[];
     pregunta: string;
+    modo_generacion?: 'multiagente' | 'basico';
     perfil_destinatario: string;
     idioma_salida: string;
   }
@@ -380,8 +382,8 @@ export function validarRespuestaChat(
   const esperados = payloadEsperado.document_ids ?? [payloadEsperado.document_id];
   const declarados = datos.document_ids ?? [datos.document_id];
   if (!Array.isArray(declarados) || declarados.length !== esperados.length ||
-      new Set(declarados).size !== declarados.length ||
-      declarados.some((id: unknown) => typeof id !== 'string' || !esperados.includes(id))) {
+    new Set(declarados).size !== declarados.length ||
+    declarados.some((id: unknown) => typeof id !== 'string' || !esperados.includes(id))) {
     throw invalida();
   }
   if (typeof datos.document_hash !== 'string' || !/^[0-9a-f]{64}$/.test(datos.document_hash)) {
@@ -396,14 +398,16 @@ export function validarRespuestaChat(
     if (!Array.isArray(refs) || refs.length !== 0 || calidad !== null) {
       throw invalida();
     }
-  } else if (datos.estado === 'respondida') {
+  } else if (datos.estado === 'respondida' || datos.estado === 'no_evaluado') {
     if (
       !datos.respuesta.trim() ||
       !Array.isArray(refs) ||
       refs.length === 0 ||
       refs.length > 100 ||
       refs.some((r) => typeof r !== 'object' || r === null || !esTexto(r.chunk_id)) ||
-      !validarCalidadAprobada(calidad, true)
+      !(datos.estado === 'no_evaluado'
+        ? payloadEsperado.modo_generacion === 'basico' && calidad === null
+        : payloadEsperado.modo_generacion !== 'basico' && validarCalidadAprobada(calidad))
     ) {
       throw invalida();
     }
@@ -416,7 +420,7 @@ export function validarRespuestaChat(
 export function validarGlosario(
   salida: any,
   expectedJobId: string,
-  payloadEsperado: { document_id: string; perfil_destinatario: string; idioma_salida: string }
+  payloadEsperado: { document_id: string; perfil_destinatario: string; idioma_salida: string; modo_generacion?: 'multiagente' | 'basico' }
 ): void {
   try {
     exigir(typeof salida === 'object' && salida !== null);
@@ -430,9 +434,11 @@ export function validarGlosario(
     exigir(Number.isInteger(salida.candidatos_omitidos) && salida.candidatos_omitidos >= 0);
 
     const definidos = terminos.filter((t: any) => t.estado === 'definido');
-    exigir(['verificado', 'sin_definiciones', 'sin_terminos'].includes(salida.estado));
+    exigir(['verificado', 'no_evaluado', 'sin_definiciones', 'sin_terminos'].includes(salida.estado));
     exigir((salida.estado === 'sin_terminos') === (terminos.length === 0));
-    exigir((salida.estado === 'verificado') === (definidos.length > 0));
+    exigir(['verificado', 'no_evaluado'].includes(salida.estado) === (definidos.length > 0));
+    if (salida.estado === 'no_evaluado') exigir(payloadEsperado.modo_generacion === 'basico');
+    if (salida.estado === 'verificado') exigir(payloadEsperado.modo_generacion !== 'basico');
 
     for (const term of terminos) {
       exigir(esTexto(term.termino_original));
@@ -441,8 +447,8 @@ export function validarGlosario(
       exigir(['definido', 'sin_definicion_suficiente'].includes(term.estado));
       exigir(
         Array.isArray(term.referencias) &&
-          (term.estado !== 'definido' || term.referencias.length > 0) &&
-          term.referencias.every((r: any) => esTexto(r?.chunk_id))
+        (term.estado !== 'definido' || term.referencias.length > 0) &&
+        term.referencias.every((r: any) => esTexto(r?.chunk_id))
       );
       if (term.estado === 'definido') {
         exigir(esTexto(term.definicion) && !term.limitacion);
@@ -451,8 +457,10 @@ export function validarGlosario(
       }
     }
 
-    if (definidos.length > 0) {
-      exigir(validarCalidadAprobada(salida.evaluacion_calidad, true));
+    if (salida.estado === 'no_evaluado') {
+      exigir(salida.evaluacion_calidad === null && salida.trazabilidad === null);
+    } else if (definidos.length > 0) {
+      exigir(validarCalidadAprobada(salida.evaluacion_calidad));
       exigir(typeof salida.trazabilidad === 'object' && salida.trazabilidad !== null);
     } else {
       exigir(salida.evaluacion_calidad === null);
@@ -507,7 +515,7 @@ export function validarProgreso(salida: any): void {
     salida.quiz_aciertos_primer_intento <= salida.quiz_total_primer_intento &&
     salida.quiz_total_primer_intento <= salida.quiz_intentos &&
     salida.quiz_aciertos_posteriores <=
-      salida.quiz_intentos - salida.quiz_total_primer_intento;
+    salida.quiz_intentos - salida.quiz_total_primer_intento;
 
   if (!valido) {
     throw new APIError('INVALID_RESPONSE', 'Progreso inválido', 502);

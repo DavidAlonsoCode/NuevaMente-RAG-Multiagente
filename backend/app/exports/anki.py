@@ -92,7 +92,8 @@ def exportar_texto(paquete, formato):
                 nombre_mazo(paquete),
             )
         )
-    return salida.getvalue().encode("utf-8")
+    codificacion = "utf-8-sig" if formato == "csv" else "utf-8"
+    return salida.getvalue().encode(codificacion)
 
 
 # aqui construyo el paquete binario de anki (archivo apkg) empaquetando la base de datos sqlite interna dentro de un archivo zip comprimido segun el issue 45

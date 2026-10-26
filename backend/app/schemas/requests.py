@@ -17,7 +17,7 @@ y omitir alcance selecciona documento_completo; una sección exige su ID.
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from app.schemas.enums import DetailLevel, IndustryNiche, OutputLanguage, PedagogicalFormat, RecipientProfile
 from app.schemas.pedagogical import AlcanceSolicitud, ModeloContenido
@@ -42,6 +42,12 @@ class GenerateRequest(ModeloContenido):
     nivel_detalle: DetailLevel
     idioma_salida: OutputLanguage
     modo_generacion: Literal["multiagente", "basico"] = "multiagente"
+    cantidad_items: int | None = Field(
+        default=None,
+        ge=1,
+        le=25,
+        description="Cantidad deseada de tarjetas (flashcards), preguntas (quiz) o pasos (tutorial).",
+    )
     alcance: AlcanceSolicitud = Field(
         default_factory=AlcanceSolicitud, description="Documento completo, sección explícita o multi_documento."
     )
@@ -88,11 +94,26 @@ class GenerateRequest(ModeloContenido):
 
         return self
 
+    @model_serializer(mode="wrap")
+    def _serializar(self, handler):
+        """Serialización pública idéntica al contrato histórico.
+
+        ``cantidad_items`` es una adición opcional: cuando no se solicitó, no
+        debe aparecer en el JSON público (historial, estado del grafo, paquetes)
+        para no alterar los contratos 1.0/1.1 ni las comparaciones de idempotencia.
+        """
+        datos = handler(self)
+        if datos.get("cantidad_items") is None:
+            datos.pop("cantidad_items", None)
+        return datos
+
     def parametros_persistidos(self):
         datos = self.model_dump(mode="json")
         # Mantener la identidad idempotente de solicitudes anteriores al selector.
         if self.modo_generacion == "multiagente":
             datos.pop("modo_generacion")
+        if self.cantidad_items is None:
+            datos.pop("cantidad_items", None)
         # La lista normalizada es interna, incluso si el cliente la proporcionó.
         # No usar model_fields_set: el validador también asigna document_ids.
         if len(self.document_ids) == 1 and self.alcance.tipo in ("documento_completo", "seccion"):
@@ -107,6 +128,8 @@ class GenerateRequest(ModeloContenido):
         anterior = self.model_dump(mode="json")
         if self.modo_generacion == "multiagente":
             anterior.pop("modo_generacion")
+        if self.cantidad_items is None:
+            anterior.pop("cantidad_items", None)
         return (principal,) if principal == anterior else (principal, anterior)
 
 
@@ -142,6 +165,7 @@ class ChatRequest(ModeloContenido):
     pregunta: str = Field(min_length=1, max_length=2000)
     perfil_destinatario: RecipientProfile
     idioma_salida: OutputLanguage
+    modo_generacion: Literal["multiagente", "basico"] = "multiagente"
 
 
 class GlossaryRequest(ModeloContenido):
@@ -160,6 +184,7 @@ class GlossaryRequest(ModeloContenido):
     )
     perfil_destinatario: RecipientProfile
     idioma_salida: OutputLanguage
+    modo_generacion: Literal["multiagente", "basico"] = "multiagente"
 
     @model_validator(mode="after")
     def _normalizar_fuentes(self) -> "GlossaryRequest":
@@ -194,8 +219,19 @@ class GlossaryRequest(ModeloContenido):
 
         return self
 
+    @model_serializer(mode="wrap")
+    def _serializar(self, handler):
+        """Serialización pública idéntica al contrato histórico: el modo por
+        defecto no forma parte del cuerpo ni del hash de idempotencia."""
+        datos = handler(self)
+        if datos.get("modo_generacion") == "multiagente":
+            datos.pop("modo_generacion", None)
+        return datos
+
     def parametros_persistidos(self):
         datos = self.model_dump(mode="json")
+        if self.modo_generacion == "multiagente":
+            datos.pop("modo_generacion", None)
         if len(self.document_ids) == 1:
             datos.pop("document_ids")
         return datos
@@ -203,6 +239,8 @@ class GlossaryRequest(ModeloContenido):
     def parametros_idempotentes(self) -> tuple[dict, ...]:
         principal = self.parametros_persistidos()
         anterior = self.model_dump(mode="json")
+        if self.modo_generacion == "multiagente":
+            anterior.pop("modo_generacion", None)
         return (principal,) if principal == anterior else (principal, anterior)
 
 

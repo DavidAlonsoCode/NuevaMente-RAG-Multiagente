@@ -89,6 +89,8 @@ def test_terminales_no_aprobados_no_publican(entorno, monkeypatch, terminal):
     assert "secreto del proveedor" not in json.dumps(resultado)
     if terminal == "rejected_quality":
         assert e.doble.llamadas_generacion == 3
+        assert resultado["error"]["details"]["razones_bloqueo"] == ["claridad_pedagogica"]
+        assert "mayor claridad" in resultado["error"]["message"]
 
 
 @pytest.mark.parametrize("en_cola", [False, True])

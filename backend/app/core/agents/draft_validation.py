@@ -106,6 +106,12 @@ def validar_borrador(texto: str, estado: EstadoGrafo) -> tuple[BorradorPedagogic
         raise BorradorInvalidoError(
             "Los metadatos deben respetar perfil, formato, nicho, detalle e idiomas solicitados."
         )
+    campo_items = {"flashcards": "items", "tutorial": "pasos", "quiz": "preguntas"}.get(solicitud.formato_salida.value)
+    if solicitud.cantidad_items is not None and campo_items is not None:
+        if len(getattr(validado.contenido_adaptado, campo_items)) != solicitud.cantidad_items:
+            raise BorradorInvalidoError(
+                f"Generar exactamente {solicitud.cantidad_items} {campo_items} con evidencia suficiente."
+            )
     alcance_esperado = solicitud.alcance.model_dump(exclude={"document_ids"})
     alcance_borrador = metadatos.alcance.model_dump(exclude={"secciones_cubiertas", "document_ids"})
     if alcance_borrador != alcance_esperado:

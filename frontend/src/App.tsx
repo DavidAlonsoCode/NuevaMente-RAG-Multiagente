@@ -112,6 +112,7 @@ export const App: React.FC = () => {
   const [genDetalle, setGenDetalle] = useState<DetailLevel>('didactico');
   const [genIdiomaSalida, setGenIdiomaSalida] = useState<OutputLanguage>('es');
   const [genModo, setGenModo] = useState<'multiagente' | 'basico'>('multiagente');
+  const [genCantidadItems, setGenCantidadItems] = useState<number>(8);
   const [genAlcance, setGenAlcance] = useState<TipoAlcance>('documento_completo');
   const [genSeccionId, setGenSeccionId] = useState<string>('');
   const [confirmModalPending, setConfirmModalPending] = useState<{
@@ -456,6 +457,7 @@ export const App: React.FC = () => {
       nicho_sector: genNicho,
       nivel_detalle: genDetalle,
       idioma_salida: genIdiomaSalida,
+      cantidad_items: ['flashcards', 'tutorial', 'quiz'].includes(genFormato) ? genCantidadItems : undefined,
       alcance: alcanceObj,
     };
     const peticionJson = JSON.stringify(peticion);
@@ -655,14 +657,8 @@ export const App: React.FC = () => {
                       return (
                         <label
                           key={d.document_id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            fontSize: '0.8rem',
-                            cursor: 'pointer',
-                            color: checked ? 'var(--ink)' : 'var(--ink-muted)',
-                          }}
+                          className="nm-source-choice"
+                          data-selected={checked}
                           title={d.titulo}
                         >
                           <input
@@ -675,7 +671,7 @@ export const App: React.FC = () => {
                               toggleDocSeleccionado(d.document_id);
                             }}
                           />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.titulo}</span>
+                          <span>{d.titulo}</span>
                         </label>
                       );
                     })}
@@ -722,6 +718,24 @@ export const App: React.FC = () => {
                   ))}
                 </select>
               </div>
+
+              {['flashcards', 'tutorial', 'quiz'].includes(genFormato) && (
+                <div>
+                  <label className="nm-label" htmlFor="app-field-cantidad">{t('sidebar.cantidad_items', idiomaUi)}</label>
+                  <select
+                    id="app-field-cantidad"
+                    className="nm-select"
+                    value={genCantidadItems}
+                    onChange={(e) => setGenCantidadItems(Number(e.target.value))}
+                  >
+                    {[5, 8, 10, 15, 20].map((n) => (
+                      <option key={n} value={n}>
+                        {n} {genFormato === 'flashcards' ? (idiomaUi === 'en' ? 'flashcards' : idiomaUi === 'pt' ? 'cartões' : 'tarjetas') : genFormato === 'quiz' ? (idiomaUi === 'en' ? 'questions' : idiomaUi === 'pt' ? 'questões' : 'preguntas') : (idiomaUi === 'en' ? 'steps' : idiomaUi === 'pt' ? 'passos' : 'pasos')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="nm-label" htmlFor="app-field-3">{t('sidebar.nicho', idiomaUi)}</label>
@@ -850,7 +864,11 @@ export const App: React.FC = () => {
                 disabled={!seleccionLista || (docsSeleccionados.length === 1 && genAlcance === 'seccion' && !genSeccionId)}
                 onClick={prepararConfirmacionGenerar}
               >
-                <Sparkles size={16} />
+                {generacionActiva && (activeJobData?.status === 'queued' || activeJobData?.status === 'running') ? (
+                  <span className="nm-spinner" aria-hidden="true" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
                 {t('sidebar.generar', idiomaUi)}
               </button>
             </div>
@@ -1899,6 +1917,11 @@ export const ActiveGenerationPanel: React.FC<{
       <div className="nm-card">
         <div className="nm-alert nm-alert-error">{t('generar.rechazado_calidad', idioma)}</div>
         <p>{t('live.rejected_reason', idioma)}</p>
+        {job.error?.message && (
+          <p style={{ fontWeight: 500, color: 'var(--ink-secondary)', margin: '0.35rem 0' }}>
+            {job.error.message}
+          </p>
+        )}
         <div style={{ fontSize: '0.88rem', color: 'var(--ink-secondary)' }}>
           {t('material.rechazo_ayuda', idioma)}
         </div>

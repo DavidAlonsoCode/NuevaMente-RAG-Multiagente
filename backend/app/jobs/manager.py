@@ -120,7 +120,27 @@ class TrabajoCanceladoError(Exception):
 
 
 class RechazoCalidadError(Exception):
-    """El Critic agotó las revisiones sin aprobar; no es un fallo técnico."""
+    """Motivos públicos de calidad, sin texto del documento ni feedback del modelo."""
+
+    MOTIVOS = {
+        "afirmacion_sin_respaldo": "Hay afirmaciones sin respaldo suficiente en la fuente.",
+        "fidelidad_baja": "La fidelidad a la fuente es baja.",
+        "fidelidad_requiere_revision": "La fidelidad a la fuente requiere corrección.",
+        "cobertura_incompleta": "Falta cubrir parte del alcance solicitado.",
+        "evidencia_insuficiente": "Falta evidencia para completar la respuesta.",
+        "contradiccion_o_evaluacion_incompleta": "La revisión detectó contradicciones o hechos pendientes de evaluar.",
+        "quiz_invalido": "Hay preguntas u opciones del quiz que requieren corrección.",
+        "verificacion_visual_insuficiente": "No se pudo verificar suficiente evidencia visual.",
+        "claridad_pedagogica": "La explicación necesita mayor claridad.",
+        "adecuacion_perfil": "La explicación necesita ajustarse al perfil elegido.",
+        "coherencia_didactica": "El material necesita mayor coherencia didáctica.",
+    }
+
+    def __init__(self, razones=()):
+        mensajes = [self.MOTIVOS[r] for r in dict.fromkeys(razones) if r in self.MOTIVOS]
+        super().__init__(
+            "El contenido no superó la revisión de calidad." + (" " + " ".join(mensajes) if mensajes else "")
+        )
 
 
 class FalloTrabajoError(Exception):
@@ -648,8 +668,8 @@ class GestorTrabajos:
             )
             self._limpiar(job_id)
             return
-        except RechazoCalidadError:
-            self._finalizar(job_id, JobStatus.REJECTED_QUALITY, "El contenido no superó la revisión de calidad.")
+        except RechazoCalidadError as error:
+            self._finalizar(job_id, JobStatus.REJECTED_QUALITY, str(error))
             return
         except FalloTrabajoError as error:
             self._finalizar(job_id, JobStatus.FAILED, str(error), error_code=error.codigo)

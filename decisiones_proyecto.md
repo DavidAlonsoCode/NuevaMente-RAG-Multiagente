@@ -9,6 +9,10 @@
 
 > **Ampliación autorizada — 16/10/2026**: [modos de generación, complemento 33.1](docs/modos-generacion.md). Se conserva el multiagente predeterminado y se agrega un generador básico con RAG sin evaluación independiente. La excepción permite publicar material estructuralmente válido como `no_evaluado`, nunca como aprobado ni con score inventado; se mantiene el contrato 1.0 y se versiona la ampliación como 1.1. Los bloqueos y garantías de aprobación existentes siguen rigiendo al multiagente. Cambiar de modo crea otra adaptación sobre el mismo documento/índice y conserva los materiales anteriores.
 
+**Ajuste autorizado — 26/10/2026 (revisión del PR #150)**: Chat y glosario evalúan la cobertura de la pregunta o de las definiciones solicitadas, sin exigir resumir todas las secciones del documento. Las paráfrasis y síntesis respaldadas son válidas; los conectores sin hechos, la pregunta del usuario y los metadatos administrativos del adaptador no cuentan como afirmaciones de la respuesta. Se conservan los hallazgos reales de falta de respaldo, contradicciones, omisiones y revisión visual. La política es idéntica con proveedores reales y simulados: no se inventan citas ni se convierte `sin_evidencia` en `respaldada`. Una cita incorrecta del juez da feedback de calidad; una evaluación incompleta o una ubicación inventada sigue siendo un fallo técnico. El mínimo 0.85 y la corrección de errores conocidos de §19.3 siguen vigentes.
+
+El modo básico se extiende explícitamente a chat y glosario: resultados con `estado=no_evaluado`, citas validadas y evaluación nula; nunca `respondida`/`verificado` sin revisión. La UI permite elegirlo y muestra su limitación. No se activa como salida automática ante un fallo del multiagente. Se permiten 1–25 tarjetas/preguntas/pasos solicitados y se valida su cantidad; no se inventa contenido para completar el número. Retrieval predeterminado: `k=10`, `fetch_k=25`, presupuesto máximo sin ampliar. El parser admite hasta 100 páginas visuales; siguen rigiendo los límites de tiempo, memoria, tokens y cuotas. [Contrato y comprobaciones de la revisión](docs/revision-pr-150.md).
+
 Este documento define la entrega completa: requisitos mínimos, todos los diferenciales del enunciado y los extras acordados. No constituye un plan de implementación ni acredita funcionalidades implementadas. La solución se orienta a capacitación técnica reutilizable; no presupone una adopción comercial por parte de Oracle.
 
 ---
@@ -222,7 +226,7 @@ Completed solo se emite después de la confirmación de persistencia.
 |---|---|---|
 | Formatos | PDF, Markdown .md/.markdown y TXT UTF-8 | Cubre las tres entradas requeridas. |
 | Tamaño por archivo | 20 MB PDF; 5 MB MD/TXT | Limita la entrada antes del procesamiento. |
-| Límites iniciales adicionales | 100 páginas PDF, 100.000 tokens extraídos y 20 páginas que requieran interpretación visual | Un archivo pequeño también puede expandirse o consumir demasiadas llamadas. |
+| Límites iniciales adicionales | 100 páginas PDF, 100.000 tokens extraídos y 100 páginas que requieran interpretación visual | Un archivo pequeño también puede expandirse o consumir demasiadas llamadas. |
 | Entrada de texto | Área para pegar texto, persistido como original TXT | Facilita usar el ejemplo del enunciado sin preparar un archivo. |
 | Archivos incompatibles | Error explicativo para corrupción, cifrado sin acceso o extracción insuficiente | No se inventa contenido a partir de un archivo ilegible. |
 
@@ -270,8 +274,8 @@ El original y los artefactos canónicos viven en OCI; Chroma es un índice recon
 | Parámetro | Punto de partida |
 |---|---|
 | Método | MMR |
-| k | 5 resultados por consulta temática |
-| fetch_k | 15 candidatos |
+| k | 10 resultados por consulta temática |
+| fetch_k | 25 candidatos |
 | lambda_mult | 0.7 |
 | Presupuesto de evidencia | Hasta 12.000 tokens deduplicados por borrador, configurable |
 
@@ -1381,7 +1385,7 @@ No se promete generación instantánea ni un porcentaje de ahorro sin medición.
 
 Se usa una implementación propia de la metodología Faithfulness de Ragas:
 
-1. Extraer afirmaciones factuales atómicas del contenido y sus metadatos.
+1. Extraer afirmaciones factuales atómicas del contenido y sus metadatos sustantivos. En los adaptadores de chat/glosario se excluyen pregunta y campos administrativos, no los hechos de la respuesta.
 2. Contrastar cada afirmación con el contexto recuperado.
 3. Calcular respaldadas / total de afirmaciones evaluables.
 

@@ -217,12 +217,14 @@ class EfectosDocumentales:
                     raise StorageUnavailable("El original no acredita la admisión")
             # El commit SQLite encolada acredita la intención, no el éxito del
             # pipeline. Incluso un manifiesto ready perdido se degrada a failed.
+            doc_row = self.db.obtener_documento(doc)
+            detalle = (doc_row.get("detalle_error") if doc_row else None) or manifest.detalle_error
             deseado = manifest.model_copy(
                 update={
                     "admision_confirmada": True,
                     "admision_sqlite_confirmada": True,
                     "estado": DocumentStatus.FAILED,
-                    "detalle_error": "La ingestión no se completó; consultar el trabajo vinculado.",
+                    "detalle_error": detalle or "La ingestión no se completó; consultar el trabajo vinculado.",
                 }
             )
             if manifest != deseado:

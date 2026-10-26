@@ -214,5 +214,5 @@ def ejecutar_en_worker(estado: EstadoGrafo, dependencias: DependenciasOrquestaci
     if final.status == JobStatus.CANCELLED:
         raise TrabajoCanceladoError()
     if final.status == JobStatus.REJECTED_QUALITY:
-        raise RechazoCalidadError()
+        raise RechazoCalidadError(final.error.razones_bloqueo if final.error else ())
     raise FalloTrabajoError(final.error.code, final.error.message)

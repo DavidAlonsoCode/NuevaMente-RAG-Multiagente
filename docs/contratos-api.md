@@ -1,5 +1,7 @@
 # 🔌 Contratos API v1 — NuevaMente
 
+> **Revisión PR #150 — 26/10/2026**: `cantidad_items` opcional de 1 a 25 en generación de flashcards, quiz y tutorial, validado sobre el borrador. Chat y glosario admiten `modo_generacion=multiagente|basico`; su básico devuelve contenido citado con `estado=no_evaluado`, evaluación nula y aviso en UI. Glosario básico también tiene trazabilidad nula. La cobertura multiagente de estas consultas evalúa pregunta/definiciones, sin exigir todo el documento; se conserva §19.3. [Detalle y límites](revision-pr-150.md).
+
 > **Ampliación 1.1 — complemento 33.1 (16/10/2026)**: [contrato de modos](modos-generacion.md). `GenerateRequest.modo_generacion` es opcional (`multiagente` por defecto, `basico` explícito). Omitirlo conserva el paquete 1.0; explicitarlo solicita 1.1. El básico tiene `status=no_evaluado`, evaluación `no_realizada`, métricas y modelo juez nulos. Cada variante tiene validación estricta; el paquete 1.0 aprobado no cambia. `completed` sigue requiriendo persistencia confirmada y no significa aprobación del básico. El [OpenAPI](openapi.json) incluye las variantes de respuesta y exportación. La compatibilidad de idempotencia y exportaciones históricas está detallada en el contrato de modos.
 
 > **Estado**: contrato v1 **CONGELADO** por el issue `Issue 03`. Implementación viva: [`backend/app/schemas/`](../backend/app/schemas/) (Pydantic v2); ejemplos ejecutables: `backend/tests/test_schemas.py` (round-trip + rechazo de inválidos). Cambios posteriores requieren PR etiquetado `contract-change` con revisión API+UI+AGT+RAG y este documento actualizado en el mismo PR.
@@ -1186,7 +1188,7 @@ Estos ajustes de contrato deben conservar la revisión API/UI/AGT/RAG y la etiqu
   delega en Chroma y en los embeddings síncronos de Issue 13. La consulta conserva
   su idioma y usa la preparación asimétrica compatible con el índice; no traduce
   mediante otra llamada generativa. `recuperar_demo` usa la colección de lectura aparte.
-- `RETRIEVAL_K=5`, `RETRIEVAL_FETCH_K=15`, `RETRIEVAL_LAMBDA_MULT=0.7` y
+- `RETRIEVAL_K=10`, `RETRIEVAL_FETCH_K=25`, `RETRIEVAL_LAMBDA_MULT=0.7` y
   `RETRIEVAL_MAX_TOKENS=12000` son configurables. Se exige fetch_k >= k y un
   presupuesto positivo que no supere el límite de 12.000 tokens por borrador.
 - Si el ámbito filtrado contiene como máximo los candidatos solicitados, se leen

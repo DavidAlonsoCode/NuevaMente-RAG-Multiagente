@@ -506,3 +506,17 @@ def test_sdk_retry_info_sin_header():
 
     detalles = {"error": {"details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "12.5s"}]}}
     assert _retry_after(errors.APIError(429, detalles)) == 12.5
+
+
+@pytest.mark.parametrize("formato", ["flashcards", "quiz", "tutorial"])
+@pytest.mark.parametrize("cantidad", [1, 2])
+def test_cumple_cantidad_solicitada_o_rechaza_sin_publicar(entorno, formato, cantidad):
+    estado = estado_inicial(entorno, formato, cantidad_items=cantidad)
+    salida = json.dumps(respuesta(estado))
+    entorno[0].proveedor.programar_generacion(salida, salida, salida)
+    nuevo = aplicar(estado, writer(estado, entorno[0]))
+    if cantidad == 1:
+        assert nuevo.status == "running" and nuevo.borrador is not None
+    else:
+        assert nuevo.status == "rejected_quality" and nuevo.borrador is None
+        assert nuevo.intento == 3

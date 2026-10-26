@@ -94,6 +94,7 @@ class BorradorPedagogico(ContratoGrafo):
 
 
 class DiagnosticoGrafo(ContratoGrafo):
+    razones_bloqueo: list[str] = Field(default_factory=list)
     code: str = Field(min_length=1)
     message: str = Field(min_length=1)
 

@@ -16,7 +16,14 @@ export function GenerationLiveStatus({ stream, idioma, modo = 'multiagente' }: {
       <p>{t('generar.etapa', idioma, { etapa: stage })}</p>
       {step && ['supervisor', 'researcher', 'writer', 'critic', 'finalizer'].includes(step) &&
         !!stream.progress?.iteration && <p>{t(modo === 'basico' ? 'modo.redaccion_unica' : 'live.draft', idioma, { numero: stream.progress.iteration })}</p>}
-      <p className="nm-live-connection"><span aria-hidden="true">●</span> {t(`live.${stream.phase}`, idioma)}</p>
+      <p className="nm-live-connection">
+        {stream.phase === 'connected' || stream.phase === 'connecting' ? (
+          <span className="nm-spinner" aria-hidden="true" />
+        ) : (
+          <span aria-hidden="true">●</span>
+        )}{' '}
+        {t(`live.${stream.phase}`, idioma)}
+      </p>
     </div>
     <ErrorBanner error={stream.error} idioma={idioma} />
     {(stream.phase === 'error' || stream.phase === 'reconnecting') &&

@@ -331,8 +331,14 @@ def test_respuesta_invalida_del_evaluador_falla_sin_score(entorno, problema):
         estado = borrador(entorno, "quiz")
     juez(entorno[1].proveedor, modificar=modificar)
     nuevo = aplicar(estado, critic(estado, entorno[1]))
-    assert nuevo.status == "failed" and nuevo.error.code == "INVALID_EVALUATION"
-    assert nuevo.borrador is None and nuevo.evaluacion_factual is None and nuevo.evaluacion_pedagogica is None
+    if problema in ("cita", "cita_vacia"):
+        assert nuevo.status == "running" and nuevo.error is None
+        assert nuevo.evaluacion_factual.score == 0.75
+        assert nuevo.afirmaciones_fallidas and nuevo.solicitudes_evidencia
+        assert nuevo.destino_revision == "researcher"
+    else:
+        assert nuevo.status == "failed" and nuevo.error.code == "INVALID_EVALUATION"
+        assert nuevo.borrador is None and nuevo.evaluacion_factual is None and nuevo.evaluacion_pedagogica is None
 
 
 def test_sin_afirmaciones_es_no_evaluable_nunca_uno(entorno):

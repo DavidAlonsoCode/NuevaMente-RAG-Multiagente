@@ -112,6 +112,8 @@ y revisión humana (55/60), completar seguridad/E2E (51/53) y ensayar/grabar (56
 Infraestructura (48/49) avanza en paralelo, con evidencias públicas cuando exista
 la VM. Se conserva la trazabilidad y los 60 issues del plan.
 
+**Revisión de cierre del 26/10 — PR #150**: correcciones acotadas de Critic, chat/glosario básico, cantidad solicitada, diagnósticos y selector documental. No se modifica el mapa de dependencias de los 60 issues ni se acredita una nueva ejecución real por estas pruebas locales. Se conserva §19.3 y se revisa cobertura respecto de la consulta, sin exigir todas las secciones en chat/glosario. [Alcance y comprobaciones](revision-pr-150.md).
+
 ## 3. Carriles de trabajo paralelo
 
 Para un equipo de 6 personas. Cada carril tiene un área de código propia (límites de la sección 13.3 del documento de decisiones), lo que minimiza conflictos de merge.

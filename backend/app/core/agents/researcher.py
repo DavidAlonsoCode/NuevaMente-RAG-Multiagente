@@ -102,6 +102,8 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
     if estado.status != JobStatus.RUNNING:
         return {}
     ctx, recuperador = dependencias.grafo.ejecucion, dependencias.retriever
+    tipo_ejecucion = ctx.tipo
+    es_chat_o_glosario = dependencias.pregunta is not None or tipo_ejecucion in ("chat", "glosario")
 
     def update(**campos):
         return {
@@ -246,14 +248,19 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
                 if elegido is None:
                     faltantes.append(seccion)
             if faltantes:
-                code = "EVIDENCE_BUDGET" if omitidos else "COVERAGE_INCOMPLETE"
-                raise _Bloqueo(
-                    code,
-                    "No se pudo reunir evidencia para estas secciones: "
-                    + ", ".join(faltantes)
-                    + ". Acotá el alcance o aumentá el presupuesto dentro del límite permitido.",
-                    JobStatus.REJECTED_QUALITY,
-                )
+                if es_chat_o_glosario and evidencia:
+                    # En chat/glosario con alcance flexible, si ya recuperamos evidencia suficiente
+                    # no bloqueamos por no cubrir todas las secciones del documento.
+                    pass
+                else:
+                    code = "EVIDENCE_BUDGET" if omitidos else "COVERAGE_INCOMPLETE"
+                    raise _Bloqueo(
+                        code,
+                        "No se pudo reunir evidencia para estas secciones: "
+                        + ", ".join(faltantes)
+                        + ". Acotá el alcance o aumentá el presupuesto dentro del límite permitido.",
+                        JobStatus.REJECTED_QUALITY,
+                    )
 
             for consulta in dict.fromkeys(estado.solicitudes_evidencia):
                 restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
@@ -368,6 +375,8 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
                 for item in nuevos:
                     agregar(item)
 
+            objetivo = list(dict.fromkeys(seccion_del_chunk(e.chunk) for e in evidencia))
+        if es_chat_o_glosario and evidencia:
             objetivo = list(dict.fromkeys(seccion_del_chunk(e.chunk) for e in evidencia))
         revalidar()
         cfg = recuperador.configuracion

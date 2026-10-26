@@ -314,3 +314,27 @@ def test_sse_perdida_de_storage_tras_headers_emite_error_seguro(entorno, monkeyp
     sse = e.cliente.get(recibo["events_url"], headers=e.headers)
     assert sse.status_code == 200 and "event: error" in sse.text
     assert "STORAGE_UNAVAILABLE" in sse.text and "contenido privado" not in sse.text
+
+
+@pytest.mark.parametrize("fuera", [False, True])
+def test_basico_entrega_respuesta_sin_atribuir_revision(entorno, fuera):
+    e = entorno
+    e.fuera = fuera
+    recibo = chat(e, modo_generacion="basico").json()
+    trabajo = esperar(e, recibo)
+    assert trabajo["status"] == "completed", trabajo
+    resultado = trabajo["result"]
+    assert resultado["estado"] == ("fuera_de_alcance" if fuera else "no_evaluado")
+    assert resultado["evaluacion_calidad"] is None
+    assert bool(resultado["referencias"]) != fuera
+    assert not e.revisiones_chat
+    assert e.cliente.get(recibo["status_url"], headers=e.headers).status_code == 200
+
+
+def test_basico_no_entrega_citas_ajenas(entorno):
+    e = entorno
+    e.cita_invalida = True
+    trabajo = esperar(e, chat(e, modo_generacion="basico").json(), status="rejected_quality")
+    assert trabajo["status"] == "rejected_quality"
+    assert trabajo["result"] is None
+    assert not e.revisiones_chat
