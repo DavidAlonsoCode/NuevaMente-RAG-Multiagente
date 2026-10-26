@@ -1,5 +1,7 @@
 # 🔌 Contratos API v1 — NuevaMente
 
+> **Revisión PR #152 — 26/10/2026**: chat y glosario Multiagente no se cancelan por la revisión de calidad: tras una reescritura (dos borradores) entregan la respuesta con su evaluación real `requiere_revision` (score, conteos y `razones_bloqueo`) y la UI la rotula como respaldo parcial. `aprobada` conserva su significado (anclaje >= 0,85 y todas las afirmaciones respaldadas). Sin afirmaciones respaldadas o con citas fuera de la evidencia se mantiene `rejected_quality`. Un glosario con reservas no se reutiliza desde caché. La generación pedagógica no cambia. El frontend acepta paquetes `multi_documento`/`espacio_completo` y exige el mismo conjunto de fuentes pedido.
+
 > **Revisión PR #150 — 26/10/2026**: `cantidad_items` opcional de 1 a 25 en generación de flashcards, quiz y tutorial, validado sobre el borrador. Chat y glosario admiten `modo_generacion=multiagente|basico`; su básico devuelve contenido citado con `estado=no_evaluado`, evaluación nula y aviso en UI. Glosario básico también tiene trazabilidad nula. La cobertura multiagente de estas consultas evalúa pregunta/definiciones, sin exigir todo el documento; se conserva §19.3. [Detalle y límites](revision-pr-150.md).
 
 > **Ampliación 1.1 — complemento 33.1 (16/10/2026)**: [contrato de modos](modos-generacion.md). `GenerateRequest.modo_generacion` es opcional (`multiagente` por defecto, `basico` explícito). Omitirlo conserva el paquete 1.0; explicitarlo solicita 1.1. El básico tiene `status=no_evaluado`, evaluación `no_realizada`, métricas y modelo juez nulos. Cada variante tiene validación estricta; el paquete 1.0 aprobado no cambia. `completed` sigue requiriendo persistencia confirmada y no significa aprobación del básico. El [OpenAPI](openapi.json) incluye las variantes de respuesta y exportación. La compatibilidad de idempotencia y exportaciones históricas está detallada en el contrato de modos.
@@ -728,7 +730,8 @@ Precisión #39 (`contract-change`):
   conservan el contrato común.
 - Cada término contiene `id`, `termino_original`, `es_identificador`,
   `traduccion`, `estado`, `definicion`, `referencias` y `limitacion`. El estado
-  `definido` requiere definición citada y revisión completa aprobada. Productos,
+  `definido` requiere definición citada y revisión completa del Critic, aprobada o
+  entregada con reservas tras la reescritura. Productos,
   comandos y APIs conservan su nombre original sin traducción. Definición y
   traducción pasan juntas por el Critic; el extractor factual debe cubrir cada
   definición. No se publican borradores rechazados ni incompletos.
