@@ -147,6 +147,29 @@ function validarCalidadAprobada(calidad: any): boolean {
   return true;
 }
 
+// Chat y glosario se entregan aunque no alcancen 0.85: la evaluación real viaja como
+// requiere_revision y la UI advierte el respaldo parcial en vez de ocultar la respuesta.
+function validarCalidadConReservas(calidad: any): boolean {
+  if (typeof calidad !== 'object' || calidad === null || calidad.estado_evaluacion !== 'requiere_revision') {
+    return false;
+  }
+  const score = calidad.anclaje_fuente_score;
+  const total = calidad.cantidad_afirmaciones;
+  const respaldadas = calidad.cantidad_respaldadas;
+  return (
+    typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1 &&
+    Number.isInteger(total) && Number.isInteger(respaldadas) && total > 0 &&
+    respaldadas >= 0 && respaldadas <= total &&
+    Math.abs(score - respaldadas / total) <= 1e-6
+  );
+}
+
+export type NivelRespaldo = 'verificada' | 'parcial';
+
+export function nivelRespaldo(calidad: any): NivelRespaldo {
+  return calidad?.estado_evaluacion === 'aprobada' ? 'verificada' : 'parcial';
+}
+
 export function validarPaquete(paquete: any): asserts paquete is PedagogicalStudentOutput {
   exigir(
     typeof paquete === 'object' &&
@@ -191,10 +214,24 @@ export function validarPaquete(paquete: any): asserts paquete is PedagogicalStud
   );
   exigir(
     meta.alcance &&
-    (meta.alcance.tipo === 'documento_completo' || meta.alcance.tipo === 'seccion')
+    ['documento_completo', 'seccion', 'multi_documento', 'espacio_completo'].includes(meta.alcance.tipo),
+    'Alcance desconocido'
   );
   if (meta.alcance.tipo === 'seccion') {
     exigir(esTexto(meta.alcance.seccion_id));
+  }
+  // Mismas reglas que AlcanceSolicitud._validar_alcance del backend.
+  const ids = meta.alcance.document_ids;
+  if (meta.alcance.tipo === 'multi_documento' || (ids !== undefined && ids !== null)) {
+    exigir(
+      esListaTextos(ids) && ids.length >= 1 && ids.length <= 5 && new Set(ids).size === ids.length,
+      'document_ids del alcance inválidos'
+    );
+  }
+  if (meta.alcance.tipo === 'multi_documento') {
+    exigir(ids.length >= 2 && ids.includes(fuente.document_id), 'Alcance multidocumento inválido');
+  } else if (meta.alcance.tipo !== 'espacio_completo') {
+    exigir(!ids || ids.length <= 1, 'Alcance de un documento con varias fuentes');
   }
   exigir(
     meta.alcance.secciones_cubiertas === undefined ||
@@ -333,8 +370,18 @@ export function validarGeneracionCompletada(
       if (expectedParams.alcance.tipo === 'seccion') {
         exigir(paquete.metadatos.alcance.seccion_id === expectedParams.alcance.seccion_id);
       }
+      const pedidos = expectedParams.document_ids ?? [];
+      if (pedidos.length > 1) {
+        const devueltos = paquete.metadatos.alcance.document_ids ?? [];
+        exigir(
+          devueltos.length === pedidos.length && pedidos.every((id) => devueltos.includes(id)),
+          'Las fuentes del resultado no coinciden con las pedidas'
+        );
+      }
     }
-  } catch {
+  } catch (e) {
+    // El motivo queda en consola para diagnosticar desfases de contrato sin exponer el contenido.
+    console.warn('[validarGeneracionCompletada]', e instanceof Error ? e.message : e);
     throw new APIError('INVALID_RESPONSE', 'Resultado incompatible con la solicitud.', 502);
   }
   return paquete;
@@ -407,7 +454,8 @@ export function validarRespuestaChat(
       refs.some((r) => typeof r !== 'object' || r === null || !esTexto(r.chunk_id)) ||
       !(datos.estado === 'no_evaluado'
         ? payloadEsperado.modo_generacion === 'basico' && calidad === null
-        : payloadEsperado.modo_generacion !== 'basico' && validarCalidadAprobada(calidad))
+        : payloadEsperado.modo_generacion !== 'basico' &&
+          (validarCalidadAprobada(calidad) || validarCalidadConReservas(calidad)))
     ) {
       throw invalida();
     }
@@ -460,7 +508,8 @@ export function validarGlosario(
     if (salida.estado === 'no_evaluado') {
       exigir(salida.evaluacion_calidad === null && salida.trazabilidad === null);
     } else if (definidos.length > 0) {
-      exigir(validarCalidadAprobada(salida.evaluacion_calidad));
+      // Revisión aprobada o con reservas (respaldo parcial visible), siempre trazable.
+      exigir(validarCalidadAprobada(salida.evaluacion_calidad) || validarCalidadConReservas(salida.evaluacion_calidad));
       exigir(typeof salida.trazabilidad === 'object' && salida.trazabilidad !== null);
     } else {
       exigir(salida.evaluacion_calidad === null);

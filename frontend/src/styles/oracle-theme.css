@@ -2,6 +2,9 @@
 @import '@fontsource-variable/jetbrains-mono/wght.css';
 
 :root {
+  /* Las barras de desplazamiento y controles nativos (sidebar incluida) siguen el tema oscuro. */
+  color-scheme: dark;
+
   /* Paleta Oracle Redwood Dark: Obsidiana, Grafito, Rojo Oracle, Terracota y Coral */
   --bg-canvas: #090b0f;
   --bg-deep-petrol: #0d131a;

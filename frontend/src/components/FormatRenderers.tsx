@@ -811,7 +811,9 @@ const PackageViewerView: React.FC<{
       <div className="nm-card" style={{ marginTop: '1.25rem' }}>
         <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.05rem' }}>{t('fuentes.panel', idioma)}</h3>
         <div style={{ fontSize: '0.83rem', color: 'var(--ink-muted)', marginBottom: '0.6rem' }}>
-          {fuente.titulo}
+          {paquete.documentos_fuente && paquete.documentos_fuente.length > 0
+            ? paquete.documentos_fuente.map((d) => d.titulo).join(' · ')
+            : fuente.titulo}
         </div>
         {renderSources(paquete.referencias, 'panel_general')}
       </div>

@@ -168,6 +168,8 @@ export const CATALOGO_EN: Record<string, string> = {
   "chat.cancelar": "Cancel answer",
   "chat.actualizar": "Refresh answer",
   "chat.documento_no_listo": "Select a ready document to chat.",
+  "respaldo.verificada": "Verified: the answer is grounded in the document.",
+  "respaldo.parcial": "Partial support: {porcentaje}% of the claims were verified in the document. Check the citations.",
   "chat.cancelada": "Answer cancelled.",
   "chat.sin_respuesta": "No answer was published. You can ask another question.",
   "chat.otro_pendiente": "A question is pending for another document or configuration in this workspace.",
