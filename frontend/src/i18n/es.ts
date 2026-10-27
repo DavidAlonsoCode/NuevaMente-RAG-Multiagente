@@ -5,6 +5,7 @@ export const CATALOGO_ES: Record<string, string> = {
   'modo.basico': 'Básico · Sin evaluación independiente',
   'modo.aviso': 'Un agente genera con evidencia recuperada. No hay revisión independiente de fidelidad, pedagogía o diagramas, ni score de calidad. Verificá el material antes de utilizarlo.',
   'modo.ayuda': 'La elección se aplica a la próxima generación. Se reutiliza el documento preparado y se conserva cada material anterior.',
+  'modo.varias_fuentes': 'Con más de un documento se genera en modo Básico: la revisión independiente (Multiagente) trabaja con un documento a la vez.',
   "presupuesto.vencimiento": "Tu espacio vence por inactividad el {fecha}. La actividad renueva el plazo.",
   "presupuesto.recursos": "Documentos: {documentos}/{limite_documentos} · Generaciones: {generaciones}/{limite_generaciones}",
   "presupuesto.alerta": "Se alcanzó el 80% del presupuesto de almacenamiento. Descargá el material que quieras conservar y borrá lo que no uses.",
