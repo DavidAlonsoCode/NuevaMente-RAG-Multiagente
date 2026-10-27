@@ -520,3 +520,56 @@ def test_cumple_cantidad_solicitada_o_rechaza_sin_publicar(entorno, formato, can
     else:
         assert nuevo.status == "rejected_quality" and nuevo.borrador is None
         assert nuevo.intento == 3
+
+
+def test_letras_codificadas_por_el_modelo_llegan_como_acentos(entorno):
+    # Gemini 3.5 Flash Lite devolvió un guion real con "autorreparaci&oacute;n" y "qu&eacute;".
+    estado = estado_inicial(entorno, "guion_clase", idioma_salida="es")
+    datos = respuesta(estado)
+    datos["contenido_adaptado"]["titulo"] = (
+        "Orquestaci&oacute;n: qu&eacute; es la autorreparaci%f3n y c&#243;mo se prueba"
+    )
+    proveedor = entorno[0].proveedor
+    proveedor.programar_generacion(json.dumps(datos))
+    proveedor.generar_sync = Mock(wraps=proveedor.generar_sync)
+    nuevo = aplicar(estado, writer(estado, entorno[0]))
+    assert nuevo.borrador.contenido_adaptado.titulo == "Orquestación: qué es la autorreparación y cómo se prueba"
+    assert "nunca como entidades HTML" in proveedor.generar_sync.call_args.kwargs["system_instruction"]
+
+
+@pytest.mark.parametrize(
+    ("texto", "esperado"),
+    [
+        ("pr%e1ctico y est%e1", "práctico y está"),
+        ("acci" + chr(92) + "u00f3n", "acción"),
+        ("&iquest;Ma&ntilde;ana?", "¿Mañana?"),
+        # Tal como se vieron en la UI durante la demo grabada.
+        ("m&lacute;nima, r&eacuteplicas y Orquestaci3n", "mínima, réplicas y Orquestación"),
+        ("Para&ccedil;&atilde;o &Aacute;rea", "Paração Área"),
+        ("A &amp; B &lt;div&gt; &copy;", "A &amp; B &lt;div&gt; &copy;"),
+        ("50% de 100%", "50% de 100%"),
+        ("https://x.org/acci%C3%B3n?q=%20", "https://x.org/acci%C3%B3n?q=%20"),
+    ],
+)
+def test_reparacion_solo_toca_letras_codificadas(texto, esperado):
+    from app.core.agents.draft_validation import reparar_texto_modelo
+
+    assert reparar_texto_modelo(texto) == esperado
+
+
+def test_rechazo_de_gemini_registra_el_estado_sin_el_mensaje(entorno, caplog):
+    # Un 400 real en producción quedó sin causa visible en los logs.
+    estado = estado_inicial(entorno)
+
+    def handler(request):
+        return httpx.Response(
+            400, json={"error": {"code": 400, "message": "TEST_SECRET", "status": "INVALID_ARGUMENT"}}
+        )
+
+    deps = cliente_http(entorno, handler)
+    try:
+        writer(estado, deps)
+        assert "HTTP 400 INVALID_ARGUMENT, modelo " + MODELO in caplog.text
+        assert "TEST_SECRET" not in caplog.text
+    finally:
+        deps.proveedor.cerrar()

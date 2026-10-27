@@ -13,6 +13,10 @@ import { generationEvent, GenerationEvent, SseDecoder } from './sse';
 const SAFE_ID_REGEX = /^[A-Za-z0-9_.-]{1,128}$/;
 const ERROR_CODE_REGEX = /^[A-Z_]{1,64}$/;
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+// En Render (Oregón) casi cada operación consulta OCI (Brasil) y una descarga espera mientras otra
+// generación sube sus exportaciones: con 30 s se cortaban respuestas que el servidor sí completaba.
+export const ESPERA_MS = 90000;
+export const ESPERA_TRANSFERENCIA_MS = 180000;
 
 export function identificadorSeguro(value: unknown): string | null {
   return typeof value === 'string' && SAFE_ID_REGEX.test(value) ? value : null;
@@ -108,7 +112,8 @@ export class APIClient {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options?.timeoutMs ?? 30000);
+    const timer = setTimeout(() => controller.abort(), options?.timeoutMs ?? ESPERA_MS);
+    const demorada = () => new APIError('TIMEOUT', 'El servidor tardó demasiado en responder.', 503);
 
     let res: Response;
     try {
@@ -125,6 +130,7 @@ export class APIClient {
       });
     } catch {
       clearTimeout(timer);
+      if (controller.signal.aborted) throw demorada();
       throw new APIError('SERVICE_UNAVAILABLE', 'No se pudo conectar al backend.', 503);
     }
 
@@ -144,6 +150,7 @@ export class APIClient {
       try {
         return new Uint8Array(await res.arrayBuffer());
       } catch {
+        if (controller.signal.aborted) throw demorada();
         throw new APIError('SERVICE_UNAVAILABLE', 'Descarga interrumpida.', 503, requestId);
       } finally { clearTimeout(timer); }
     }
@@ -152,7 +159,7 @@ export class APIClient {
     try {
       data = await res.json();
     } catch {
-      if (controller.signal.aborted) throw new APIError('SERVICE_UNAVAILABLE', 'Respuesta interrumpida.', 503, requestId);
+      if (controller.signal.aborted) throw demorada();
       if (res.ok) {
         throw new APIError('INVALID_RESPONSE', 'Respuesta JSON inválida.', 502, requestId);
       }
@@ -276,6 +283,7 @@ export class APIClient {
       token,
       formData,
       idempotencyKey: options?.idempotencyKey,
+      timeoutMs: ESPERA_TRANSFERENCIA_MS,
     });
     return APIClient.reciboUpload(data);
   }
@@ -684,6 +692,7 @@ export class APIClient {
         token,
         params: { format: fmt },
         binary: true,
+        timeoutMs: ESPERA_TRANSFERENCIA_MS,
       }
     );
   }

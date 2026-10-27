@@ -296,6 +296,7 @@ export const CATALOGO_EN: Record<string, string> = {
   "errors.STORAGE_UNAVAILABLE": "Storage is unavailable right now.",
   "errors.PROVIDER_UNAVAILABLE": "The AI provider is unavailable right now.",
   "errors.SERVICE_UNAVAILABLE": "The server is unavailable at the moment. Please check your connection or try again later.",
+  "errors.TIMEOUT": "The server took too long to respond. Wait a few seconds and try again.",
   "a11y.ir_al_contenido": "Skip to main content",
   "a11y.indicador_carga": "Loading content, please wait",
   "a11y.barra_progreso": "Generation progress",

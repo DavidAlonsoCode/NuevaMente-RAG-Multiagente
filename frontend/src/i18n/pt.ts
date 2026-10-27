@@ -296,6 +296,7 @@ export const CATALOGO_PT: Record<string, string> = {
   "errors.STORAGE_UNAVAILABLE": "O armazenamento está indisponível agora.",
   "errors.PROVIDER_UNAVAILABLE": "O provedor de IA está indisponível agora.",
   "errors.SERVICE_UNAVAILABLE": "O servidor está indisponível no momento. Verifique sua conexão ou tente novamente mais tarde.",
+  "errors.TIMEOUT": "O servidor demorou demais para responder. Aguarde alguns segundos e tente novamente.",
   "a11y.ir_al_contenido": "Ir para o conteúdo principal",
   "a11y.indicador_carga": "Carregando conteúdo, aguarde",
   "a11y.barra_progreso": "Progresso da geração",
