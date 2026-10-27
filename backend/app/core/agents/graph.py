@@ -205,6 +205,12 @@ def ejecutar_grafo(estado: EstadoGrafo, dependencias: DependenciasOrquestacion) 
         )
 
 
+_RAZONES_POR_CODIGO = {
+    "COVERAGE_INCOMPLETE": ["cobertura_incompleta"],
+    "EVIDENCE_BUDGET": ["evidencia_insuficiente"],
+}
+
+
 # con esta funcion ejecuto el pipeline desde un proceso en segundo plano (worker) extrayendo el contenido aprobado o lanzando la excepcion adecuada
 def ejecutar_en_worker(estado: EstadoGrafo, dependencias: DependenciasOrquestacion) -> PedagogicalOutput:
     """Invocar desde la función encolada del #20; nunca reinicia el pipeline."""
@@ -214,5 +220,9 @@ def ejecutar_en_worker(estado: EstadoGrafo, dependencias: DependenciasOrquestaci
     if final.status == JobStatus.CANCELLED:
         raise TrabajoCanceladoError()
     if final.status == JobStatus.REJECTED_QUALITY:
-        raise RechazoCalidadError(final.error.razones_bloqueo if final.error else ())
+        razones = list(final.error.razones_bloqueo) if final.error else []
+        if final.error and not razones:
+            # Los bloqueos del Researcher no traen razones del Critic: se traducen al catálogo público.
+            razones = _RAZONES_POR_CODIGO.get(final.error.code, [])
+        raise RechazoCalidadError(razones)
     raise FalloTrabajoError(final.error.code, final.error.message)

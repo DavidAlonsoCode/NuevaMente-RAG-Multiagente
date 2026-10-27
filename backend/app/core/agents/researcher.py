@@ -176,6 +176,9 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
         revalidar()
         originales = {c.chunk_id: c for c in chunks}
         evidencia, ids, textos, omitidos = [], set(), set(), set()
+        # Pedidos del Critic que la fuente ya no puede ampliar: el Writer ajusta el borrador a la
+        # evidencia disponible en vez de rechazar el trabajo antes de agotar las redacciones.
+        sin_ampliar = []
         max_tokens = recuperador.max_tokens
 
         def agregar(item):
@@ -265,20 +268,11 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
             for consulta in dict.fromkeys(estado.solicitudes_evidencia):
                 restante = max_tokens - tokens_evidencia(evidencia, recuperador.tokenizador)
                 if restante <= 0:
-                    raise _Bloqueo(
-                        "EVIDENCE_BUDGET",
-                        "No queda presupuesto para ampliar la evidencia solicitada.",
-                        JobStatus.REJECTED_QUALITY,
-                    )
+                    sin_ampliar.append(consulta)
+                    continue
                 nuevos = consultar(consulta, alcance.seccion_id if alcance.tipo == "seccion" else None, restante)
-                if not nuevos:
-                    raise _Bloqueo(
-                        "COVERAGE_INCOMPLETE",
-                        "No se encontró evidencia para una ampliación solicitada por Critic.",
-                        JobStatus.REJECTED_QUALITY,
-                    )
-                for item in nuevos:
-                    agregar(item)
+                if not [item for item in nuevos if agregar(item)]:
+                    sin_ampliar.append(consulta)
 
             for ronda in range(max((len(pool) for pool in pools.values()), default=0)):
                 for pool in pools.values():
@@ -359,21 +353,11 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
 
             for consulta in dict.fromkeys(estado.solicitudes_evidencia):
                 if tokens_evidencia(evidencia, recuperador.tokenizador) >= max_tokens:
-                    raise _Bloqueo(
-                        "EVIDENCE_BUDGET",
-                        "No queda presupuesto para ampliar la evidencia solicitada.",
-                        JobStatus.REJECTED_QUALITY,
-                    )
-                nuevos, omitidos_consulta = consultar_multi(consulta)
-                if not nuevos:
-                    code = "EVIDENCE_BUDGET" if omitidos_consulta else "COVERAGE_INCOMPLETE"
-                    raise _Bloqueo(
-                        code,
-                        "No se encontró evidencia para una ampliación solicitada por Critic.",
-                        JobStatus.REJECTED_QUALITY,
-                    )
-                for item in nuevos:
-                    agregar(item)
+                    sin_ampliar.append(consulta)
+                    continue
+                nuevos, _ = consultar_multi(consulta)
+                if not [item for item in nuevos if agregar(item)]:
+                    sin_ampliar.append(consulta)
 
             objetivo = list(dict.fromkeys(seccion_del_chunk(e.chunk) for e in evidencia))
         if es_chat_o_glosario and evidencia:
@@ -396,6 +380,12 @@ def researcher(estado: EstadoGrafo, dependencias: DependenciasResearcher) -> dic
             if omitidos - ids
             else []
         )
+        if sin_ampliar:
+            avisos.append(
+                "La fuente no aporta más evidencia para: "
+                + "; ".join(c[:160] for c in sin_ampliar)
+                + ". Quitá o reformulá las afirmaciones que no se puedan respaldar con la evidencia disponible."
+            )
         return update(
             evidencia=evidencia,
             secciones_cubiertas=objetivo,

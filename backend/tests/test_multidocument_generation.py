@@ -489,3 +489,40 @@ def test_prompts_multidocumento_instruccion_sintesis_sin_inventar_ids():
     assert "Síntesis multidocumental obligatoria" in plantilla.writer
     assert "Citar fielmente los fragmentos de origen (chunk_id)" in plantilla.writer
     assert "No fabricar IDs de sistema" in plantilla.writer
+
+
+def test_pedido_de_evidencia_sin_fragmentos_nuevos_reescribe_en_vez_de_rechazar(entorno_multi):
+    # Dos documentos cortos: toda su evidencia entra en la primera investigación. Si el Critic
+    # pide ampliarla, la fuente no tiene más; antes el trabajo se rechazaba en la revisión 1.
+    e = entorno_multi
+    doc1 = e.subir("Arquitectura A", "Conceptos de arquitectura de sistemas distribuidos.")
+    doc2 = e.subir("Arquitectura B", "Patrones de microservicios y mensajería asíncrona.")
+    revisar_original = e.doble._revisar
+    pedagogias = []
+
+    def revisar(**entrada):
+        if json.loads(entrada["prompt"])["tarea"] == "pedagogia":
+            pedagogias.append(1)
+            if len(pedagogias) == 1:
+                pedido = {**rubrica(), "claridad_pedagogica": "alta", "solicitudes_evidencia": ["Ampliar con ejemplos"]}
+                e.doble.programar_revision(json.dumps(pedido))
+                return DobleGemini._revisar(e.doble, **entrada)
+        return revisar_original(**entrada)
+
+    e.doble._revisar = revisar
+    res = e.cliente.post(
+        "/api/generate",
+        json={
+            "document_ids": [doc1, doc2],
+            "perfil_destinatario": "principiante",
+            "formato_salida": "flashcards",
+            "nicho_sector": "general",
+            "nivel_detalle": "didactico",
+            "idioma_salida": "es",
+        },
+        headers=e.headers,
+    )
+    assert res.status_code == 202, res.text
+    salida = esperar_estado(e, res.json())
+    assert salida["status"] == "completed"
+    assert len(pedagogias) == 2

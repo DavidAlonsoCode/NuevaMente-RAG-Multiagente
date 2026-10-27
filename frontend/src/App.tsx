@@ -795,7 +795,7 @@ export const App: React.FC = () => {
                 {docsSeleccionados.length > 1 ? (
                   <div style={{ fontSize: '0.82rem', padding: '0.4rem 0.6rem', background: 'var(--surface-sunken)', borderRadius: '4px', border: '1px solid var(--border-hairline)' }}>
                     <div style={{ fontWeight: 500, color: 'var(--oracle-coral, #c74634)' }}>
-                      {t('sidebar.alcance_multi', idiomaUi, { n: docsSeleccionados.length })}
+                      {t('sidebar.alcance_multi', idiomaUi, { cantidad: docsSeleccionados.length })}
                     </div>
                     <div style={{ fontSize: '0.74rem', color: 'var(--ink-muted)', marginTop: '0.2rem' }}>
                       {t('sidebar.seccion_deshabilitada_multi', idiomaUi)}
@@ -1521,7 +1521,7 @@ export const App: React.FC = () => {
                 {confirmModalPending.peticion.alcance.tipo === 'seccion'
                   ? `${t('sidebar.alcance_seccion', idiomaUi)}: ${confirmModalPending.seccionTitulo || confirmModalPending.peticion.alcance.seccion_id}`
                   : confirmModalPending.peticion.alcance.tipo === 'multi_documento'
-                  ? t('sidebar.alcance_multi', idiomaUi, { n: confirmModalPending.peticion.document_ids?.length || 2 })
+                  ? t('sidebar.alcance_multi', idiomaUi, { cantidad: confirmModalPending.peticion.document_ids?.length || 2 })
                   : t('sidebar.alcance_completo', idiomaUi)}
               </div>
             </div>

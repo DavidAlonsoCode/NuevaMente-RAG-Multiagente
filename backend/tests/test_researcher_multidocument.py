@@ -202,7 +202,7 @@ def test_omitir_a_grande_no_atribuye_a_presupuesto_la_falta_de_b_pertinente(monk
     assert resultado.evidencia == [] and resultado.paquete_aprobado is None
 
 
-def test_ampliacion_vacia_no_hereda_omisiones_presupuestarias_de_ronda_anterior(monkeypatch):
+def test_ampliacion_vacia_no_hereda_omisiones_y_pasa_al_writer_con_aviso(monkeypatch):
     primaria, secundaria = chunk("doc-a", 0), chunk("doc-b", 0)
     nuevo = chunk("doc-a", 1)
     grande = chunk("doc-a", 2, "Otro complemento extenso de la fuente A. " * 1000)
@@ -217,10 +217,12 @@ def test_ampliacion_vacia_no_hereda_omisiones_presupuestarias_de_ronda_anterior(
     recuperaciones = observar_resultados(e, monkeypatch)
     resultado = ejecutar(e)
     assert [r.chunks_omitidos for r in recuperaciones] == [[grande.chunk_id], []]
-    assert resultado.status == JobStatus.REJECTED_QUALITY
-    assert resultado.error.code == "COVERAGE_INCOMPLETE"
+    # Sin evidencia nueva para "ronda dos", el Writer reescribe con la disponible en vez de rechazar.
+    assert resultado.status == JobStatus.RUNNING and resultado.error is None
     assert [consulta for consulta, _ in e.indice.busquedas] == ["ronda uno", "ronda dos"]
-    assert resultado.evidencia == [] and resultado.paquete_aprobado is None
+    assert [item.chunk for item in resultado.evidencia] == [primaria, secundaria, nuevo]
+    assert any("ronda dos" in nota and "ronda uno" not in nota for nota in resultado.feedback)
+    assert resultado.paquete_aprobado is None
 
 
 def preparar_rondas(*, delta=0):
@@ -260,12 +262,14 @@ def test_dos_ampliaciones_conservan_todos_los_previos_y_frontera_json_exacta():
 
 
 def test_un_token_menos_no_publica_ni_acumula_union_fuera_del_presupuesto():
-    e, _, _, _ = preparar_rondas(delta=-1)
+    e, previos, nuevos, limite = preparar_rondas(delta=-1)
     resultado = ejecutar(e)
-    assert resultado.status == JobStatus.REJECTED_QUALITY
-    assert resultado.error.code == "EVIDENCE_BUDGET"
+    assert resultado.status == JobStatus.RUNNING
     assert [consulta for consulta, _ in e.indice.busquedas] == ["ronda uno", "ronda dos"]
-    assert resultado.evidencia == [] and resultado.trazabilidad is None
+    # Entra lo que cabe; la ampliación que se pasa por un token queda afuera y se avisa al Writer.
+    assert resultado.evidencia == [*previos, nuevos[0]]
+    assert conteo_serializado(resultado.evidencia) <= limite
+    assert any("ronda dos" in nota for nota in resultado.feedback)
     assert resultado.borrador is None and resultado.paquete_aprobado is None
 
 
@@ -290,10 +294,8 @@ def test_presupuesto_previo_exacto_no_dispara_nuevas_consultas(con_peticion):
     )
     resultado = ejecutar(e)
     assert e.indice.busquedas == []
-    if con_peticion:
-        assert resultado.status == JobStatus.REJECTED_QUALITY and resultado.error.code == "EVIDENCE_BUDGET"
-    else:
-        assert resultado.status == JobStatus.RUNNING and resultado.evidencia == previos
+    assert resultado.status == JobStatus.RUNNING and resultado.evidencia == previos
+    assert any("más detalle" in nota for nota in resultado.feedback) is con_peticion
 
 
 def test_texto_identico_conserva_procedencia_de_ambos_documentos():
