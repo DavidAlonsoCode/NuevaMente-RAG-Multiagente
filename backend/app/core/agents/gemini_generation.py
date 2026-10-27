@@ -196,7 +196,9 @@ class ClienteGeminiGeneracion:
                 raise ReintentableError(
                     "Gemini no está disponible temporalmente", retry_after=_retry_after(error)
                 ) from None
-            logger.warning("Gemini rechazó la solicitud: HTTP %s", error.code)
+            # El estado (INVALID_ARGUMENT, FAILED_PRECONDITION...) es un valor fijo de la API; el mensaje
+            # puede citar la solicitud y no se registra.
+            logger.warning("Gemini rechazó la solicitud: HTTP %s %s, modelo %s", error.code, error.status, modelo)
             raise GeneracionGeminiError("Gemini rechazó la solicitud; revisar configuración y modelo") from None
         except httpx.TransportError:
             raise ReintentableError("La solicitud Gemini falló por transporte o timeout") from None

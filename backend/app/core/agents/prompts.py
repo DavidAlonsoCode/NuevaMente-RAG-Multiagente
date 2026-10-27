@@ -22,7 +22,7 @@ from app.schemas.pedagogical import (
 from app.schemas.requests import GenerateRequest
 from app.schemas.responses import IdiomaOrigen, Metadatos, Trazabilidad
 
-PROMPT_VERSION = "nm-prompts-1.1.5"
+PROMPT_VERSION = "nm-prompts-1.1.6"
 
 _IDIOMAS = {
     OutputLanguage.ES: "español latinoamericano",
@@ -123,12 +123,14 @@ ilustrativos; sus propiedades técnicas también necesitan respaldo. Nunca inven
 Negaciones, unidades, versiones y límites deben conservar su significado entre idiomas.
 Una descripción de imagen es una interpretación separada del texto original, no evidencia visual verificada.
 No revelar razonamientos privados: solo diagnósticos breves, verificables y referencias.
+Escribir tildes, eñes y cedillas con su carácter directo (á, é, ñ, ç, ã); nunca como entidades HTML
+(&aacute;), códigos con % o \\u, ni reemplazar letras por números.
 """
 
 
 class PlantillasPrompts(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prompt_version: Literal["nm-prompts-1.1.5"] = PROMPT_VERSION
+    prompt_version: Literal["nm-prompts-1.1.6"] = PROMPT_VERSION
     writer: str
     critic: str
 
@@ -141,7 +143,7 @@ class PromptRol(BaseModel):
 
 class PromptsGeneracion(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prompt_version: Literal["nm-prompts-1.1.5"] = PROMPT_VERSION
+    prompt_version: Literal["nm-prompts-1.1.6"] = PROMPT_VERSION
     writer: PromptRol
     critic: PromptRol
 

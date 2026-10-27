@@ -3,7 +3,8 @@ import React, { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from '../App';
-import { APIClient } from '../api/client';
+import { APIClient, ESPERA_MS, ESPERA_TRANSFERENCIA_MS } from '../api/client';
+import { mensajeError } from '../components/ErrorBanner';
 import { ChatTutorView, GlossaryView, HistoryFullView } from '../components/StudyAndHistoryViews';
 import { SourcesDrawer } from '../components/SourcesDrawer';
 import { claveCarga, generarEventIdProgreso, validarGeneracionCompletada, validarPaquete, validarGlosario } from './validators';
@@ -89,9 +90,27 @@ describe('intenciones durables y fronteras', () => {
         options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
       }),
     })));
-    const pending = expect(new APIClient().getDocuments('synthetic')).rejects.toMatchObject({code:'SERVICE_UNAVAILABLE'});
-    await vi.advanceTimersByTimeAsync(30001);
+    const pending = expect(new APIClient().getDocuments('synthetic')).rejects.toMatchObject({code:'TIMEOUT', statusCode:503});
+    await vi.advanceTimersByTimeAsync(ESPERA_MS + 1);
     await pending;
+  });
+  it('una descarga lenta no se corta a los 30 s y avisa que tardó, no que no hay conexión', async () => {
+    // Caso real: el PDF de un guion de 2 fuentes esperó a que otra generación subiera sus exportaciones a OCI.
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    let error: any = null;
+    const pending = new APIClient().downloadExport('synthetic', 'gen-1', 'pdf').catch((e) => { error = e; });
+    await vi.advanceTimersByTimeAsync(ESPERA_MS + 1);
+    expect(error).toBeNull();
+    await vi.advanceTimersByTimeAsync(ESPERA_TRANSFERENCIA_MS - ESPERA_MS);
+    await pending;
+    expect(error).toMatchObject({ code: 'TIMEOUT', statusCode: 503 });
+    expect(mensajeError(error, 'es')).toBe(t('errors.TIMEOUT', 'es'));
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(new APIClient().getDocuments('synthetic')).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
   });
   it.each(Object.entries(fixtures))('renderiza el contrato estudiante %s sin llamadas externas', (_name, data) => {
     validarPaquete(data);
