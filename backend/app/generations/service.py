@@ -207,12 +207,19 @@ class ServicioGeneraciones:
                 {
                     "generation_id": propia["generation_id"],
                     "document_id": propia["document_id"],
+                    "document_ids": self._fuentes_de(propia),
                     "status": propia["status"],
                     "created_at": propia["creado_en"],
                     "parametros": json.loads(propia["parametros_json"]) if propia["parametros_json"] else None,
                 }
             )
         return {"items": items, "next_cursor": siguiente}
+
+    def _fuentes_de(self, fila):
+        secundarias = [
+            d for d in self.db.documentos_generacion(fila["generation_id"]) or [] if d != fila["document_id"]
+        ]
+        return [fila["document_id"], *secundarias]
 
     def _vigente(self, contexto, generation_id, document_id, paquete=None):
         contexto.chequear()

@@ -286,6 +286,11 @@ class ProgressEvent(ModeloContenido):
     generation_id: str | None = Field(default=None, min_length=1, max_length=128)
     flashcard_id: str | None = Field(default=None, min_length=1, max_length=64)
     concepto: str | None = Field(default=None, min_length=1, max_length=500, description="Concepto revisado.")
+    fecha: str | None = Field(
+        default=None,
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="Día local AAAA-MM-DD de un concepto_revisado: un concepto suma un repaso por día.",
+    )
 
     @model_validator(mode="after")
     def _tipo_concepto_exige_concepto(self) -> "ProgressEvent":
@@ -298,6 +303,8 @@ class ProgressEvent(ModeloContenido):
             raise ValueError("flashcard_vista exige generation_id y flashcard_id")
         if self.tipo == "concepto_revisado" and self.flashcard_id is not None:
             raise ValueError("concepto_revisado no admite flashcard_id")
+        if self.tipo == "flashcard_vista" and self.fecha is not None:
+            raise ValueError("flashcard_vista no admite fecha")
         if self.tipo == "flashcard_vista" and self.concepto is not None:
             raise ValueError("flashcard_vista no admite concepto")
         return self

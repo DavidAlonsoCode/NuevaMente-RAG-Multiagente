@@ -500,6 +500,8 @@ Cancelación explícita; reintento de **solo persistencia** del material retenid
 #### `GET /api/generations`
 
 Listado paginado con filtros: `documento`, `perfil`, `formato`, `idioma`, `desde`, `hasta`.
+Cada item trae `document_ids` con todas sus fuentes, empezando por la primaria (`document_id`);
+`documento` también encuentra generaciones donde ese documento es una fuente secundaria.
 
 ### Quiz y progreso (issues `Issue 35`, `Issue 36`, `Issue 41`)
 
@@ -519,6 +521,7 @@ Precisiones de implementación del Issue 35 (revisión `contract-change`):
 - `event_id` es global dentro del espacio y admite hasta 128 caracteres.
   `question_id`/`flashcard_id`/`option_id` admiten hasta 64; `concepto`, hasta
   500. El cliente emite `flashcard_vista` después de consultar **frente y dorso**.
+  `concepto_revisado` acepta `fecha` (día local `AAAA-MM-DD`) para registrar repasos.
   Los campos de puntaje, `primer_intento` y el tipo `respuesta_quiz` se rechazan
   en el endpoint genérico. No se aceptan campos de otro tipo de evento.
 - `POST /api/progress/events` responde **200** con `{event_id, version}`;
@@ -528,8 +531,10 @@ Precisiones de implementación del Issue 35 (revisión `contract-change`):
   El header se guarda únicamente como hash, sin tokens de sesión.
 - `GET /api/progress` responde **200** con `version`, `conceptos_revisados`,
   `flashcards_vistas`, `quiz_intentos`, `quiz_aciertos_primer_intento`,
-  `quiz_total_primer_intento`, `quiz_aciertos_posteriores` y
-  `tiempo_estimado_restante_minutos`. Sin eventos, versión y contadores son 0.
+  `quiz_total_primer_intento`, `quiz_aciertos_posteriores`,
+  `tiempo_estimado_restante_minutos`, `conceptos_repasos` y `conceptos`
+  (`document_id`, `generation_id`, `concepto`, `veces`, `ultima_fecha`). Sin eventos, versión y contadores son 0.
+  Un concepto suma un repaso por día distinto; las marcas sin fecha cuentan como un solo día.
   Conceptos se cuentan por documento, generación opcional y nombre; tarjetas
   por generación e ID. Primer intento se calcula por generación y pregunta,
   según el orden confirmado en storage. Otros intentos no cambian ese resultado.

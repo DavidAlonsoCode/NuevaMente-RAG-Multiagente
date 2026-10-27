@@ -29,6 +29,12 @@ export async function sha256Hex(input: string | Uint8Array): Promise<string> {
     .join('');
 }
 
+// Día local AAAA-MM-DD: un concepto suma un repaso por día del estudiante, no por día UTC.
+export function diaLocal(fecha = new Date()): string {
+  const dos = (n: number) => String(n).padStart(2, '0');
+  return `${fecha.getFullYear()}-${dos(fecha.getMonth() + 1)}-${dos(fecha.getDate())}`;
+}
+
 export async function generarEventIdProgreso(
   workspaceId: string,
   datos: Record<string, any>
@@ -548,6 +554,7 @@ export function validarProgreso(salida: any): void {
   const contadores = [
     'version',
     'conceptos_revisados',
+    'conceptos_repasos',
     'flashcards_vistas',
     'quiz_intentos',
     'quiz_aciertos_primer_intento',
@@ -564,7 +571,19 @@ export function validarProgreso(salida: any): void {
     salida.quiz_aciertos_primer_intento <= salida.quiz_total_primer_intento &&
     salida.quiz_total_primer_intento <= salida.quiz_intentos &&
     salida.quiz_aciertos_posteriores <=
-    salida.quiz_intentos - salida.quiz_total_primer_intento;
+    salida.quiz_intentos - salida.quiz_total_primer_intento &&
+    Array.isArray(salida.conceptos) &&
+    salida.conceptos.every(
+      (c: any) =>
+        c !== null &&
+        typeof c === 'object' &&
+        esTexto(c.document_id) &&
+        esTexto(c.concepto) &&
+        (c.generation_id == null || esTexto(c.generation_id)) &&
+        Number.isInteger(c.veces) &&
+        c.veces >= 1 &&
+        (c.ultima_fecha == null || /^\d{4}-\d{2}-\d{2}$/.test(c.ultima_fecha))
+    );
 
   if (!valido) {
     throw new APIError('INVALID_RESPONSE', 'Progreso inválido', 502);

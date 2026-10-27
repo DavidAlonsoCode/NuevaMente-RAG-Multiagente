@@ -368,6 +368,7 @@ def test_historial_keyset_y_filtros(entorno):
         headers=e.headers,
     ).json()
     assert [x["generation_id"] for x in primera["items"] + segunda["items"]] == list(reversed(ids))
+    assert all(x["document_ids"] == [x["document_id"]] for x in primera["items"] + segunda["items"])
     assert segunda["next_cursor"] is None
     assert e.cliente.get("/api/generations?perfil=ejecutivo", headers=e.headers).json()["items"] == []
     assert (

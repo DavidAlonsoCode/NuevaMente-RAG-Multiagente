@@ -173,7 +173,7 @@ it('no recupera una solicitud cuyos parámetros apuntan a otro documento', async
 const base = () => ({ api: { cancelGeneration: vi.fn().mockResolvedValue(undefined), persistGeneration: vi.fn().mockResolvedValue(undefined) } as unknown as APIClient,
   token: 'synthetic', generacion: { generation_id: 'gen-one', status: 'queued', status_url: '/api/generations/gen-one',
     events_url: '/api/generations/gen-one/events', parametros: params, documento_titulo: 'Fuente de prueba', seccion_titulo: null },
-  idioma: 'es' as const, confirmedConcepts: {}, onRefresh: vi.fn(), onMarkConcept: vi.fn(), onReviewFlashcard: vi.fn(),
+  idioma: 'es' as const, conceptosMarcados: {}, onRefresh: vi.fn(), onMarkConcept: vi.fn(), onReviewFlashcard: vi.fn(),
   onSessionInvalid: vi.fn(), onChangeSource: vi.fn(), onNarrowScope: vi.fn(),
   stream: { phase: 'connected' as const, progress: progress.data, error: null, reconnect: vi.fn() } });
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle2, HelpCircle, Layers, Sparkles, Terminal, Video } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, HelpCircle, Layers, Sparkles, Terminal, Video } from 'lucide-react';
 import { APIClient, APIError } from '../api/client';
 import {
   EscenaGuion,
@@ -13,7 +13,7 @@ import {
   Referencia,
   VideoLessonScript,
 } from '../api/types';
-import { validarPaquete } from '../flows/validators';
+import { diaLocal, validarPaquete } from '../flows/validators';
 import { t } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
 import { SourcesDrawer, titulosPorDocumento } from './SourcesDrawer';
@@ -625,7 +625,7 @@ const PackageViewerView: React.FC<{
   apiClient: APIClient;
   token: string | null;
   registrarEstudio?: boolean;
-  confirmedConcepts?: Record<string, boolean>;
+  conceptosMarcados?: Record<string, string | null>;
   onMarkConcept?: (documentId: string, concepto: string, generationId: string) => void;
   onReviewFlashcard?: (generationId: string, flashcardId: string) => void;
   onSessionInvalid: () => void;
@@ -635,7 +635,7 @@ const PackageViewerView: React.FC<{
   apiClient,
   token,
   registrarEstudio = true,
-  confirmedConcepts = {},
+  conceptosMarcados = {},
   onMarkConcept,
   onReviewFlashcard,
   onSessionInvalid,
@@ -707,10 +707,12 @@ const PackageViewerView: React.FC<{
         <div style={{ marginTop: '0.9rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem' }}>
           <button
             type="button"
-            className="nm-btn"
-            style={{ fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}
+            className="nm-btn nm-btn-primary"
+            style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}
+            aria-expanded={rutaOpen}
             onClick={() => setRutaOpen(!rutaOpen)}
           >
+            {rutaOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
             {t('material.preparar', idioma)}
           </button>
 
@@ -741,20 +743,30 @@ const PackageViewerView: React.FC<{
                 <strong>{t('material.conceptos_clave', idioma)}</strong>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginTop: '0.45rem' }}>
                   {Array.from(new Set(meta.conceptos_clave)).map((concepto) => {
-                    const key = `${documentId}::${concepto.trim()}`;
-                    const done = Boolean(confirmedConcepts[key]);
+                    const key = `${paquete.generation_id}::${concepto.trim()}`;
+                    const marcado = key in conceptosMarcados;
+                    const revisadoHoy = marcado && conceptosMarcados[key] === diaLocal();
                     return (
                       <div key={concepto} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', background: 'var(--surface-2)', padding: '0.45rem 0.65rem', borderRadius: '6px' }}>
                         <span>{concepto}</span>
                         {registrarEstudio && onMarkConcept && (
                           <button
                             type="button"
-                            className="nm-btn"
-                            style={{ fontSize: '0.76rem', padding: '0.25rem 0.55rem' }}
-                            disabled={done}
-                            onClick={() => onMarkConcept(documentId, concepto, paquete.generation_id)}
+                            className={revisadoHoy ? 'nm-btn' : 'nm-btn nm-btn-primary'}
+                            style={{
+                              fontSize: '0.76rem',
+                              padding: '0.25rem 0.55rem',
+                              ...(revisadoHoy ? { color: '#6ee787', borderColor: '#2f6f3f' } : {}),
+                            }}
+                            disabled={revisadoHoy}
+                            onClick={() => onMarkConcept(documentId, concepto.trim(), paquete.generation_id)}
                           >
-                            {t('progreso.marcar_concepto', idioma, { concepto })}
+                            {revisadoHoy && <CheckCircle2 size={13} />}
+                            {t(
+                              revisadoHoy ? 'progreso.revisado_hoy' : marcado ? 'progreso.repasar_concepto' : 'progreso.marcar_concepto',
+                              idioma,
+                              { concepto }
+                            )}
                           </button>
                         )}
                       </div>
