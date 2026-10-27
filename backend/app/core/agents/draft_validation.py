@@ -1,6 +1,9 @@
 """Validación compartida del borrador y sus citas (Writer/Critic)."""
 
+import html
 import json
+import re
+import unicodedata
 
 from pydantic import ValidationError
 
@@ -29,10 +32,71 @@ def _constante_invalida(valor):
     raise BorradorInvalidoError("El JSON no admite NaN ni valores infinitos.")
 
 
+# Gemini a veces escribe las letras acentuadas codificadas (&oacute;, &#243;, %f3 o un escape unicode como texto) y la UI,
+# el PDF y el Markdown las mostrarían tal cual. Solo se decodifica lo que da una letra o un signo tipográfico:
+# &amp;, &lt;, 50 % o una URL con %C3%B3 quedan intactos.
+# En una salida real también llegaron sin punto y coma (r&eacuteplicas), con la letra base errada
+# (m&lacute;nima por m&iacute;nima) y con la tilde convertida en dígito (Orquestaci3n).
+_ACENTUADA = re.compile(r"&([A-Za-z])(acute|grave|circ|tilde|uml|cedil);?")
+_DIACRITICOS = {
+    "acute": "\u0301",
+    "grave": "\u0300",
+    "circ": "\u0302",
+    "tilde": "\u0303",
+    "uml": "\u0308",
+    "cedil": "\u0327",
+}
+_ENTIDAD = re.compile(r"&(?:[A-Za-z]{2,8}|#[0-9]{2,5}|#[xX][0-9A-Fa-f]{2,4});")
+_PORCENTAJE = re.compile(r"(?<=[^\W\d_])%([0-9A-Fa-f]{2})(?![0-9A-Za-z%])|(?<=[^\W\d_])%([0-9A-Fa-f]{2})(?=[^\W\d_])")
+_ESCAPE_U = re.compile(r"(?<=[^\W\d_])\x5cu00([0-9A-Fa-f]{2})")
+_CION_CON_DIGITO = re.compile(r"(?<=[^\W\d_]ci)3(?=n\b)")
+_SIGNOS = frozenset("¿¡«»–—“”‘’…·ºª\u00a0")
+
+
+def _letra_latina(codigo: int) -> str | None:
+    caracter = chr(codigo)
+    return caracter if codigo >= 0xC0 and caracter.isalpha() else None
+
+
+def _acentuada(coincidencia: re.Match) -> str:
+    base, marca = coincidencia.groups()
+    if marca == "acute" and base in "lL":
+        base = "i" if base == "l" else "I"  # ĺ no existe en español, inglés ni portugués
+    caracter = unicodedata.normalize("NFC", base + _DIACRITICOS[marca])
+    return caracter if len(caracter) == 1 else coincidencia.group(0)
+
+
+def _entidad(coincidencia: re.Match) -> str:
+    caracter = html.unescape(coincidencia.group(0))
+    return caracter if len(caracter) == 1 and (caracter.isalpha() or caracter in _SIGNOS) else coincidencia.group(0)
+
+
+def reparar_texto_modelo(texto: str) -> str:
+    if "&" in texto:
+        texto = _ENTIDAD.sub(_entidad, _ACENTUADA.sub(_acentuada, texto))
+    if "ci3n" in texto:
+        texto = _CION_CON_DIGITO.sub("ó", texto)
+    if "%" in texto:
+        texto = _PORCENTAJE.sub(lambda m: _letra_latina(int(m.group(1) or m.group(2), 16)) or m.group(0), texto)
+    if "\\u00" in texto:
+        texto = _ESCAPE_U.sub(lambda m: _letra_latina(int(m.group(1), 16)) or m.group(0), texto)
+    return texto
+
+
+def _reparar_valores(valor):
+    if isinstance(valor, str):
+        return reparar_texto_modelo(valor)
+    if isinstance(valor, list):
+        return [_reparar_valores(item) for item in valor]
+    if isinstance(valor, dict):
+        return {clave: _reparar_valores(item) for clave, item in valor.items()}
+    return valor
+
+
 # aqui proceso la cadena json con controles rigurosos evitando estructuras malformadas antes de pasarlas a pydantic
 def parsear_json_estricto(texto: str):
-    """Rechaza claves duplicadas, NaN/inf y cercas Markdown en cualquier rol."""
-    return json.loads(texto, object_pairs_hook=_sin_duplicados, parse_constant=_constante_invalida)
+    """Rechaza claves duplicadas, NaN/inf y cercas Markdown en cualquier rol; repara letras codificadas."""
+    return _reparar_valores(json.loads(texto, object_pairs_hook=_sin_duplicados, parse_constant=_constante_invalida))
 
 
 def evidencia_autorizada(estado: EstadoGrafo):
