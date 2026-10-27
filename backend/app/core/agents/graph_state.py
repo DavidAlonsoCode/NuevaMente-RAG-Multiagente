@@ -93,10 +93,33 @@ class BorradorPedagogico(ContratoGrafo):
         return self
 
 
+class UbicacionRechazo(ContratoGrafo):
+    """Lugar del documento que citaba una afirmación sin respaldo: título y sección, nunca su texto."""
+
+    documento: str = Field(min_length=1, max_length=300)
+    seccion: str | None = Field(default=None, min_length=1, max_length=300)
+    pagina: int | None = Field(default=None, ge=1)
+
+
+class ResumenRechazo(ContratoGrafo):
+    """Cifras deterministas del último borrador rechazado; sin su texto ni el feedback del modelo."""
+
+    afirmaciones: int = Field(ge=1)
+    sin_respaldo: int = Field(ge=1)
+    citadas: list[UbicacionRechazo] = Field(default_factory=list, max_length=5)
+
+    @model_validator(mode="after")
+    def _cifras_coherentes(self) -> "ResumenRechazo":
+        if self.sin_respaldo > self.afirmaciones:
+            raise ValueError("Hay más afirmaciones sin respaldo que afirmaciones")
+        return self
+
+
 class DiagnosticoGrafo(ContratoGrafo):
     razones_bloqueo: list[str] = Field(default_factory=list)
     code: str = Field(min_length=1)
     message: str = Field(min_length=1)
+    resumen: ResumenRechazo | None = None
 
 
 class EstadoGrafo(ContratoGrafo):

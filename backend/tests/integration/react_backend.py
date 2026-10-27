@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--port", type=int, default=18080)
     parser.add_argument("--delay-seconds", type=float, default=0)
     parser.add_argument("--reject-quality", action="store_true")
+    parser.add_argument("--reject-unsupported", action="store_true", help="El juez no respalda ninguna afirmación.")
     args = parser.parse_args()
     if not 0 <= args.delay_seconds <= 10:
         parser.error("La demora simulada debe estar entre 0 y 10 segundos")
@@ -59,6 +60,7 @@ def main():
 
     provider = DobleDemo(16)
     provider.rechazar = args.reject_quality
+    provider.sin_respaldo = args.reject_unsupported
     quotas = CuotasProveedor(
         {
             model: CuotasModelo(1000, 10_000_000, 1000)

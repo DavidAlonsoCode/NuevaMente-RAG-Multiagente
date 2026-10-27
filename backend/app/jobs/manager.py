@@ -120,7 +120,10 @@ class TrabajoCanceladoError(Exception):
 
 
 class RechazoCalidadError(Exception):
-    """Motivos públicos de calidad, sin texto del documento ni feedback del modelo."""
+    """Motivos públicos de calidad, sin texto del documento ni feedback del modelo.
+
+    `resumen` (opcional) trae sólo cifras del último borrador y títulos de las secciones que citaba.
+    """
 
     MOTIVOS = {
         "afirmacion_sin_respaldo": "Hay afirmaciones sin respaldo suficiente en la fuente.",
@@ -136,7 +139,8 @@ class RechazoCalidadError(Exception):
         "coherencia_didactica": "El material necesita mayor coherencia didáctica.",
     }
 
-    def __init__(self, razones=()):
+    def __init__(self, razones=(), resumen=None):
+        self.resumen = resumen
         mensajes = [self.MOTIVOS[r] for r in dict.fromkeys(razones) if r in self.MOTIVOS]
         super().__init__(
             "El contenido no superó la revisión de calidad." + (" " + " ".join(mensajes) if mensajes else "")
@@ -669,7 +673,8 @@ class GestorTrabajos:
             self._limpiar(job_id)
             return
         except RechazoCalidadError as error:
-            self._finalizar(job_id, JobStatus.REJECTED_QUALITY, str(error))
+            revision = error.resumen.model_dump_json() if error.resumen is not None else None
+            self._finalizar(job_id, JobStatus.REJECTED_QUALITY, str(error), resultado=revision)
             return
         except FalloTrabajoError as error:
             self._finalizar(job_id, JobStatus.FAILED, str(error), error_code=error.codigo)

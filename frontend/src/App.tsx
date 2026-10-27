@@ -40,6 +40,7 @@ import { ErrorBanner } from './components/ErrorBanner';
 import { DocumentStatus } from './components/DocumentStatus';
 import { ExportDownloads } from './components/ExportDownloads';
 import { RecentGenerations } from './components/RecentGenerations';
+import { RejectionDiagnosis } from './components/RejectionDiagnosis';
 import { PackageViewer } from './components/FormatRenderers';
 import { SourcesDrawer } from './components/SourcesDrawer';
 import {
@@ -1183,11 +1184,6 @@ export const App: React.FC = () => {
                       idioma={idiomaUi}
                       stream={generationStream}
                       onChangeSource={() => setMostrandoDocumentos(true)}
-                      onNarrowScope={() => {
-                        setGenAlcance('seccion');
-                        if (seccionesDisponibles[0]) setGenSeccionId(seccionesDisponibles[0].seccion_id);
-                        requestAnimationFrame(() => document.getElementById('app-field-6')?.focus());
-                      }}
                       conceptosMarcados={conceptosMarcados}
                       onRefresh={consultarGeneracionActiva}
                       onMarkConcept={marcarConcepto}
@@ -1834,7 +1830,6 @@ export const ActiveGenerationPanel: React.FC<{
   onSessionInvalid: () => void;
   stream: ReturnType<typeof useGenerationProgress>;
   onChangeSource: () => void;
-  onNarrowScope: () => void;
 }> = ({
   api,
   token,
@@ -1848,7 +1843,6 @@ export const ActiveGenerationPanel: React.FC<{
   onSessionInvalid,
   stream,
   onChangeSource,
-  onNarrowScope,
 }) => {
   const [persistKey] = useState(() => `persist-${generacion.generation_id}-${Date.now().toString(36)}`);
   const [err, setErr] = useState<APIError | null>(null);
@@ -1954,16 +1948,8 @@ export const ActiveGenerationPanel: React.FC<{
       <div className="nm-card">
         <div className="nm-alert nm-alert-error">{t('generar.rechazado_calidad', idioma)}</div>
         <p>{t('live.rejected_reason', idioma)}</p>
-        {job.error?.message && (
-          <p style={{ fontWeight: 500, color: 'var(--ink-secondary)', margin: '0.35rem 0' }}>
-            {job.error.message}
-          </p>
-        )}
-        <div style={{ fontSize: '0.88rem', color: 'var(--ink-secondary)' }}>
-          {t('material.rechazo_ayuda', idioma)}
-        </div>
+        <RejectionDiagnosis error={job.error} idioma={idioma} />
         <div className="nm-actions">
-          <button type="button" className="nm-btn" onClick={onNarrowScope}>{t('live.narrow', idioma)}</button>
           <button type="button" className="nm-btn" onClick={onChangeSource}>{t('live.source', idioma)}</button>
         </div>
       </div>
