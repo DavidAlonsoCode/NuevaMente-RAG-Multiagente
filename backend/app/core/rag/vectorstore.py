@@ -732,12 +732,23 @@ class VectorStoreChroma:
                 "embeddings": [[f[2] for f in filas]],
             }
         else:
-            datos = self._privada.query(
-                query_embeddings=[vector],
-                n_results=limite,
-                where=filtro,
-                include=["metadatas", "distances", "embeddings"],
-            )
+            # Una consulta por documento: un top-N global sobre "$or" deja sin candidatos a una
+            # fuente cuando otra más extensa o afín ocupa todas las plazas.
+            cupo = max(1, limite // len(activos))
+            datos = {"metadatas": [[]], "distances": [[]], "embeddings": [[]]}
+            for clausula, act in zip(clausulas, activos.values(), strict=True):
+                if act["cantidad"] < 1:
+                    continue
+                parcial = self._privada.query(
+                    query_embeddings=[vector],
+                    n_results=min(cupo, act["cantidad"]),
+                    where=clausula,
+                    include=["metadatas", "distances", "embeddings"],
+                )
+                for clave, acumulado in datos.items():
+                    valores = parcial.get(clave)
+                    if valores is not None and len(valores):
+                        acumulado[0].extend(valores[0])
 
         resultado = []
         if datos["metadatas"] and datos["metadatas"][0]:

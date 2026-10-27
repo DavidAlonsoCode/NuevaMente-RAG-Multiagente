@@ -187,7 +187,8 @@ Detalle: [contratos de chat y glosario](docs/contratos-api.md).
 ## Instalación y ejecución local
 
 Elegí un recorrido: **simulado funcional** para probar carga/generación sin
-credenciales, **nativo real** para usar OCI/Gemini configurados, o **Docker con
+credenciales, **Gemini real con OCI simulado** para usar IA real sin cuenta OCI,
+**nativo real** para usar OCI/Gemini configurados, o **Docker con
 mocks** para comprobar contenedores, UI y conectividad API. Docker con mocks no
 inyecta el doble de generación. Detalle de lo ejecutado y de lo solo contrastado:
 [registro de instalación](docs/verificacion-issue-57.md#b-comandos-efectivamente-ejecutados).
@@ -250,7 +251,7 @@ En Bash, la misma orden comienza con `.venv/bin/python`. La carpeta
 Esperar el arranque de Uvicorn en `127.0.0.1:18080`. El helper cambia a ese directorio,
 desactiva la lectura de `.env`, fija almacenamiento mock e inyecta embeddings y
 generadores sintéticos con cuotas de prueba. Bloquea resolución DNS externa.
-Usa SQLite, Chroma, worker y ambos recorridos de generación del proyecto.
+Usa SQLite, Chroma, worker, ambos recorridos de generación, chat y glosario, también con varias fuentes.
 Es una herramienta de verificación, no un modo de producción ni evidencia de
 calidad de Gemini; comenzar con TXT/Markdown o texto pegado, sin páginas visuales.
 
@@ -278,6 +279,73 @@ En Bash: `curl --fail --max-time 10 http://127.0.0.1:18501/api/health`. Se esper
 después realizar el [uso inicial](#uso-inicial) para comprobar carga, generación y
 descarga. El health por sí solo no comprueba esas funciones. Detener A y B con
 Ctrl+C; los datos se conservan. El helper exige otro directorio nuevo al reiniciarlo.
+
+### 1b. Gemini real con almacenamiento OCI simulado
+
+Recomendado para probar la app con IA real **sin cuenta OCI**: Gemini genera,
+revisa y responde de verdad, y los archivos quedan en una carpeta local en lugar
+del bucket (`MOCK_OCI=1`, permitido fuera de `production`). Sólo hace falta una
+clave propia de Gemini de [Google AI Studio](https://aistudio.google.com/apikey).
+Los datos no se comparten con producción ni con otros integrantes.
+
+Desde la raíz, preparar una carpeta nueva con su `.env`:
+
+```powershell
+New-Item -ItemType Directory .data/local-gemini -ErrorAction Stop | Out-Null
+Copy-Item .env.example .data/local-gemini/.env -ErrorAction Stop
+```
+
+En Bash: `mkdir -p .data && mkdir .data/local-gemini && cp .env.example .data/local-gemini/.env`.
+Editar **solo** `.data/local-gemini/.env` con estos valores. Las cuotas vienen
+comentadas en el template: descomentarlas y completarlas (son las del despliegue
+de Render; si se omiten, la app no habilita la carga):
+
+```dotenv
+APP_ENV=development
+MOCK_OCI=1
+MOCK_GEMINI=0
+DATA_DIR=./state
+GOOGLE_API_KEY=<clave propia de Google AI Studio>
+GEMINI_GENERATION_MODEL=gemini-3.5-flash-lite
+GEMINI_VERIFICATION_MODEL=gemini-3.5-flash-lite
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2
+EMBEDDING_DIMENSIONS=768
+EMBEDDING_QUOTA_RPM=1500
+EMBEDDING_QUOTA_TPM=1000000
+EMBEDDING_QUOTA_RPD=1500
+GENERATION_QUOTA_RPM=15
+GENERATION_QUOTA_TPM=1000000
+GENERATION_QUOTA_RPD=1500
+VERIFICATION_QUOTA_RPM=15
+VERIFICATION_QUOTA_TPM=1000000
+VERIFICATION_QUOTA_RPD=1500
+VISION_QUOTA_RPM=15
+VISION_QUOTA_TPM=1000000
+VISION_QUOTA_RPD=1500
+```
+
+Generación y verificación usan el mismo modelo, por eso sus cuotas coinciden. Las
+variables `OCI_*` pueden quedar como en el template: con `MOCK_OCI=1` no se usan.
+
+En **terminal A**, entrar a la carpeta y arrancar la API (Pydantic lee el `.env`
+del directorio de ejecución, no el de la raíz):
+
+```powershell
+cd .data/local-gemini
+..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir ../../backend --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+```
+
+En Bash, dentro de `.data/local-gemini`, usar `../../.venv/bin/python` con los mismos
+argumentos. En **terminal B**, desde la raíz:
+
+```powershell
+$env:API_URL = 'http://127.0.0.1:8000'
+npm.cmd --prefix frontend run dev
+```
+
+En Bash: `API_URL=http://127.0.0.1:8000 npm --prefix frontend run dev`. Abrir
+**http://127.0.0.1:8501**. Los datos quedan en `.data/local-gemini/state` y se
+conservan entre arranques. Nunca subir ese `.env` a Git.
 
 ### 2. Arranque nativo con OCI y Gemini reales
 

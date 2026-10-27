@@ -1,6 +1,7 @@
 """API #31 con Chroma, worker y StateGraph reales; proveedores simulados explícitos."""
 
 import json
+import math
 import threading
 import time
 from copy import deepcopy
@@ -24,12 +25,51 @@ class DobleEducativo(DobleGemini):
     rechazar = False
     bloquear = None
 
+    def _vector_de(self, texto):
+        # Componente común positiva: con vectores hash puros, cerca de la mitad de las fuentes
+        # seleccionadas quedaba con afinidad <= 0 y la síntesis simulada fallaba al azar.
+        vector = super()._vector_de(texto)
+        vector[0] = abs(vector[0]) + 2.0
+        norma = math.sqrt(sum(componente**2 for componente in vector))
+        return [componente / norma for componente in vector]
+
     def generar_sync(self, prompt, **kwargs):
         if self.bloquear is not None:
             self.bloquear.wait(5)
         datos = json.loads(prompt)
         p = datos["parametros"]
         chunk = datos["evidencia"][0]["chunk"]
+        # Una cita por documento: en una síntesis multidocumental cada fuente debe aportar.
+        por_documento = {}
+        for item in datos["evidencia"]:
+            por_documento.setdefault(item["chunk"].get("document_id"), item["chunk"])
+        refs = [{k: c[k] for k in ("chunk_id", "pagina", "seccion")} for c in por_documento.values()]
+        if "pregunta" in datos:  # Chat: el adaptador espera BorradorChat.
+            salida = {"fuera_de_alcance": False, "respuesta": "Respuesta sintética del doble.", "referencias": refs}
+            self.programar_generacion(json.dumps(salida))
+            return super().generar_sync(prompt, **kwargs)
+        if "candidatos" in datos:  # Glosario: cada término cita el fragmento donde aparece.
+            terminos = []
+            for candidato in datos["candidatos"]:
+                origen = next(
+                    (
+                        r["chunk"]
+                        for r in datos["evidencia"]
+                        if candidato["termino_original"].casefold() in r["chunk"]["texto"].casefold()
+                    ),
+                    chunk,
+                )
+                terminos.append(
+                    dict(
+                        id=candidato["id"],
+                        estado="definido",
+                        definicion="Definición sintética del doble.",
+                        traduccion=None,
+                        referencias=[{k: origen[k] for k in ("chunk_id", "pagina", "seccion")}],
+                    )
+                )
+            self.programar_generacion(json.dumps({"terminos": terminos}))
+            return super().generar_sync(prompt, **kwargs)
         solicitud = GenerateRequest.model_validate(p)
         salida = ejemplo_few_shot(solicitud.perfil_destinatario, solicitud.formato_salida, solicitud.idioma_salida)
         salida = json.loads(
@@ -56,7 +96,7 @@ class DobleEducativo(DobleGemini):
             if isinstance(valor, dict):
                 for clave, item in valor.items():
                     if clave == "referencias":
-                        valor[clave] = [{k: chunk[k] for k in ("chunk_id", "pagina", "seccion")}]
+                        valor[clave] = deepcopy(refs)
                     else:
                         citas(item)
             elif isinstance(valor, list):
@@ -71,10 +111,16 @@ class DobleEducativo(DobleGemini):
         datos = json.loads(entrada["prompt"])
         fase = datos["tarea"]
         if fase == "descomponer":
+            # Primer segmento citado del contenido: en una síntesis su cita prueba el aporte de cada fuente.
+            citados = [
+                ruta
+                for ruta, segmento in datos["segmentos"].items()
+                if ruta.startswith("/contenido_adaptado/") and segmento.get("referencias")
+            ]
             salida = {
                 "afirmaciones": [
                     {"texto": "Afirmación sintética del doble", "ubicacion": ruta}
-                    for ruta in list(datos["segmentos"])[:1]
+                    for ruta in (citados or list(datos["segmentos"]))[:1]
                 ]
             }
         elif fase == "juzgar":
@@ -376,3 +422,45 @@ def test_aprobado_retenido_vencido_o_retirado_no_se_publica(entorno, monkeypatch
     assert e.cliente.post(recibo["status_url"] + "/persist", headers=e.headers).status_code == status
     assert e.db._conn.execute("SELECT COUNT(*) FROM approved_outputs").fetchone()[0] == 0
     assert e.doble.llamadas_generacion + e.doble.llamadas_verificacion == llamadas
+
+
+def test_doble_del_recorrido_simulado_cubre_sintesis_chat_y_glosario(entorno):
+    """El helper React del README usa DobleEducativo: con dos fuentes debe completar
+    un guion multidocumental, responder el chat y definir el glosario."""
+    e = entorno
+    subida = e.cliente.post(
+        "/api/documents/upload",
+        headers=e.headers,
+        json={
+            "documento_titulo": "Seguridad OCI",
+            "documento_contenido": "Una lista de seguridad define reglas de entrada y salida para subredes. " * 20,
+        },
+    )
+    assert subida.status_code == 202, subida.text
+    esperar(e, subida.json())
+    ids = sorted([e.doc, subida.json()["document_id"]])
+
+    generacion = e.cliente.post(
+        "/api/generate",
+        headers=e.headers,
+        json={
+            **e.solicitud,
+            "document_id": ids[0],
+            "document_ids": ids,
+            "formato_salida": "guion_clase",
+            "alcance": {"tipo": "multi_documento", "document_ids": ids},
+        },
+    )
+    assert generacion.status_code == 202, generacion.text
+    paquete = esperar(e, generacion.json())["contenido"]
+    assert paquete["metadatos"]["alcance"]["tipo"] == "multi_documento"
+    assert {d["document_id"] for d in paquete["documentos_fuente"]} == set(ids)
+
+    consulta = {"document_ids": ids, "perfil_destinatario": "principiante", "idioma_salida": "es"}
+    chat = e.cliente.post("/api/chat", headers=e.headers, json={**consulta, "pregunta": "¿De qué se trata?"})
+    assert chat.status_code == 202, chat.text
+    assert esperar(e, chat.json())["result"]["estado"] == "respondida"
+
+    glosario = e.cliente.post("/api/glossaries", headers=e.headers, json=consulta)
+    assert glosario.status_code in (200, 202), glosario.text
+    assert esperar(e, glosario.json())["result"]["estado"] == "verificado"
