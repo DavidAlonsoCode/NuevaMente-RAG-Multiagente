@@ -35,6 +35,7 @@ describe('intenciones durables y fronteras', () => {
     await scope.render(<HistoryFullView apiClient={api} token="synthetic" workspaceId="ws"
       idiomaUi="es" onClose={vi.fn()} onSessionInvalid={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(t('historial.perfil','es')), {target:{value:'principiante'}});
+    fireEvent.click(screen.getByRole('button', {name: t('historial.aplicar_filtros','es')}));
     await screen.findByText(/doc-actual/);
     await scope.act(async () => { resolveOld({items:[{
       generation_id:'gen-old',document_id:'doc-anterior',status:'queued',created_at:'2026-10-14T00:00:00Z',

@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from app.schemas.errors import ErrorAplicacion, ErrorCode
 from app.schemas.pedagogical import FlashcardDeck, InteractiveQuiz
-from app.schemas.progress import ProgressEventResponse, ProgressResponse, QuizAnswerResponse
+from app.schemas.progress import ConceptoProgreso, ProgressEventResponse, ProgressResponse, QuizAnswerResponse
 from app.storage.object_keys import clave_progress
 from app.storage.provider import StorageConflict, StorageNotFound, StorageUnavailable
 
@@ -37,6 +37,7 @@ class EventoGuardado(BaseModel):
     question_id: str | None = Field(default=None, min_length=1, max_length=64)
     option_id: str | None = Field(default=None, min_length=1, max_length=64)
     correcta: bool | None = None
+    fecha: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
     @model_validator(mode="after")
     def referencias_del_tipo(self):
@@ -287,9 +288,12 @@ class ServicioProgreso:
         else:
             raise ErrorAplicacion(ErrorCode.INVALID_STATE, "El progreso cambió; reintentar la consulta.")
         self._vigente(token, estado)
-        conceptos = {
-            (e.document_id, e.generation_id, e.concepto) for e in estado.eventos if e.tipo == "concepto_revisado"
-        }
+        # Un concepto suma un repaso por día distinto; las marcas sin fecha (anteriores) cuentan como un solo día.
+        marcas = {}
+        for e in estado.eventos:
+            if e.tipo == "concepto_revisado":
+                marcas.setdefault((e.document_id, e.generation_id, e.concepto), set()).add(e.fecha)
+        conceptos = set(marcas)
         cartas = {(e.generation_id, e.flashcard_id) for e in estado.eventos if e.tipo == "flashcard_vista"}
         quiz = [e for e in estado.eventos if e.tipo == "respuesta_quiz"]
         primeras, posteriores = {}, []
@@ -333,6 +337,17 @@ class ServicioProgreso:
         return ProgressResponse(
             version=estado.version,
             conceptos_revisados=len(conceptos),
+            conceptos_repasos=sum(len(dias) - 1 for dias in marcas.values()),
+            conceptos=[
+                ConceptoProgreso(
+                    document_id=doc,
+                    generation_id=gid,
+                    concepto=concepto,
+                    veces=len(dias),
+                    ultima_fecha=max((f for f in dias if f), default=None),
+                )
+                for (doc, gid, concepto), dias in marcas.items()
+            ],
             flashcards_vistas=len(cartas),
             quiz_intentos=len(quiz),
             quiz_aciertos_primer_intento=sum(e.correcta for e in primeras.values()),

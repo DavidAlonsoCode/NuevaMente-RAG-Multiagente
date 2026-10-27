@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_sesion_actual, get_session_manager
 from app.api.openapi_metadata import CURSOR_SSE, IDEMPOTENCIA_GENERACION, parametros, respuestas, stream
@@ -27,6 +27,8 @@ class GeneracionHistorial(BaseModel):
     model_config = ConfigDict(extra="forbid")
     generation_id: str
     document_id: str
+    # Todas las fuentes, empezando por la primaria; una sola en generaciones de un documento.
+    document_ids: list[str] = Field(min_length=1)
     status: JobStatus
     created_at: datetime
     parametros: GenerateRequest | None

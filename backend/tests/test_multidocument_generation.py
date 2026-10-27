@@ -324,6 +324,13 @@ def test_generacion_multidocumental_completa_y_documentos_fuente(entorno_multi, 
     salida = esperar_estado(e, recibo)
     assert salida["status"] == "completed"
 
+    # El historial lista todas las fuentes, y filtrar por la secundaria también la encuentra.
+    [fila] = e.cliente.get("/api/generations", headers=e.headers).json()["items"]
+    assert fila["document_ids"][0] == fila["document_id"] and set(fila["document_ids"]) == {doc1, doc2}
+    for doc in (doc1, doc2):
+        filtradas = e.cliente.get("/api/generations", params={"documento": doc}, headers=e.headers).json()
+        assert [x["generation_id"] for x in filtradas["items"]] == [recibo["generation_id"]]
+
     contenido = salida["contenido"]
     assert "documentos_fuente" in contenido
     assert len(contenido["documentos_fuente"]) == 2
