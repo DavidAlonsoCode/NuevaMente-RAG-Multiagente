@@ -23,6 +23,7 @@ pytestmark = pytest.mark.integration_mock
 
 class DobleEducativo(DobleGemini):
     rechazar = False
+    sin_respaldo = False
     bloquear = None
 
     def _vector_de(self, texto):
@@ -128,9 +129,9 @@ class DobleEducativo(DobleGemini):
                 "juicios": [
                     {
                         "id_afirmacion": a["id"],
-                        "estado": "respaldada",
+                        "estado": "sin_evidencia" if self.sin_respaldo else "respaldada",
                         "motivo": "Juicio simulado",
-                        "referencias": a["citas_permitidas"],
+                        "referencias": [] if self.sin_respaldo else a["citas_permitidas"],
                     }
                     for a in datos["afirmaciones"]
                 ]
@@ -330,6 +331,22 @@ def test_rechazado_200_sin_contenido_export_ni_reintento(entorno):
     assert e.doble.llamadas_generacion == 3 and e.db.obtener_documento(e.doc)["estado"] == "ready"
     assert e.cliente.get("/api/exports/" + recibo["generation_id"], headers=e.headers).status_code == 409
     assert e.cliente.post(recibo["status_url"] + "/persist", headers=e.headers).status_code == 409
+    assert "revision" not in fallo["error"]["details"]
+
+
+def test_rechazo_por_respaldo_informa_cifras_y_secciones_citadas(entorno):
+    e = entorno
+    e.doble.sin_respaldo = True
+    recibo = generar(e).json()
+    fallo = esperar(e, recibo, "rejected_quality")
+    detalles = fallo["error"]["details"]
+    assert "afirmacion_sin_respaldo" in detalles["razones_bloqueo"]
+    revision = detalles["revision"]
+    assert revision["afirmaciones"] >= revision["sin_respaldo"] >= 1
+    titulo = e.db.obtener_documento(e.doc)["titulo"]
+    assert revision["citadas"] and all(u["documento"] == titulo for u in revision["citadas"])
+    assert "Afirmación sintética" not in json.dumps(fallo) and "Juicio simulado" not in json.dumps(fallo)
+    assert fallo["contenido"] is None
 
 
 def test_quiz_estudiante_y_exportacion_canonica(entorno):

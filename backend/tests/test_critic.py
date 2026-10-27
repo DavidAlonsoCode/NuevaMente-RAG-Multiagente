@@ -276,6 +276,26 @@ def test_rechazo_en_tercer_intento_descarta_borrador(entorno, intento):
     assert nuevo.intento == intento
 
 
+def test_rechazo_resume_cifras_y_secciones_sin_texto_del_borrador(entorno):
+    estado = borrador(entorno).model_copy(update={"intento": 3})
+    juez(entorno[1].proveedor, total=5, respaldadas=3)
+    nuevo = aplicar(estado, critic(estado, entorno[1]))
+    resumen = nuevo.error.resumen
+    assert nuevo.status == "rejected_quality"
+    assert (resumen.afirmaciones, resumen.sin_respaldo) == (5, 2)
+    assert resumen.citadas and all(u.documento == estado.documento_fuente.titulo for u in resumen.citadas)
+    assert all(u.seccion not in ("(sin encabezados)", "contenido") for u in resumen.citadas)
+    guardado = nuevo.error.model_dump_json()
+    assert "Afirmación de prueba" not in guardado and "Comprobación sintética" not in guardado
+
+
+def test_rechazo_sin_afirmaciones_fallidas_no_inventa_cifras(entorno):
+    estado = borrador(entorno).model_copy(update={"intento": 3})
+    juez(entorno[1].proveedor, pedagogia={**rubrica(), "claridad_pedagogica": "baja"})
+    nuevo = aplicar(estado, critic(estado, entorno[1]))
+    assert nuevo.status == "rejected_quality" and nuevo.error.resumen is None
+
+
 @pytest.mark.parametrize(
     "problema",
     [

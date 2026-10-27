@@ -481,6 +481,15 @@ Otros alcances: `{ "tipo": "seccion", "seccion_id": "sec_3" }`,
 
 Estado del trabajo con generation_id, status, contenido, persistencia y error. contenido solo existe cuando completed; error identifica el diagnóstico terminal. Para quiz, vista=estudiante es la predeterminada y omite claves/justificaciones no respondidas; el canónico completo se descarga por exportación autorizada. Un `rejected_quality` se consulta con **HTTP 200** y diagnóstico, sin `contenido_adaptado`.
 
+`error.details` de un `rejected_quality` trae `causa`, `razones_bloqueo` (catálogo público) y, cuando el Critic encontró afirmaciones sin respaldo en el último borrador, `revision`:
+
+```json
+{"afirmaciones": 22, "sin_respaldo": 3,
+ "citadas": [{"documento": "Parte 1", "seccion": "Imágenes y capas", "pagina": null}]}
+```
+
+`citadas` lista hasta 5 lugares del documento que citaban esas afirmaciones: título del documento y sección, o página si la sección no tiene título. Nunca incluye texto del borrador, de las afirmaciones ni del feedback del modelo. Sin afirmaciones fallidas (por ejemplo, un rechazo pedagógico o del Researcher) `revision` no aparece.
+
 #### `GET /api/generations/{id}/events` (SSE)
 
 `text/event-stream` con heartbeat. Formato de evento:

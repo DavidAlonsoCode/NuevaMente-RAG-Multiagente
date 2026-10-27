@@ -281,7 +281,11 @@ def test_quality_rejection_in_browser_exposes_no_draft():
                         "Se agotaron las redacciones permitidas sin superar todos los controles de calidad.", exact=True
                     )
                 ).to_be_visible()
-                expect(page.get_by_role("button", name="Acotar a una sección", exact=True)).to_be_visible()
+                expect(page.get_by_text("Qué pasó", exact=True)).to_be_visible()
+                expect(
+                    page.get_by_text("La explicación no quedó clara o no se ajustaba al perfil elegido.", exact=True)
+                ).to_be_visible()
+                assert not page.get_by_role("button", name="Acotar a una sección", exact=True).count()
                 expect(
                     page.get_by_role("button", name="Aportar otra versión del documento", exact=True)
                 ).to_be_visible()
