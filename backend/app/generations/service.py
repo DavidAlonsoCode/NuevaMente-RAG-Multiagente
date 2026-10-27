@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from app.core.agents.basic import ejecutar_basico
 from app.core.agents.critic import DependenciasCritic
 from app.core.agents.graph import DependenciasOrquestacion, ejecutar_en_worker
-from app.core.agents.graph_state import DependenciasGrafo, EstadoGrafo
+from app.core.agents.graph_state import DependenciasGrafo, EstadoGrafo, ResumenRechazo
 from app.core.agents.researcher import DependenciasResearcher, researcher
 from app.core.agents.writer import DependenciasWriter
 from app.core.rag.rebuild import _workspace_vigente
@@ -59,6 +59,16 @@ def _coordinar_espacio(gestor, workspace_id):
             coordinacion.usuarios -= 1
             if coordinacion.usuarios == 0:
                 del _COORDINACIONES_ESPACIO[clave]
+
+
+def _revision_rechazada(job):
+    """Cifras del último borrador rechazado, revalidadas antes de publicarlas; sin ellas no se inventan."""
+    if not job or job["status"] != "rejected_quality" or not job["resultado"]:
+        return None
+    try:
+        return ResumenRechazo.model_validate_json(job["resultado"]).model_dump(mode="json")
+    except ValueError:
+        return None
 
 
 # con esta clase orquesto la creacion consulta cancelacion y persistencia de adaptaciones educativas
@@ -145,6 +155,9 @@ class ServicioGeneraciones:
                 ]
                 mensaje = str(RechazoCalidadError(motivos))
                 detalles["razones_bloqueo"] = motivos
+                revision = _revision_rechazada(job)
+                if revision is not None:
+                    detalles["revision"] = revision
             error = ErrorBody(code=codigo, message=mensaje, details=detalles)
         activo = fila["status"] in {"queued", "running"}
         posicion = self.gestor.estado(job["job_id"]).get("posicion_cola") if activo and job else None

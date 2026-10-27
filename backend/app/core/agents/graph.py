@@ -224,5 +224,5 @@ def ejecutar_en_worker(estado: EstadoGrafo, dependencias: DependenciasOrquestaci
         if final.error and not razones:
             # Los bloqueos del Researcher no traen razones del Critic: se traducen al catálogo público.
             razones = _RAZONES_POR_CODIGO.get(final.error.code, [])
-        raise RechazoCalidadError(razones)
+        raise RechazoCalidadError(razones, resumen=final.error.resumen if final.error else None)
     raise FalloTrabajoError(final.error.code, final.error.message)

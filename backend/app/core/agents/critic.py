@@ -28,7 +28,13 @@ from app.core.agents.draft_validation import (
     validar_borrador,
 )
 from app.core.agents.gemini_generation import GeneracionGeminiError
-from app.core.agents.graph_state import DependenciasGrafo, DiagnosticoGrafo, EstadoGrafo
+from app.core.agents.graph_state import (
+    DependenciasGrafo,
+    DiagnosticoGrafo,
+    EstadoGrafo,
+    ResumenRechazo,
+    UbicacionRechazo,
+)
 from app.core.agents.prompts import PROMPT_VERSION, preparar_prompts
 from app.core.agents.supervisor import supervisor
 from app.core.faithfulness.faithfulness import Afirmacion, EstadoEvaluacion, Juicio, VerificadorFidelidad
@@ -486,6 +492,34 @@ class _SesionRevision:
         return estado_visual, revisiones
 
 
+# Secciones que el parser asigna cuando el archivo no tiene títulos: nombrarlas no ubica nada.
+_SECCIONES_SIN_TITULO = {"(sin encabezados)", "contenido"}
+
+
+# aqui resumo para el usuario lo que no se pudo comprobar en el ultimo borrador rechazado
+# solo cuento afirmaciones y nombro las secciones que citaban: nunca texto del borrador ni motivos del juez
+def _resumen_rechazo(estado, sesion, factual, fallidas):
+    if not fallidas:
+        return None
+    evidencia = evidencia_autorizada(estado)
+    titulos = {d.document_id: d.titulo for d in [*estado.documentos_fuente, estado.documento_fuente] if d}
+    citadas = []
+    for juicio in fallidas:
+        for chunk_id in sesion.citas.get(juicio.id_afirmacion, []):
+            chunk = evidencia[chunk_id].chunk if chunk_id in evidencia else None
+            if chunk is None or chunk.document_id not in titulos:
+                continue
+            seccion = (chunk.seccion or "").strip()[:300] or None
+            if seccion in _SECCIONES_SIN_TITULO or seccion == (chunk.source_name or "").strip():
+                seccion = None
+            ubicacion = UbicacionRechazo(
+                documento=titulos[chunk.document_id], seccion=seccion, pagina=None if seccion else chunk.pagina
+            )
+            if ubicacion not in citadas:
+                citadas.append(ubicacion)
+    return ResumenRechazo(afirmaciones=factual.total, sin_respaldo=len(fallidas), citadas=citadas[:5])
+
+
 # este es el punto de entrada principal del agente revisor dentro del grafo de orquestacion (LangGraph)
 # consolido los puntajes de fidelidad y calidad didactica y decido si el material avanza al finalizador o regresa a redaccion
 # aplico el umbral estricto de fidelidad factual (0.85) exigido por la arquitectura para prevenir informacion erronea
@@ -515,7 +549,7 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
     def fallo(code, message, status=JobStatus.FAILED):
         return update(status=status, error=DiagnosticoGrafo(code=code, message=message))
 
-    def devolver_revision(motivos, *, razones_bloqueo=(), **campos):
+    def devolver_revision(motivos, *, razones_bloqueo=(), resumen=None, **campos):
         if estado.intento >= min(3, dependencias.configuracion.max_generation_attempts):
             return update(
                 status=JobStatus.REJECTED_QUALITY,
@@ -523,6 +557,7 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
                     code="QUALITY_REJECTED",
                     message="Se agotaron las redacciones sin superar la revisión de calidad.",
                     razones_bloqueo=list(razones_bloqueo),
+                    resumen=resumen,
                 ),
             )
         return update(
@@ -673,7 +708,11 @@ def critic(estado: EstadoGrafo, dependencias: DependenciasCritic) -> dict:
         # Sin ninguna afirmación respaldada no hay respuesta que entregar y sigue la política estricta.
         con_reservas = es_chat_o_glosario and not aprobada and estado.intento >= limite and factual.respaldadas > 0
         if not aprobada and not con_reservas and estado.intento >= limite:
-            return devolver_revision(feedback or razones, razones_bloqueo=razones)
+            return devolver_revision(
+                feedback or razones,
+                razones_bloqueo=razones,
+                resumen=_resumen_rechazo(estado, sesion, factual, fallidas),
+            )
         return update(
             borrador=borrador,
             referencias=referencias,
