@@ -56,12 +56,16 @@ interface TurnoChatUI {
   cancelacionSolicitada: boolean;
 }
 
+type OrigenFuentes = 'seleccion' | 'material';
+
 export const ChatTutorView: React.FC<{
   apiClient: APIClient;
   token: string;
   workspaceId: string;
   documentId: string;
   documentIds?: string[];
+  // "material": pestaña Tutor de un resultado; "seleccion": documentos tildados en el panel.
+  origen?: OrigenFuentes;
   perfil: RecipientProfile;
   idiomaSalida: OutputLanguage;
   idiomaUi: OutputLanguage;
@@ -72,6 +76,7 @@ export const ChatTutorView: React.FC<{
   workspaceId,
   documentId,
   documentIds,
+  origen = 'seleccion',
   perfil,
   idiomaSalida,
   idiomaUi,
@@ -291,8 +296,13 @@ export const ChatTutorView: React.FC<{
         <div>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <MessageSquare size={18} color="var(--oracle-coral)" />
-            {t('chat.titulo', idiomaUi)}
+            {effectiveDocIds.length > 1
+              ? t('chat.titulo_varios', idiomaUi, { cantidad: effectiveDocIds.length })
+              : t('chat.titulo', idiomaUi)}
           </h3>
+          <div style={{ fontSize: '0.82rem', color: 'var(--ink-secondary)' }}>
+            {t(origen === 'material' ? 'fuentes.del_material' : 'fuentes.tildadas', idiomaUi)}
+          </div>
           <div style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>
             {t('chat.parametros', idiomaUi, {
               perfil: t(`perfil.${perfil}`, idiomaUi),
@@ -450,11 +460,12 @@ export const GlossaryView: React.FC<{
   token: string;
   documentId: string;
   documentIds?: string[];
+  origen?: OrigenFuentes;
   perfil: RecipientProfile;
   idiomaSalida: OutputLanguage;
   idiomaUi: OutputLanguage;
   onSessionInvalid: () => void;
-}> = ({ apiClient, token, documentId, documentIds, perfil, idiomaSalida, idiomaUi, onSessionInvalid }) => {
+}> = ({ apiClient, token, documentId, documentIds, origen = 'seleccion', perfil, idiomaSalida, idiomaUi, onSessionInvalid }) => {
   const [modo, setModo] = useState<'multiagente' | 'basico'>('multiagente');
   const effectiveDocIds = useMemo(
     () => Array.from(new Set(documentIds && documentIds.length > 0 ? documentIds : [documentId])).sort(),
@@ -578,8 +589,13 @@ export const GlossaryView: React.FC<{
         <div>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <BookMarked size={18} color="var(--oracle-coral)" />
-            {t('glosario.titulo', idiomaUi)}
+            {effectiveDocIds.length > 1
+              ? t('glosario.titulo_varios', idiomaUi, { cantidad: effectiveDocIds.length })
+              : t('glosario.titulo', idiomaUi)}
           </h3>
+          <div style={{ fontSize: '0.82rem', color: 'var(--ink-secondary)' }}>
+            {t(origen === 'material' ? 'fuentes.del_material' : 'fuentes.tildadas', idiomaUi)}
+          </div>
           <div style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>
             {t('glosario.parametros', idiomaUi, {
               perfil: t(`perfil.${perfil}`, idiomaUi),
@@ -800,37 +816,26 @@ export const ProgressView: React.FC<{
 
       {datos && (
         <>
+          {datos.quiz_intentos === 0 && (
+            <div className="nm-alert nm-alert-info" style={{ marginBottom: '0.75rem' }}>
+              {t('progreso.sin_quiz', idiomaUi)}
+            </div>
+          )}
           <div className="nm-grid-2" style={{ marginBottom: '1rem' }}>
-            <div className="nm-card" style={{ background: 'var(--surface-2)' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t('progreso.conceptos', idiomaUi)}</div>
-              <div className="mono" style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--oracle-coral)' }}>
-                {datos.conceptos_revisados}
+            {([
+              ['progreso.conceptos', datos.conceptos_revisados, 'progreso.ayuda_conceptos', 'var(--oracle-coral)'],
+              ['progreso.repasos', datos.conceptos_repasos, 'progreso.ayuda_repasos', 'var(--oracle-coral)'],
+              ['progreso.flashcards', datos.flashcards_vistas, 'progreso.ayuda_flashcards', 'var(--oracle-coral)'],
+              ['progreso.primer_intento', `${datos.quiz_aciertos_primer_intento} / ${datos.quiz_total_primer_intento}`, 'progreso.ayuda_primer_intento', undefined],
+              ['progreso.aciertos_posteriores', datos.quiz_aciertos_posteriores, 'progreso.ayuda_posteriores', undefined],
+              ['progreso.intentos', datos.quiz_intentos, 'progreso.ayuda_intentos', undefined],
+            ] as const).map(([titulo, valor, ayuda, color]) => (
+              <div key={titulo} className="nm-card" style={{ background: 'var(--surface-2)' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t(titulo, idiomaUi)}</div>
+                <div className="mono" style={{ fontSize: '1.5rem', fontWeight: 700, color }}>{valor}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginTop: '0.2rem' }}>{t(ayuda, idiomaUi)}</div>
               </div>
-            </div>
-            <div className="nm-card" style={{ background: 'var(--surface-2)' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t('progreso.flashcards', idiomaUi)}</div>
-              <div className="mono" style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--oracle-coral)' }}>
-                {datos.flashcards_vistas}
-              </div>
-            </div>
-            <div className="nm-card" style={{ background: 'var(--surface-2)' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t('progreso.primer_intento', idiomaUi)}</div>
-              <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-                {datos.quiz_aciertos_primer_intento} / {datos.quiz_total_primer_intento}
-              </div>
-            </div>
-            <div className="nm-card" style={{ background: 'var(--surface-2)' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t('progreso.aciertos_posteriores', idiomaUi)}</div>
-              <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-                {datos.quiz_aciertos_posteriores}
-              </div>
-            </div>
-            <div className="nm-card" style={{ background: 'var(--surface-2)' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t('progreso.intentos', idiomaUi)}</div>
-              <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-                {datos.quiz_intentos}
-              </div>
-            </div>
+            ))}
             <div className="nm-card" style={{ background: 'var(--surface-2)' }}>
               <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t('progreso.tiempo_restante', idiomaUi)}</div>
               <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700, color: '#6ee787' }}>
@@ -853,14 +858,37 @@ export const ProgressView: React.FC<{
 // -----------------------------------------------------------------------------
 // 4. Historial Completo y Comparador Lado a Lado
 // -----------------------------------------------------------------------------
+type FiltrosHistorial = { documento: string; perfil: string; formato: string; idioma: string; desde: string; hasta: string };
+const SIN_FILTROS: FiltrosHistorial = { documento: '', perfil: '', formato: '', idioma: '', desde: '', hasta: '' };
+
+// Todas las fuentes de una fila del historial, primaria primero; versiones previas del backend solo traen una.
+const fuentesDeFila = (fila: any): string[] =>
+  Array.isArray(fila.document_ids) && fila.document_ids.length > 0 ? fila.document_ids : [fila.document_id];
+
 export const HistoryFullView: React.FC<{
   apiClient: APIClient;
   token: string;
   workspaceId: string;
   idiomaUi: OutputLanguage;
+  // Pedido de abrir una generación puntual (por ejemplo, desde "generaciones recientes").
+  abrirDetalle?: { id: string; pedido: number } | null;
+  conceptosMarcados?: Record<string, string | null>;
+  onMarkConcept?: (documentId: string, concepto: string, generationId: string) => void;
+  onReviewFlashcard?: (generationId: string, flashcardId: string) => void;
   onClose: () => void;
   onSessionInvalid: () => void;
-}> = ({ apiClient, token, workspaceId, idiomaUi, onClose, onSessionInvalid }) => {
+}> = ({
+  apiClient,
+  token,
+  workspaceId,
+  idiomaUi,
+  abrirDetalle,
+  conceptosMarcados,
+  onMarkConcept,
+  onReviewFlashcard,
+  onClose,
+  onSessionInvalid,
+}) => {
   const [expiraEn, setExpiraEn] = useState<string>('');
   const [docsMap, setDocsMap] = useState<Record<string, string>>({});
   const [filtroDoc, setFiltroDoc] = useState<string>('');
@@ -873,8 +901,11 @@ export const HistoryFullView: React.FC<{
   const [cursor, setCursor] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [anteriores, setAnteriores] = useState<Array<string | null>>([]);
-  const [detalleId, setDetalleId] = useState<string | null>(null);
+  const [detalleId, setDetalleId] = useState<string | null>(abrirDetalle?.id ?? null);
   const [detalleJob, setDetalleJob] = useState<any | null>(null);
+  // Los filtros se editan en borrador y se consultan recién al tocar "Aplicar filtros".
+  const [aplicados, setAplicados] = useState<FiltrosHistorial>(SIN_FILTROS);
+  const [cargando, setCargando] = useState(false);
   const [compareA, setCompareA] = useState<string>('');
   const [compareB, setCompareB] = useState<string>('');
   const [comparedPackages, setComparedPackages] = useState<PedagogicalStudentOutput[] | null>(null);
@@ -883,6 +914,32 @@ export const HistoryFullView: React.FC<{
   const pageRequest = useRef(0);
 
   const rangoInvalido = Boolean(desde && hasta && desde > hasta);
+  const borrador: FiltrosHistorial = {
+    documento: filtroDoc,
+    perfil: filtroPerfil,
+    formato: filtroFormato,
+    idioma: filtroIdioma,
+    desde,
+    hasta,
+  };
+  const filtrosPendientes = JSON.stringify(borrador) !== JSON.stringify(aplicados);
+  const hayFiltros = JSON.stringify(aplicados) !== JSON.stringify(SIN_FILTROS);
+  const aplicarFiltros = () => {
+    if (!rangoInvalido) setAplicados(borrador);
+  };
+  const limpiarFiltros = () => {
+    setFiltroDoc('');
+    setFiltroPerfil('');
+    setFiltroFormato('');
+    setFiltroIdioma('');
+    setDesde('');
+    setHasta('');
+    setAplicados(SIN_FILTROS);
+  };
+
+  useEffect(() => {
+    if (abrirDetalle) setDetalleId(abrirDetalle.id);
+  }, [abrirDetalle]);
 
   useEffect(() => {
     apiClient
@@ -903,17 +960,17 @@ export const HistoryFullView: React.FC<{
 
   const cargarPagina = async (targetCursor: string | null) => {
     const request = ++pageRequest.current;
-    if (rangoInvalido) return;
     setError(null);
     const params: Record<string, any> = { limit: 20 };
-    if (filtroDoc) params.documento = filtroDoc;
-    if (filtroPerfil) params.perfil = filtroPerfil;
-    if (filtroFormato) params.formato = filtroFormato;
-    if (filtroIdioma) params.idioma = filtroIdioma;
-    if (desde) params.desde = `${desde}T00:00:00+00:00`;
-    if (hasta) params.hasta = `${hasta}T23:59:59.999999+00:00`;
+    if (aplicados.documento) params.documento = aplicados.documento;
+    if (aplicados.perfil) params.perfil = aplicados.perfil;
+    if (aplicados.formato) params.formato = aplicados.formato;
+    if (aplicados.idioma) params.idioma = aplicados.idioma;
+    if (aplicados.desde) params.desde = `${aplicados.desde}T00:00:00+00:00`;
+    if (aplicados.hasta) params.hasta = `${aplicados.hasta}T23:59:59.999999+00:00`;
     if (targetCursor) params.cursor = targetCursor;
 
+    setCargando(true);
     try {
       const pagina = await apiClient.getGenerations(token, params);
       if (request !== pageRequest.current) return;
@@ -925,6 +982,8 @@ export const HistoryFullView: React.FC<{
         if (err.statusCode === 401) onSessionInvalid();
         setError(err);
       }
+    } finally {
+      if (request === pageRequest.current) setCargando(false);
     }
   };
 
@@ -933,7 +992,7 @@ export const HistoryFullView: React.FC<{
     setAnteriores([]);
     cargarPagina(null);
     return () => { pageRequest.current++; };
-  }, [filtroDoc, filtroPerfil, filtroFormato, filtroIdioma, desde, hasta, apiClient, token]);
+  }, [aplicados, apiClient, token]);
 
   useEffect(() => {
     let active = true;
@@ -963,7 +1022,7 @@ export const HistoryFullView: React.FC<{
     setComparedPackages(null);
     if (!compareA || !compareB) return;
     if (compareA === compareB) {
-      setCompareWarning(t('historial.comparacion_incompatible', idiomaUi));
+      setCompareWarning(t('historial.comparar_mismo', idiomaUi));
       return;
     }
     Promise.all([
@@ -980,10 +1039,13 @@ export const HistoryFullView: React.FC<{
         validarGeneracionCompletada(j2, compareB);
         const f1 = j1.contenido.documento_fuente;
         const f2 = j2.contenido.documento_fuente;
+        const fuentes = (j: any) =>
+          JSON.stringify((j.contenido.documentos_fuente || []).map((f: any) => [f.document_id, f.version]).sort());
         if (
           f1.document_id !== f2.document_id ||
           f1.hash !== f2.hash ||
-          f1.version !== f2.version
+          f1.version !== f2.version ||
+          fuentes(j1) !== fuentes(j2)
         ) {
           setCompareWarning(t('historial.comparacion_incompatible', idiomaUi));
           return;
@@ -1022,7 +1084,7 @@ export const HistoryFullView: React.FC<{
           <History size={20} color="var(--oracle-coral)" />
           {t('historial.titulo', idiomaUi)}
         </h2>
-        <button type="button" className="nm-btn" onClick={onClose}>
+        <button type="button" className="nm-btn nm-btn-primary" onClick={onClose}>
           {t('historial.cerrar', idiomaUi)}
         </button>
       </div>
@@ -1039,7 +1101,7 @@ export const HistoryFullView: React.FC<{
         <div>
           <button
             type="button"
-            className="nm-btn"
+            className="nm-btn nm-btn-primary"
             style={{ marginBottom: '1rem' }}
             onClick={() => setDetalleId(null)}
           >
@@ -1092,6 +1154,9 @@ export const HistoryFullView: React.FC<{
                 idioma={idiomaUi}
                 apiClient={apiClient}
                 token={token}
+                conceptosMarcados={conceptosMarcados}
+                onMarkConcept={onMarkConcept}
+                onReviewFlashcard={onReviewFlashcard}
                 onSessionInvalid={onSessionInvalid}
               />
             </>
@@ -1156,12 +1221,40 @@ export const HistoryFullView: React.FC<{
                 {t('historial.rango_invalido', idiomaUi)}
               </div>
             )}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.75rem' }}>
+              <button
+                type="button"
+                className="nm-btn nm-btn-primary"
+                disabled={!filtrosPendientes || rangoInvalido}
+                onClick={aplicarFiltros}
+              >
+                {t('historial.aplicar_filtros', idiomaUi)}
+              </button>
+              <button
+                type="button"
+                className="nm-btn"
+                disabled={!hayFiltros && !filtrosPendientes}
+                onClick={limpiarFiltros}
+              >
+                {t('historial.limpiar_filtros', idiomaUi)}
+              </button>
+              {filtrosPendientes && !rangoInvalido && (
+                <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t('historial.filtros_pendientes', idiomaUi)}</span>
+              )}
+            </div>
           </div>
 
-          {items.length === 0 ? (
-            <div className="nm-alert nm-alert-info">{t('historial.vacio', idiomaUi)}</div>
+          {cargando && items.length === 0 ? (
+            <div className="nm-alert nm-alert-info">{t('historial.cargando', idiomaUi)}</div>
+          ) : items.length === 0 ? (
+            <div className="nm-alert nm-alert-info">
+              {t(hayFiltros ? 'historial.sin_resultados' : 'historial.vacio', idiomaUi)}
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>
+                {t('historial.mostrando', idiomaUi, { cantidad: items.length })}
+              </div>
               {items.map((fila) => (
                 <div
                   key={fila.generation_id}
@@ -1171,7 +1264,8 @@ export const HistoryFullView: React.FC<{
                   <div>
                     <div style={{ fontWeight: 600 }}>{etiquetaFila(fila)}</div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>
-                      {t('historial.documento', idiomaUi)}: {docsMap[fila.document_id] || fila.document_id} ·{' '}
+                      {t(fuentesDeFila(fila).length > 1 ? 'historial.documentos' : 'historial.documento', idiomaUi)}:{' '}
+                      {fuentesDeFila(fila).map((id) => docsMap[id] || id).join(' · ')} ·{' '}
                       <span style={{ color: 'var(--oracle-coral)' }}>
                         {t(`estados.trabajo.${fila.status}`, idiomaUi)}
                       </span>

@@ -425,9 +425,19 @@ export interface GlossaryOutput {
   created_at?: string;
 }
 
+export interface ConceptoProgreso {
+  document_id: string;
+  generation_id?: string | null;
+  concepto: string;
+  veces: number;
+  ultima_fecha?: string | null;
+}
+
 export interface ProgressResponse {
   version: number;
   conceptos_revisados: number;
+  conceptos_repasos: number;
+  conceptos: ConceptoProgreso[];
   flashcards_vistas: number;
   quiz_intentos: number;
   quiz_aciertos_primer_intento: number;

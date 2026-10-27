@@ -18,6 +18,7 @@ import {
 import { APIClient, APIError } from './api/client';
 import {
   AlcanceSolicitud,
+  ConceptoProgreso,
   DetailLevel,
   DocumentoResponse,
   FORMATOS,
@@ -51,10 +52,12 @@ import {
   DOCUMENTOS_DEMO,
   claveCarga,
   formatearTamano,
+  diaLocal,
   generarEventIdProgreso,
   validarArchivo,
   validarGeneracionCompletada,
   validarPaquete,
+  validarProgreso,
   validarRespuestaChat,
   validarTextoPegado,
 } from './flows/validators';
@@ -131,11 +134,13 @@ export const App: React.FC = () => {
   const [mostrandoDocumentos, setMostrandoDocumentos] = useState(false);
   const [activeTab, setActiveTab] = useState<'resultado' | 'tutor' | 'glosario' | 'progreso'>('resultado');
   const [historialAbierto, setHistorialAbierto] = useState(false);
+  const [abrirDetalle, setAbrirDetalle] = useState<{ id: string; pedido: number } | null>(null);
   const [ejemploDemoId, setEjemploDemoId] = useState<string | null>(null);
   const [accionConfirmar, setAccionConfirmar] = useState<'rotar' | 'borrar' | null>(null);
 
   // Progreso e idempotencia de eventos
-  const [confirmedConcepts, setConfirmedConcepts] = useState<Record<string, boolean>>({});
+  // Último día en que se marcó cada concepto («generation_id::concepto»), según el progreso confirmado.
+  const [conceptosMarcados, setConceptosMarcados] = useState<Record<string, string | null>>({});
   const [pendingProgressEvents, setPendingProgressEvents] = useState<
     Array<{ event_id: string; datos: Record<string, any> }>
   >([]);
@@ -191,7 +196,7 @@ export const App: React.FC = () => {
     setActiveJobData(null);
     setHistorialAbierto(false);
     setEjemploDemoId(null);
-    setConfirmedConcepts({});
+    setConceptosMarcados({});
     setPendingProgressEvents([]);
     sessionStorage.removeItem('nm_session_token');
     sessionStorage.removeItem('nm_workspace_id');
@@ -409,16 +414,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const limpiarSeleccionDocs = () => {
-    if (docActivoId) {
-      setDocsSeleccionados([docActivoId]);
-    } else if (docsReady[0]) {
-      setDocsSeleccionados([docsReady[0].document_id]);
-      setDocActivoId(docsReady[0].document_id);
-    } else {
-      setDocsSeleccionados([]);
-    }
-  };
+  // Destilda todas las fuentes. El documento enfocado en pantalla se conserva: si se borrara, la próxima
+  // actualización de la lista volvería a tildar el primero por su cuenta.
+  const limpiarSeleccionDocs = () => setDocsSeleccionados([]);
 
   useEffect(() => {
     if (!seleccionLista) return;
@@ -526,9 +524,9 @@ export const App: React.FC = () => {
       }
       setPendingProgressEvents((prev) => prev.filter((e) => e.event_id !== eventId));
       if (datos.tipo === 'concepto_revisado') {
-        setConfirmedConcepts((prev) => ({
+        setConceptosMarcados((prev) => ({
           ...prev,
-          [`${datos.document_id}::${datos.concepto}`]: true,
+          [`${datos.generation_id}::${datos.concepto}`]: datos.fecha ?? null,
         }));
       }
     } catch (err) {
@@ -539,6 +537,36 @@ export const App: React.FC = () => {
       if (err instanceof APIError) setGlobalError(err);
     }
   };
+
+  // Un concepto se puede repasar una vez por día: la fecha forma parte del evento y de su identificador.
+  const marcarConcepto = async (docId: string, concepto: string, genId: string) => {
+    const datos = { tipo: 'concepto_revisado', document_id: docId, concepto, generation_id: genId, fecha: diaLocal() };
+    await enviarEventoProgreso(await generarEventIdProgreso(workspaceId || '', datos), datos);
+  };
+  const repasarFlashcard = (genId: string, fcId: string) =>
+    enviarEventoProgreso(`ui41-fc-${genId}-${fcId}`, {
+      tipo: 'flashcard_vista',
+      generation_id: genId,
+      flashcard_id: fcId,
+    });
+
+  // Los botones de conceptos salen del servidor: recargar la página no los vuelve a habilitar.
+  useEffect(() => {
+    if (!sessionToken) return;
+    const token = sessionToken;
+    api
+      .getProgress(token)
+      .then((progreso) => {
+        validarProgreso(progreso);
+        if (authRef.current !== token) return;
+        setConceptosMarcados(
+          Object.fromEntries(
+            progreso.conceptos.map((c: ConceptoProgreso) => [`${c.generation_id ?? ''}::${c.concepto}`, c.ultima_fecha ?? null])
+          )
+        );
+      })
+      .catch(() => {}); // "Tu avance" muestra su propio error; los botones siguen disponibles.
+  }, [api, sessionToken]);
 
   return (
     <>
@@ -871,6 +899,11 @@ export const App: React.FC = () => {
                 )}
                 {t('sidebar.generar', idiomaUi)}
               </button>
+              {docsSeleccionados.length === 0 && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: '0.45rem' }}>
+                  {t('sidebar.sin_seleccion', idiomaUi)}
+                </div>
+              )}
             </div>
           )}
 
@@ -904,6 +937,7 @@ export const App: React.FC = () => {
                 type="button"
                 className="nm-btn nm-btn-block"
                 onClick={() => {
+                  setAbrirDetalle(null);
                   setHistorialAbierto(true);
                   setEjemploDemoId(null);
                 }}
@@ -911,7 +945,17 @@ export const App: React.FC = () => {
                 <FolderOpen size={14} />
                 {t('historial.abrir_vista', idiomaUi)}
               </button>
-              <RecentGenerations api={api} token={sessionToken} idioma={idiomaUi} onOpen={() => setHistorialAbierto(true)} />
+              <RecentGenerations
+                api={api}
+                token={sessionToken}
+                idioma={idiomaUi}
+                actualizar={`${generacionActiva?.generation_id ?? ''}:${activeJobData?.status ?? ''}`}
+                onOpen={(generationId) => {
+                  setAbrirDetalle({ id: generationId, pedido: Date.now() });
+                  setHistorialAbierto(true);
+                  setEjemploDemoId(null);
+                }}
+              />
 
               <button
                 type="button"
@@ -1059,6 +1103,10 @@ export const App: React.FC = () => {
                   token={sessionToken}
                   workspaceId={workspaceId}
                   idiomaUi={idiomaUi}
+                  abrirDetalle={abrirDetalle}
+                  conceptosMarcados={conceptosMarcados}
+                  onMarkConcept={marcarConcepto}
+                  onReviewFlashcard={repasarFlashcard}
                   onClose={() => setHistorialAbierto(false)}
                   onSessionInvalid={manejarSesionInvalida}
                 />
@@ -1093,7 +1141,7 @@ export const App: React.FC = () => {
                       </div>
                       <button
                         type="button"
-                        className="nm-btn"
+                        className="nm-btn nm-btn-primary"
                         onClick={() => setMostrandoDocumentos(true)}
                       >
                         <FileText size={15} />
@@ -1140,23 +1188,10 @@ export const App: React.FC = () => {
                         if (seccionesDisponibles[0]) setGenSeccionId(seccionesDisponibles[0].seccion_id);
                         requestAnimationFrame(() => document.getElementById('app-field-6')?.focus());
                       }}
-                      confirmedConcepts={confirmedConcepts}
+                      conceptosMarcados={conceptosMarcados}
                       onRefresh={consultarGeneracionActiva}
-                      onMarkConcept={(docId, concepto, genId) =>
-                        enviarEventoProgreso(`ui41-concept-${docId}-${concepto}`, {
-                          tipo: 'concepto_revisado',
-                          document_id: docId,
-                          concepto,
-                          generation_id: genId,
-                        })
-                      }
-                      onReviewFlashcard={(genId, fcId) =>
-                        enviarEventoProgreso(`ui41-fc-${genId}-${fcId}`, {
-                          tipo: 'flashcard_vista',
-                          generation_id: genId,
-                          flashcard_id: fcId,
-                        })
-                      }
+                      onMarkConcept={marcarConcepto}
+                      onReviewFlashcard={repasarFlashcard}
                       onSessionInvalid={manejarSesionInvalida}
                     />
                   )}
@@ -1168,6 +1203,7 @@ export const App: React.FC = () => {
                       workspaceId={workspaceId}
                       documentId={generacionActiva.parametros.document_id || (generacionActiva.parametros.document_ids?.[0]) || ''}
                       documentIds={generacionActiva.parametros.document_ids}
+                      origen="material"
                       perfil={generacionActiva.parametros.perfil_destinatario}
                       idiomaSalida={generacionActiva.parametros.idioma_salida}
                       idiomaUi={idiomaUi}
@@ -1181,6 +1217,7 @@ export const App: React.FC = () => {
                       token={sessionToken}
                       documentId={generacionActiva.parametros.document_id || (generacionActiva.parametros.document_ids?.[0]) || ''}
                       documentIds={generacionActiva.parametros.document_ids}
+                      origen="material"
                       perfil={generacionActiva.parametros.perfil_destinatario}
                       idiomaSalida={generacionActiva.parametros.idioma_salida}
                       idiomaUi={idiomaUi}
@@ -1790,7 +1827,7 @@ export const ActiveGenerationPanel: React.FC<{
   generacion: GeneracionActivaUI;
   job: any | null;
   idioma: OutputLanguage;
-  confirmedConcepts: Record<string, boolean>;
+  conceptosMarcados: Record<string, string | null>;
   onRefresh: () => void;
   onMarkConcept: (docId: string, concepto: string, genId: string) => void;
   onReviewFlashcard: (genId: string, fcId: string) => void;
@@ -1804,7 +1841,7 @@ export const ActiveGenerationPanel: React.FC<{
   generacion,
   job,
   idioma,
-  confirmedConcepts,
+  conceptosMarcados,
   onRefresh,
   onMarkConcept,
   onReviewFlashcard,
@@ -1854,7 +1891,7 @@ export const ActiveGenerationPanel: React.FC<{
           idioma={idioma}
           apiClient={api}
           token={token}
-          confirmedConcepts={confirmedConcepts}
+          conceptosMarcados={conceptosMarcados}
           onMarkConcept={onMarkConcept}
           onReviewFlashcard={onReviewFlashcard}
           onSessionInvalid={onSessionInvalid}

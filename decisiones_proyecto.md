@@ -21,6 +21,17 @@ El modo básico se extiende explícitamente a chat y glosario: resultados con `e
 - **Rechazos del Researcher.** Los rechazos se publican con su motivo del catálogo público: cobertura incompleta o evidencia insuficiente.
 - **PDF cortos.** Un PDF con texto seleccionable ya no se rechaza por corto. Los escaneos se siguen detectando página por página.
 - **Letras acentuadas codificadas.** Gemini 3.5 Flash Lite devolvió un guion con las tildes como entidades HTML (`autorreparaci&oacute;n`, `r&eacuteplicas`, `m&lacute;nima`) y una como dígito (`Orquestaci3n`). Toda respuesta JSON del modelo (Writer, Critic, chat, glosario y visión) se repara al parsearla: sólo se decodifican letras y signos tipográficos, nunca `&amp;`, `&lt;`, porcentajes ni URLs. El prompt (`nm-prompts-1.1.6`) pide escribir los acentos con su carácter directo. Se descartó prohibir los acentos: empeoraba el material en español y portugués sin garantizar el resultado.
+- **Avance, conceptos e historial más claros.**
+  - "Tu avance" explica cómo sube cada contador y que los aciertos se miden con un Quiz.
+  - Un concepto se puede repasar una vez por día (`conceptos_repasos`). Su estado sale del progreso del servidor, no de la memoria del navegador.
+  - Estudiar desde el historial también suma.
+  - El historial lista todas las fuentes de cada generación.
+  - Los filtros se aplican con un botón.
+  - Comparar explica qué elegir sin mencionar hashes.
+  - "Generaciones recientes" se actualiza al terminar un trabajo y abre la generación elegida.
+  - "Limpiar selección" deja todas las fuentes sin tildar.
+  - El chat y el glosario aclaran con qué documentos responden.
+  - Los botones de navegación y de estudio usan el color principal.
 - **Esperas del navegador.** En Render (Oregón) casi cada operación consulta OCI (Brasil), y una descarga espera mientras otra generación sube sus exportaciones; con 30 s el navegador cortaba descargas que el servidor sí completaba. La espera pasa a 90 s, y a 3 min en descargas y subidas de archivos. Si se agota, el aviso dice que el servidor tardó en lugar de sugerir un problema de conexión.
 
 Este documento define la entrega completa: requisitos mínimos, todos los diferenciales del enunciado y los extras acordados. No constituye un plan de implementación ni acredita funcionalidades implementadas. La solución se orienta a capacitación técnica reutilizable; no presupone una adopción comercial por parte de Oracle.
