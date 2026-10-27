@@ -285,3 +285,18 @@ def test_nombre_solo_es_etiqueta_nunca_ruta(pdf_valido, tmp_path):
     resultado = parsear_archivo(pdf_valido.read_bytes(), nombre_malicioso, limites)
     assert resultado.titulo_etiqueta  # aceptado como etiqueta
     assert not (tmp_path / nombre_malicioso).exists()  # nunca escribió nada
+
+
+def test_pdf_corto_con_texto_seleccionable_queda_listo_con_limites_por_defecto():
+    """Un PDF de una línea es tan válido como un .txt de una línea: no es un escaneo."""
+    from io import BytesIO
+
+    from reportlab.pdfgen import canvas
+
+    buffer = BytesIO()
+    hoja = canvas.Canvas(buffer)
+    hoja.drawString(72, 720, "Este archivo solo dice hola")
+    hoja.save()
+    resultado = parsear_archivo(buffer.getvalue(), "hola.pdf")
+    assert resultado.estado_documento.value == "ready"
+    assert resultado.paginas_visuales == []

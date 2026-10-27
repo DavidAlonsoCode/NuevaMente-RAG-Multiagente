@@ -86,8 +86,10 @@ class LimitesIngesta:
     # página VISUAL (diagrama/escaneo), no como texto extraído.
     minimo_caracteres_por_pagina: int = 20
     # Un documento cuyo texto total quede por debajo de esto (sin ser un
-    # escaneo puro) se considera de extracción insuficiente (§4.1).
-    minimo_tokens_documento: int = 50
+    # escaneo puro) se considera de extracción insuficiente (§4.1). Los
+    # escaneos ya se detectan página por página; un PDF corto con texto
+    # seleccionable es válido, como un .txt de una línea.
+    minimo_tokens_documento: int = 1
 
 
 # --------------------------------------------------------------------------
