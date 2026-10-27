@@ -15,6 +15,12 @@ El modo básico se extiende explícitamente a chat y glosario: resultados con `e
 
 **Ajuste autorizado — 26/10/2026 (PR #152)**: chat y glosario Multiagente responden siempre que exista respaldo: si tras una reescritura (dos borradores) la revisión no aprueba, se entrega el último borrador con su evaluación real `requiere_revision` (score, conteos y razones) y la UI advierte el respaldo parcial en vez de ocultar la respuesta. No se presenta como aprobado: `aprobada` sigue exigiendo anclaje >= 0,85 y todas las afirmaciones respaldadas, y el Finalizer sólo sella lo aprobado. Se mantiene el rechazo cuando ninguna afirmación tiene respaldo o las citas salen de la evidencia, y un glosario con reservas no se reutiliza desde caché. La generación pedagógica conserva el bloqueo de lo no aprobado sin excepciones.
 
+**Ajuste autorizado — 27/10/2026**:
+- **Pedidos de evidencia del Critic.** Cuando el Critic pide más evidencia y la fuente ya no aporta fragmentos nuevos, o no queda presupuesto, el trabajo ya no se rechaza en esa revisión. El Researcher conserva la evidencia autorizada y avisa al Writer qué pedido no pudo ampliarse, para que quite o reformule esas afirmaciones. Sigue rigiendo el límite de tres redacciones y el Critic aprueba con los mismos criterios.
+  - Este caso era el habitual en síntesis de documentos cortos: toda su evidencia entra en la primera investigación.
+- **Rechazos del Researcher.** Los rechazos se publican con su motivo del catálogo público: cobertura incompleta o evidencia insuficiente.
+- **PDF cortos.** Un PDF con texto seleccionable ya no se rechaza por corto. Los escaneos se siguen detectando página por página.
+
 Este documento define la entrega completa: requisitos mínimos, todos los diferenciales del enunciado y los extras acordados. No constituye un plan de implementación ni acredita funcionalidades implementadas. La solución se orienta a capacitación técnica reutilizable; no presupone una adopción comercial por parte de Oracle.
 
 ---

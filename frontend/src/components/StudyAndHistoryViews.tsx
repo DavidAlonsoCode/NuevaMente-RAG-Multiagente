@@ -22,7 +22,7 @@ import {
   validarRespuestaChat,
   validarTrabajoChat,
 } from '../flows/validators';
-import { t } from '../i18n';
+import { CATALOGOS, t } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
 import { ExportDownloads } from './ExportDownloads';
 import { PackageViewer } from './FormatRenderers';
@@ -640,7 +640,7 @@ export const GlossaryView: React.FC<{
           )}
 
           {salida.estado === 'sin_terminos' ? (
-            <div className="nm-alert nm-alert-info">{t('glosario.sin_terminos', idiomaUi)}</div>
+            <div className="nm-alert">{t('glosario.sin_terminos', idiomaUi)}</div>
           ) : (
             <>
               {salida.estado === 'verificado' && <RespaldoBadge calidad={salida.evaluacion_calidad} idioma={idiomaUi} />}
@@ -1049,10 +1049,17 @@ export const HistoryFullView: React.FC<{
           {detalleJob && detalleJob.status !== 'completed' && (
             <div className="nm-alert nm-alert-warning">
               <strong>{t(`estados.trabajo.${detalleJob.status}`, idiomaUi)}</strong>
-              {detalleJob.error?.details?.causa && (
+              {/* La causa llega del servidor: solo se traduce si el catálogo la conoce (t() lanza ante claves inexistentes). */}
+              {detalleJob.error?.details?.causa && CATALOGOS[idiomaUi]?.[`historial.causa.${detalleJob.error.details.causa}`] && (
                 <div style={{ marginTop: '0.35rem' }}>
                   {t(`historial.causa.${detalleJob.error.details.causa}`, idiomaUi)}
                 </div>
+              )}
+              {detalleJob.status === 'rejected_quality' && (
+                <>
+                  {detalleJob.error?.message && <div style={{ marginTop: '0.35rem' }}>{detalleJob.error.message}</div>}
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.82rem' }}>{t('material.rechazo_ayuda', idiomaUi)}</div>
+                </>
               )}
               <div style={{ marginTop: '0.35rem', fontSize: '0.82rem' }}>
                 {t('historial.sin_borrador', idiomaUi)}
