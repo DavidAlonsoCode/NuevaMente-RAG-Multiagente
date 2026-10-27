@@ -122,6 +122,25 @@ it('seleccionar todos incluye exactamente las cinco disponibles', async () => {
   expect(await generar()).toMatchObject({ document_ids: ['a', 'b', 'c', 'd', 'e'] });
 });
 
+it('con varias fuentes genera en Básico y al volver a una recupera el modo elegido', async () => {
+  vi.mocked(APIClient.prototype.getDocuments).mockResolvedValue({ items: documentos.slice(0, 2) });
+  await scope.render(<App />);
+  await screen.findByLabelText('Fuente a', { selector: 'input' });
+  const modo = () => document.getElementById('app-generation-mode') as HTMLSelectElement;
+  const multiagente = () => within(modo()).getByRole('option', { name: t('modo.multiagente') }) as HTMLOptionElement;
+  expect(modo().value).toBe('multiagente');
+  fireEvent.click(screen.getByRole('button', { name: t('sidebar.seleccionar_todos') }));
+  expect(selected()).toHaveLength(2);
+  expect(modo().value).toBe('basico');
+  expect(multiagente().disabled).toBe(true);
+  expect(screen.getByText(new RegExp(t('modo.varias_fuentes').slice(0, 40)))).toBeTruthy();
+  fireEvent.click(screen.getByLabelText('Fuente b', { selector: 'input' }));
+  expect(modo().value).toBe('multiagente');
+  expect(multiagente().disabled).toBe(false);
+  fireEvent.click(screen.getByLabelText('Fuente b', { selector: 'input' }));
+  expect(await generar()).toMatchObject({ document_ids: ['a', 'b'], modo_generacion: 'basico' });
+});
+
 it('permite vaciar y volver a elegir explícitamente la única fuente disponible', async () => {
   vi.mocked(APIClient.prototype.getDocuments).mockResolvedValue({ items: [doc('a')] });
   await scope.render(<App />);

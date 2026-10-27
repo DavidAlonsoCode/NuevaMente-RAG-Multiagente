@@ -429,6 +429,11 @@ export const App: React.FC = () => {
     }
   }, [seccionesDisponibles, genAlcance, genSeccionId, docsSeleccionados.length, seleccionLista]);
 
+  // La revisión independiente trabaja con un documento a la vez: con varias fuentes se genera en Básico.
+  // Se conserva la elección del usuario para cuando vuelva a una sola fuente.
+  const variasFuentes = docsSeleccionados.length > 1;
+  const modoEfectivo = variasFuentes ? 'basico' : genModo;
+
   const prepararConfirmacionGenerar = () => {
     if (!seleccionLista) return;
     const docIds = docsSeleccionados;
@@ -448,7 +453,7 @@ export const App: React.FC = () => {
     }
 
     const peticion: GenerateRequest = {
-      modo_generacion: genModo,
+      modo_generacion: modoEfectivo,
       document_id: primaryDocId,
       document_ids: esMulti ? sortedDocIds : undefined,
       perfil_destinatario: genPerfil,
@@ -807,14 +812,15 @@ export const App: React.FC = () => {
 
               <div>
                 <label className="nm-label" htmlFor="app-generation-mode">{t('modo.selector', idiomaUi)}</label>
-                <select id="app-generation-mode" className="nm-select" value={genModo}
+                <select id="app-generation-mode" className="nm-select" value={modoEfectivo}
                   onChange={(e) => setGenModo(e.target.value as 'multiagente' | 'basico')}
                   aria-describedby="app-generation-mode-help">
-                  <option value="multiagente">{t('modo.multiagente', idiomaUi)}</option>
+                  <option value="multiagente" disabled={variasFuentes}>{t('modo.multiagente', idiomaUi)}</option>
                   <option value="basico">{t('modo.basico', idiomaUi)}</option>
                 </select>
                 <p id="app-generation-mode-help" style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>
-                  {t(genModo === 'basico' ? 'modo.aviso' : 'modo.ayuda', idiomaUi)}
+                  {variasFuentes && <>{t('modo.varias_fuentes', idiomaUi)} </>}
+                  {t(modoEfectivo === 'basico' ? 'modo.aviso' : 'modo.ayuda', idiomaUi)}
                 </p>
               </div>
 

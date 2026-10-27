@@ -5,6 +5,7 @@ export const CATALOGO_EN: Record<string, string> = {
   'modo.basico': 'Basic · No independent evaluation',
   'modo.aviso': 'One agent generates from retrieved evidence. There is no independent factual, educational or visual review, and no quality score. Check the material before using it.',
   'modo.ayuda': 'This choice applies to the next generation. The prepared document is reused and earlier materials are preserved.',
+  'modo.varias_fuentes': 'With more than one document, generation uses Basic mode: the independent review (Multi-agent) works with one document at a time.',
   "presupuesto.vencimiento": "Your space expires due to inactivity on {fecha}. Activity renews the retention period.",
   "presupuesto.recursos": "Documents: {documentos}/{limite_documentos} · Generations: {generaciones}/{limite_generaciones}",
   "presupuesto.alerta": "Storage usage reached 80% of the budget. Download material you want to keep and delete what you no longer use.",
