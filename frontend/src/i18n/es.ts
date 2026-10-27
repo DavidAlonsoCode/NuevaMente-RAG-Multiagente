@@ -194,7 +194,7 @@ export const CATALOGO_ES: Record<string, string> = {
   "glosario.cancelled": "La generación del glosario fue cancelada.",
   "glosario.unavailable": "Este glosario ya no está disponible.",
   "glosario.omitidos": "Se omitieron {cantidad} candidatos por los límites de generación.",
-  "glosario.sin_terminos": "No se detectaron términos para este documento.",
+  "glosario.sin_terminos": "Este documento no tiene términos técnicos para definir. Es normal en textos muy cortos o generales; con un texto más técnico, el glosario los detecta.",
   "glosario.buscar": "Buscar término, traducción o definición",
   "glosario.resultados": "{cantidad} de {total} términos · orden alfabético por término original",
   "glosario.sin_resultados": "No hay términos que coincidan con la búsqueda.",
