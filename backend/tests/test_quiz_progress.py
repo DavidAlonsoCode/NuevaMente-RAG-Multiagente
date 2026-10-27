@@ -382,3 +382,31 @@ def test_header_idempotente_limites(estudio, clave):
     with pytest.raises(ErrorAplicacion) as error:
         respuesta(estudio, idempotency_key=clave)
     assert error.value.error.code == ErrorCode.INVALID_REQUEST
+
+
+def test_concepto_suma_un_repaso_por_dia_y_expone_su_ultima_fecha(estudio):
+    # Repasar el mismo concepto otro día suma un repaso; repetir el mismo día no.
+    e = estudio
+    for event_id, fecha in (("c-27", "2026-10-27"), ("c-27-otra-pestana", "2026-10-27"), ("c-28", "2026-10-28")):
+        e.servicio.registrar_evento(e.token, concepto(e, event_id, fecha=fecha))
+    e.servicio.registrar_evento(e.token, concepto(e, "c-sin-fecha"))
+    p = e.servicio.consultar(e.token)
+    assert p.conceptos_revisados == 1
+    assert p.conceptos_repasos == 2  # 27/10, 28/10 y las marcas sin fecha cuentan como tres días.
+    [detalle] = p.conceptos
+    assert (detalle.concepto, detalle.veces, detalle.ultima_fecha) == ("VCN", 3, "2026-10-28")
+
+
+@pytest.mark.parametrize("fecha", ["27/10/2026", "2026-10-7", ""])
+def test_fecha_de_concepto_invalida_se_rechaza(fecha):
+    with pytest.raises(ValidationError):
+        ProgressEvent.model_validate(
+            dict(event_id="c", tipo="concepto_revisado", document_id="d", concepto="VCN", fecha=fecha)
+        )
+
+
+def test_flashcard_no_admite_fecha():
+    with pytest.raises(ValidationError):
+        ProgressEvent.model_validate(
+            dict(event_id="c", tipo="flashcard_vista", generation_id="g", flashcard_id="f", fecha="2026-10-27")
+        )

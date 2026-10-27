@@ -622,6 +622,54 @@
         "title": "CoberturaDocumentoResponse",
         "type": "object"
       },
+      "ConceptoProgreso": {
+        "additionalProperties": false,
+        "description": "Estado de un concepto marcado: la UI decide si ofrece repasarlo hoy.",
+        "properties": {
+          "concepto": {
+            "title": "Concepto",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Id"
+          },
+          "ultima_fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ultima Fecha"
+          },
+          "veces": {
+            "minimum": 1.0,
+            "title": "Veces",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "document_id",
+          "concepto",
+          "veces"
+        ],
+        "title": "ConceptoProgreso",
+        "type": "object"
+      },
       "ConfiguracionRetrieval": {
         "additionalProperties": false,
         "description": "Parámetros de la búsqueda MMR usada al reunir evidencia (issue #18).",
@@ -1599,6 +1647,14 @@
             "title": "Document Id",
             "type": "string"
           },
+          "document_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Document Ids",
+            "type": "array"
+          },
           "generation_id": {
             "title": "Generation Id",
             "type": "string"
@@ -1620,6 +1676,7 @@
         "required": [
           "generation_id",
           "document_id",
+          "document_ids",
           "status",
           "created_at",
           "parametros"
@@ -2720,6 +2777,19 @@
             "title": "Event Id",
             "type": "string"
           },
+          "fecha": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Día local AAAA-MM-DD de un concepto_revisado: un concepto suma un repaso por día.",
+            "title": "Fecha"
+          },
           "flashcard_id": {
             "anyOf": [
               {
@@ -2785,6 +2855,18 @@
       "ProgressResponse": {
         "additionalProperties": false,
         "properties": {
+          "conceptos": {
+            "items": {
+              "$ref": "#/components/schemas/ConceptoProgreso"
+            },
+            "title": "Conceptos",
+            "type": "array"
+          },
+          "conceptos_repasos": {
+            "minimum": 0.0,
+            "title": "Conceptos Repasos",
+            "type": "integer"
+          },
           "conceptos_revisados": {
             "minimum": 0.0,
             "title": "Conceptos Revisados",
@@ -2829,6 +2911,7 @@
         "required": [
           "version",
           "conceptos_revisados",
+          "conceptos_repasos",
           "flashcards_vistas",
           "quiz_intentos",
           "quiz_aciertos_primer_intento",
