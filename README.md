@@ -524,7 +524,7 @@ En las tres, detalle `didactico` y alcance `documento_completo`.
 
 Los archivos enlazados tienen alcances distintos. A/B/C son **entradas reconstruidas**;
 sus salidas originales no están disponibles. D es un **artefacto histórico simulado**,
-insuficiente para acreditar la ejecución real exigida por §8.2 del plan correctivo.
+insuficiente para acreditar una ejecución real con proveedores.
 
 | Escenario | Alcance · Perfil · formato · sector · idioma | Fuentes registradas | Archivo disponible y estado | SHA-256 de los bytes enlazados, verificado localmente |
 |---|---|---|---|---|

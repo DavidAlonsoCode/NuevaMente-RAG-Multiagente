@@ -4,8 +4,7 @@ Revisión documental local de la PR #146, 24/10/2026. Se conserva sin modificaci
 el [JSON histórico simulado](salida-multidocumental-d.json), cuyo campo `created_at`
 declara `2026-10-22T23:17:35.110550Z`. Esa fecha y los nombres de modelos guardados
 no acreditan una ejecución con proveedores reales ni la versión del código usada.
-La ejecución real de D requerida por §8.2 del
-[plan correctivo](../../planCorrectivo/plan_implementacion_limites_y_multidocumental_revisado%20%281%29.md#82-agregar-un-escenario-d-multidocumental)
+La ejecución real de D con proveedores reales
 **sigue pendiente**, de forma independiente de #133. No se regeneró la salida,
 no se consumieron proveedores y no se sustituyeron informes históricos.
 
