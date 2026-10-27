@@ -555,3 +555,21 @@ def test_reparacion_solo_toca_letras_codificadas(texto, esperado):
     from app.core.agents.draft_validation import reparar_texto_modelo
 
     assert reparar_texto_modelo(texto) == esperado
+
+
+def test_rechazo_de_gemini_registra_el_estado_sin_el_mensaje(entorno, caplog):
+    # Un 400 real en producción quedó sin causa visible en los logs.
+    estado = estado_inicial(entorno)
+
+    def handler(request):
+        return httpx.Response(
+            400, json={"error": {"code": 400, "message": "TEST_SECRET", "status": "INVALID_ARGUMENT"}}
+        )
+
+    deps = cliente_http(entorno, handler)
+    try:
+        writer(estado, deps)
+        assert "HTTP 400 INVALID_ARGUMENT, modelo " + MODELO in caplog.text
+        assert "TEST_SECRET" not in caplog.text
+    finally:
+        deps.proveedor.cerrar()
