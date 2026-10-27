@@ -26,6 +26,7 @@ import { CATALOGOS, t } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
 import { ExportDownloads } from './ExportDownloads';
 import { PackageViewer } from './FormatRenderers';
+import { RejectionDiagnosis } from './RejectionDiagnosis';
 import { SourcesDrawer, titulosPorDocumento } from './SourcesDrawer';
 import { useOtherPendingChat, useScopedState } from '../flows/studyState';
 
@@ -1117,12 +1118,7 @@ export const HistoryFullView: React.FC<{
                   {t(`historial.causa.${detalleJob.error.details.causa}`, idiomaUi)}
                 </div>
               )}
-              {detalleJob.status === 'rejected_quality' && (
-                <>
-                  {detalleJob.error?.message && <div style={{ marginTop: '0.35rem' }}>{detalleJob.error.message}</div>}
-                  <div style={{ marginTop: '0.35rem', fontSize: '0.82rem' }}>{t('material.rechazo_ayuda', idiomaUi)}</div>
-                </>
-              )}
+              {detalleJob.status === 'rejected_quality' && <RejectionDiagnosis error={detalleJob.error} idioma={idiomaUi} />}
               <div style={{ marginTop: '0.35rem', fontSize: '0.82rem' }}>
                 {t('historial.sin_borrador', idiomaUi)}
               </div>

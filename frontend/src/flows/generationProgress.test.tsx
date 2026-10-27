@@ -174,7 +174,7 @@ const base = () => ({ api: { cancelGeneration: vi.fn().mockResolvedValue(undefin
   token: 'synthetic', generacion: { generation_id: 'gen-one', status: 'queued', status_url: '/api/generations/gen-one',
     events_url: '/api/generations/gen-one/events', parametros: params, documento_titulo: 'Fuente de prueba', seccion_titulo: null },
   idioma: 'es' as const, conceptosMarcados: {}, onRefresh: vi.fn(), onMarkConcept: vi.fn(), onReviewFlashcard: vi.fn(),
-  onSessionInvalid: vi.fn(), onChangeSource: vi.fn(), onNarrowScope: vi.fn(),
+  onSessionInvalid: vi.fn(), onChangeSource: vi.fn(),
   stream: { phase: 'connected' as const, progress: progress.data, error: null, reconnect: vi.fn() } });
 
 it('cancelar no presenta el trabajo como cancelado antes de la confirmación del worker', async () => {
@@ -195,8 +195,9 @@ it.each(['rejected_quality', 'failed'])('no expone borradores en %s', status => 
   expect(screen.queryByText('private draft')).toBeNull();
   if (status === 'rejected_quality') {
     expect(screen.getByText(t('live.rejected_reason'))).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: t('live.narrow') }));
-    expect(props.onNarrowScope).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: /secci/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t('live.source') }));
+    expect(props.onChangeSource).toHaveBeenCalledOnce();
   }
 });
 

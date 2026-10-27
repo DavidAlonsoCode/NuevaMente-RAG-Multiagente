@@ -32,6 +32,11 @@ El modo básico se extiende explícitamente a chat y glosario: resultados con `e
   - "Limpiar selección" deja todas las fuentes sin tildar.
   - El chat y el glosario aclaran con qué documentos responden.
   - Los botones de navegación y de estudio usan el color principal.
+- **Rechazo de calidad explicado.** El aviso de rechazo explica cada motivo en palabras simples y une los que describen lo mismo: «afirmaciones sin respaldo» y «falta evidencia» salían juntos y parecían dos problemas.
+  - Cuando el Critic encuentra afirmaciones sin respaldo, el aviso dice cuántas de cuántas fallaron en el último borrador y qué secciones de los documentos citaban, hasta 5.
+  - Sigue sin mostrarse texto del borrador, de las afirmaciones ni del feedback del modelo; sólo cifras, títulos de documentos y títulos de secciones.
+  - Se quitó «Acotar a una sección»: con varias fuentes no puede elegirse una sección y el botón no hacía nada, y con una sola cambiaba la barra lateral sin aviso.
+  - Se mantiene el rechazo: no hay botón para aceptar un borrador rechazado (§5.3).
 - **Esperas del navegador.** En Render (Oregón) casi cada operación consulta OCI (Brasil), y una descarga espera mientras otra generación sube sus exportaciones; con 30 s el navegador cortaba descargas que el servidor sí completaba. La espera pasa a 90 s, y a 3 min en descargas y subidas de archivos. Si se agota, el aviso dice que el servidor tardó en lugar de sugerir un problema de conexión.
 
 Este documento define la entrega completa: requisitos mínimos, todos los diferenciales del enunciado y los extras acordados. No constituye un plan de implementación ni acredita funcionalidades implementadas. La solución se orienta a capacitación técnica reutilizable; no presupone una adopción comercial por parte de Oracle.
