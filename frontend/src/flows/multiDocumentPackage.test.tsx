@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import fixtures from './fixtures.test-data.json';
 import { validarGeneracionCompletada, validarPaquete } from './validators';
 import { PackageViewer } from '../components/FormatRenderers';
+import { SourcesDrawer, titulosPorDocumento } from '../components/SourcesDrawer';
 import { APIClient } from '../api/client';
 import { t } from '../i18n';
 
@@ -66,3 +67,10 @@ it('muestra el guion multidocumental con todas sus fuentes', () => {
   expect(screen.getByText('Fuente a · Fuente b')).toBeTruthy();
 });
 
+it('cada cita de una síntesis indica de qué documento viene', () => {
+  const titulos = titulosPorDocumento([{ document_id: 'a', titulo: 'Fuente a' }, { document_id: 'b', titulo: 'Fuente b' }]);
+  expect(titulosPorDocumento([{ document_id: 'a', titulo: 'Fuente a' }])).toBeUndefined();
+  render(<SourcesDrawer documentId="a" referencias={[{ chunk_id: 'c1', document_id: 'b' }]} idioma="es"
+    apiClient={{} as APIClient} token={null} titulosDocumentos={titulos} onSessionInvalid={vi.fn()} />);
+  expect(screen.getByText(/Fuente b/)).toBeTruthy();
+});

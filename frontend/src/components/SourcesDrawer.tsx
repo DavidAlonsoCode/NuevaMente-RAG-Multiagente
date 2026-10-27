@@ -13,8 +13,10 @@ const SourcesDrawerView: React.FC<{
   apiClient: APIClient;
   token: string | null;
   demo?: boolean;
+  /** Títulos por document_id: en una síntesis identifican de qué fuente viene cada cita. */
+  titulosDocumentos?: Record<string, string>;
   onSessionInvalid: () => void;
-}> = ({ documentId, referencias, idioma, apiClient, token, demo = false, onSessionInvalid }) => {
+}> = ({ documentId, referencias, idioma, apiClient, token, demo = false, titulosDocumentos, onSessionInvalid }) => {
   const [openChunks, setOpenChunks] = useState<Record<string, boolean>>({});
   const [loadedSources, setLoadedSources] = useState<Record<string, any>>({});
   const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
@@ -101,6 +103,8 @@ const SourcesDrawerView: React.FC<{
         const isBusy = Boolean(loading[cid]);
 
         const partesRotulo = [t('fuentes.fragmento', idioma, { numero: idx + 1 })];
+        const tituloDocumento = ref.document_id ? titulosDocumentos?.[ref.document_id] : undefined;
+        if (tituloDocumento) partesRotulo.push(tituloDocumento);
         if (ref.pagina) partesRotulo.push(t('fuentes.pagina', idioma, { numero: ref.pagina }));
         if (ref.seccion) partesRotulo.push(ref.seccion);
 
@@ -194,6 +198,12 @@ const SourcesDrawerView: React.FC<{
     </div>
   );
 };
+
+/** Mapa document_id → título solo en síntesis (2+ fuentes); con una fuente no aporta. */
+export const titulosPorDocumento = (
+  fuentes?: { document_id: string; titulo: string }[] | null
+): Record<string, string> | undefined =>
+  fuentes && fuentes.length > 1 ? Object.fromEntries(fuentes.map((f) => [f.document_id, f.titulo])) : undefined;
 
 export const SourcesDrawer: React.FC<React.ComponentProps<typeof SourcesDrawerView>> = (props) =>
   <SourcesDrawerView key={`${props.token}:${props.documentId}:${props.demo}`} {...props} />;

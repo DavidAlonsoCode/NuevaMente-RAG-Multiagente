@@ -26,7 +26,7 @@ import { t } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
 import { ExportDownloads } from './ExportDownloads';
 import { PackageViewer } from './FormatRenderers';
-import { SourcesDrawer } from './SourcesDrawer';
+import { SourcesDrawer, titulosPorDocumento } from './SourcesDrawer';
 import { useOtherPendingChat, useScopedState } from '../flows/studyState';
 
 // Cuánto respaldo documental tiene una respuesta del chat o un glosario.
@@ -356,6 +356,7 @@ export const ChatTutorView: React.FC<{
                       idioma={idiomaUi}
                       apiClient={apiClient}
                       token={token}
+                      titulosDocumentos={titulosPorDocumento(turno.respuesta.documentos_fuente)}
                       onSessionInvalid={onSessionInvalid}
                     />
                   </>
