@@ -577,6 +577,19 @@ def test_buscar_multidocumental_vacio_y_autorizacion(pila):
         indice.buscar_multidocumental("espacio-a", ["doc-a"], "consulta", contexto=ctx(workspace="otro"))
 
 
+def test_buscar_multidocumental_no_deja_fuentes_sin_candidatos(pila):
+    """Con más chunks que el límite, una fuente extensa y afín no ocupa todas las plazas."""
+    indice, _ = pila
+    extenso = chunks("doc-1", "espacio-a", "Redes VCN, subredes y rutas de redes VCN.", cantidad=40)
+    indice.indexar("espacio-a", "doc-1", extenso, contexto=ctx())
+    indice.indexar("espacio-a", "doc-2", chunks("doc-2", "espacio-a", "Facturación mensual."), contexto=ctx())
+    encontrados = indice.buscar_multidocumental(
+        "espacio-a", ["doc-1", "doc-2"], "Redes VCN, subredes y rutas", contexto=ctx(), limite=10
+    )
+    assert {hit.chunk.document_id for hit in encontrados} == {"doc-1", "doc-2"}
+    assert len(encontrados) <= 10
+
+
 def test_buscar_multidocumental_cruza_fuentes_activas(pila):
     indice, doble = pila
     indice.indexar("espacio-a", "doc-1", chunks("doc-1", "espacio-a", "Protocolos de red VCN."), contexto=ctx())

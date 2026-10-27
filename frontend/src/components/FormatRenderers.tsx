@@ -16,7 +16,7 @@ import {
 import { validarPaquete } from '../flows/validators';
 import { t } from '../i18n';
 import { ErrorBanner } from './ErrorBanner';
-import { SourcesDrawer } from './SourcesDrawer';
+import { SourcesDrawer, titulosPorDocumento } from './SourcesDrawer';
 
 type SourceRenderFn = (refs: Referencia[], keySuffix: string) => React.ReactNode;
 
@@ -664,6 +664,7 @@ const PackageViewerView: React.FC<{
       idioma={idioma}
       apiClient={apiClient}
       token={token}
+      titulosDocumentos={titulosPorDocumento(paquete.documentos_fuente)}
       onSessionInvalid={onSessionInvalid}
     />
   );
