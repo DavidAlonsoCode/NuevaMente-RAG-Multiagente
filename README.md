@@ -251,7 +251,7 @@ En Bash, la misma orden comienza con `.venv/bin/python`. La carpeta
 Esperar el arranque de Uvicorn en `127.0.0.1:18080`. El helper cambia a ese directorio,
 desactiva la lectura de `.env`, fija almacenamiento mock e inyecta embeddings y
 generadores sintéticos con cuotas de prueba. Bloquea resolución DNS externa.
-Usa SQLite, Chroma, worker y ambos recorridos de generación del proyecto.
+Usa SQLite, Chroma, worker, ambos recorridos de generación, chat y glosario, también con varias fuentes.
 Es una herramienta de verificación, no un modo de producción ni evidencia de
 calidad de Gemini; comenzar con TXT/Markdown o texto pegado, sin páginas visuales.
 
