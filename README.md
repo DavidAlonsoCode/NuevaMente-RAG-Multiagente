@@ -1,5 +1,3 @@
-[**Abrir NuevaMente — aplicación desplegada**](https://nuevamente-app.onrender.com/)
-
 # NuevaMente — Documentación técnica para aprender
 
 [![CI](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/No-Country-simulation/G10-Equipo38-NuevaMente/actions/workflows/ci.yml?query=branch%3Adevelop)
